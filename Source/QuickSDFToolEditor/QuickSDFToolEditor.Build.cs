@@ -35,7 +35,8 @@ public class QuickSDFToolEditor : ModuleRules
 				"ToolMenus",
 				"EditorFramework",
 				"RenderCore",
-				"RHI"
+				"RHI",
+				"ApplicationCore"
 			}
 		);
 	}
