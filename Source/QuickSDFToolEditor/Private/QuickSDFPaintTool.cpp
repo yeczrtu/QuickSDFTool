@@ -294,7 +294,14 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::SmoothStrokeSample(const FQuickSDFStro
 	
 	FQuickSDFStrokeSample SmoothedSample;
 	SmoothedSample.WorldPos = FMath::Lerp(PrevSample.WorldPos, RawSample.WorldPos, Alpha);
-	SmoothedSample.UV = FMath::Lerp(PrevSample.UV, RawSample.UV, Alpha);
+	if (FVector2f::Distance(PrevSample.UV, RawSample.UV) > 0.1f)
+	{
+		SmoothedSample.UV = RawSample.UV;
+	}
+	else
+	{
+		SmoothedSample.UV = FMath::Lerp(PrevSample.UV, RawSample.UV, Alpha);
+	}
 	FilteredStrokeSample = SmoothedSample;
 	return SmoothedSample;
 }
@@ -356,7 +363,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UPrimitiveComponent* NewComponent
 	TargetMeshSpatial->SetMesh(TargetMesh.Get(), true);
 
 	PreviewMaterial = UMaterialInstanceDynamic::Create(
-		LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial")),
+		LoadObject<UMaterialInterface>(nullptr, TEXT("/QuickSDFTool/Materials/M_PreviewMat.M_PreviewMat")),
 		this);
 
 	if (!PreviewMaterial)
@@ -594,7 +601,7 @@ double UQuickSDFPaintTool::GetCurrentStrokeSpacing(UTextureRenderTarget2D* Rende
 
 bool UQuickSDFPaintTool::IsPaintingShadow() const
 {
-	return !GetShiftToggle();
+	return GetShiftToggle();
 }
 
 void FQuickSDFRenderTargetChange::Apply(UObject* Object)
@@ -1048,7 +1055,14 @@ void UQuickSDFPaintTool::StampInterpolatedSegment(
 	{
 		FQuickSDFStrokeSample Result;
 		Result.WorldPos = FMath::Lerp(A.WorldPos, B.WorldPos, T);
-		Result.UV = FMath::Lerp(A.UV, B.UV, static_cast<float>(T));
+		if (FVector2f::Distance(A.UV, B.UV) > 0.1f)
+		{
+			Result.UV = (T < 0.5) ? A.UV : B.UV;
+		}
+		else
+		{
+			Result.UV = FMath::Lerp(A.UV, B.UV, static_cast<float>(T));
+		}
 		return Result;
 	};
 	auto EvaluateBSpline = [&](const FQuickSDFStrokeSample& InP0, const FQuickSDFStrokeSample& InP1, const FQuickSDFStrokeSample& InP2, const FQuickSDFStrokeSample& InP3, double T)
@@ -1056,7 +1070,7 @@ void UQuickSDFPaintTool::StampInterpolatedSegment(
 		const double T2 = T * T;
 		const double T3 = T2 * T;
 
-		// 3次B-Splineの基底関数
+		// ワールド座標は4点を使って滑らかにスプライン補間する
 		const double W0 = (1.0 - 3.0 * T + 3.0 * T2 - T3) / 6.0;
 		const double W1 = (4.0 - 6.0 * T2 + 3.0 * T3) / 6.0;
 		const double W2 = (1.0 + 3.0 * T + 3.0 * T2 - 3.0 * T3) / 6.0;
@@ -1064,10 +1078,21 @@ void UQuickSDFPaintTool::StampInterpolatedSegment(
 
 		FQuickSDFStrokeSample Result;
 		Result.WorldPos = InP0.WorldPos * W0 + InP1.WorldPos * W1 + InP2.WorldPos * W2 + InP3.WorldPos * W3;
-		Result.UV = InP0.UV * static_cast<float>(W0) + 
-					InP1.UV * static_cast<float>(W1) + 
-					InP2.UV * static_cast<float>(W2) + 
-					InP3.UV * static_cast<float>(W3);
+
+		// 【UVジャンプ対策】
+		// UVの補間は P1 と P2 の間で行う（P0とP3のシームの影響を排除するため）。
+		// P1とP2のUV距離が 0.1 (テクスチャの10%) 以上離れている場合はシームとみなす。
+		if (FVector2f::Distance(InP1.UV, InP2.UV) > 0.1f)
+		{
+			// 中間のUVを作らず、近い方のUVをそのまま採用する
+			Result.UV = (T < 0.5) ? InP1.UV : InP2.UV;
+		}
+		else
+		{
+			// 同じアイランド内なら普通に線形補間する
+			Result.UV = FMath::Lerp(InP1.UV, InP2.UV, static_cast<float>(T));
+		}
+
 		return Result;
 	};
 	FQuickSDFStrokeSample PrevSample = EvaluateBSpline(P0, P1, P2, P3, 0.0);
