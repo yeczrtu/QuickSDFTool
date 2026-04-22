@@ -104,6 +104,7 @@ protected:
 
 	void BuildBrushMaskTexture();
 	void RefreshPreviewMaterial();
+	FQuickSDFStrokeSample SmoothStrokeSample(const FQuickSDFStrokeSample& RawSample);
 	void ChangeTargetComponent(class UPrimitiveComponent* NewComponent);
 	bool TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample);
 	bool TryMakePreviewStrokeSample(const FVector2D& ScreenPosition, FQuickSDFStrokeSample& OutSample) const;
@@ -153,7 +154,9 @@ protected:
 
 	TArray<FQuickSDFStrokeSample> StrokeSamples;
 	FQuickSDFStrokeSample LastStampedSample;
+	FQuickSDFStrokeSample FilteredStrokeSample;
 	bool bHasLastStampedSample = false;
+	bool bHasFilteredStrokeSample = false;
 	double DistanceSinceLastStamp = 0.0;
 	FVector2D LastInputScreenPosition = FVector2D::ZeroVector;
 	FVector2D PreviewCanvasOrigin = FVector2D(10.0, 10.0);
@@ -163,6 +166,7 @@ protected:
 	bool bAdjustingBrushRadius = false;
 	FVector2D BrushResizeStartScreenPosition = FVector2D::ZeroVector;
 	float BrushResizeStartRadius = 0.0f;
+	float BrushResizeSensitivity = 0.1f;
 	bool bBrushResizeTransactionOpen = false;
 	bool bStrokeTransactionActive = false;
 	int32 StrokeTransactionAngleIndex = INDEX_NONE;

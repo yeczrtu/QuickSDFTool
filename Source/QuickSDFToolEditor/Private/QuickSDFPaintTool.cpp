@@ -38,10 +38,14 @@
 
 namespace
 {
-constexpr double QuickSDFStrokeSpacingFactor = 0.25;
+constexpr double QuickSDFStrokeSpacingFactor = 0.12;
 constexpr double QuickSDFMinSampleDistanceSq = 1.0e-6;
 constexpr int32 QuickSDFBrushMaskResolution = 64;
 constexpr int32 QuickSDFPreviewActionIncreaseBrush = static_cast<int32>(EStandardToolActions::BaseClientDefinedActionID) + 1;
+constexpr float QuickSDFMinResizeSensitivity = 0.01f;
+constexpr double QuickSDFSubPixelSpacing = 0.35;
+constexpr double QuickSDFStrokeSmoothingMinAlpha = 0.08;
+constexpr double QuickSDFStrokeSmoothingMaxAlpha = 0.35;
 
 class FQuickSDFRenderTargetChange : public FToolCommandChange
 {
@@ -270,6 +274,28 @@ void UQuickSDFPaintTool::RefreshPreviewMaterial()
 	{
 		PreviewMaterial->SetTextureParameterValue(TEXT("BaseColor"), ActiveRT);
 	}
+}
+
+FQuickSDFStrokeSample UQuickSDFPaintTool::SmoothStrokeSample(const FQuickSDFStrokeSample& RawSample)
+{
+	if (!bHasFilteredStrokeSample)
+	{
+		FilteredStrokeSample = RawSample;
+		bHasFilteredStrokeSample = true;
+		return RawSample;
+	}
+
+	const FQuickSDFStrokeSample& PrevSample = FilteredStrokeSample;
+	const double Distance = FVector3d::Distance(PrevSample.WorldPos, RawSample.WorldPos);
+	const double Radius = FMath::Max(BrushProperties ? static_cast<double>(BrushProperties->BrushRadius) : 1.0, 1.0);
+	const double NormalizedDistance = FMath::Clamp(Distance / Radius, 0.0, 1.0);
+	const float Alpha = static_cast<float>(FMath::Lerp(QuickSDFStrokeSmoothingMinAlpha, QuickSDFStrokeSmoothingMaxAlpha, NormalizedDistance));
+
+	FQuickSDFStrokeSample SmoothedSample;
+	SmoothedSample.WorldPos = FMath::Lerp(PrevSample.WorldPos, RawSample.WorldPos, Alpha);
+	SmoothedSample.UV = FMath::Lerp(PrevSample.UV, RawSample.UV, Alpha);
+	FilteredStrokeSample = SmoothedSample;
+	return SmoothedSample;
 }
 
 void UQuickSDFPaintTool::ChangeTargetComponent(UPrimitiveComponent* NewComponent)
@@ -614,9 +640,16 @@ void UQuickSDFPaintTool::UpdateBrushResizeFromCursor()
 	}
 
 	const FVector2D Delta = ConvertInputScreenToCanvasSpace(LastInputScreenPosition) - ConvertInputScreenToCanvasSpace(BrushResizeStartScreenPosition);
-	const float NewRadius = FMath::Max(0.1f, BrushResizeStartRadius + Delta.X);
+	const float NewRadius = FMath::Max(0.1f, BrushResizeStartRadius + (Delta.X * FMath::Max(BrushResizeSensitivity, QuickSDFMinResizeSensitivity)));
+	const float RangeMin = BrushRelativeSizeRange.Min;
+	const float RangeSize = BrushRelativeSizeRange.Max - BrushRelativeSizeRange.Min;
+	if (RangeSize > KINDA_SMALL_NUMBER)
+	{
+		BrushProperties->BrushSize = FMath::Clamp((NewRadius - RangeMin) / RangeSize, 0.0f, 1.0f);
+	}
 	BrushProperties->BrushRadius = NewRadius;
 	LastBrushStamp.Radius = NewRadius;
+	NotifyOfPropertyChangeByTool(BrushProperties);
 }
 
 void UQuickSDFPaintTool::EndBrushResizeMode()
@@ -766,6 +799,7 @@ void UQuickSDFPaintTool::OnBeginDrag(const FRay& Ray)
 
 	if (bHasSample)
 	{
+		Sample = SmoothStrokeSample(Sample);
 		StrokeSamples.Add(Sample);
 		StampSample(Sample);
 		LastStampedSample = Sample;
@@ -794,6 +828,7 @@ void UQuickSDFPaintTool::OnUpdateDrag(const FRay& Ray)
 
 	if (bHasSample)
 	{
+		Sample = SmoothStrokeSample(Sample);
 		AppendStrokeSample(Sample);
 	}
 }
@@ -972,28 +1007,40 @@ void UQuickSDFPaintTool::StampInterpolatedSegment(
 	}
 
 	const double Spacing = GetCurrentStrokeSpacing(RT);
-	const int32 NumSteps = FMath::Max(8, FMath::CeilToInt(SegmentLength / Spacing) * 4);
+	const int32 NumSteps = FMath::Max(24, FMath::CeilToInt(SegmentLength / FMath::Max(Spacing * QuickSDFSubPixelSpacing, 0.125)) * 8);
 
-	auto EvaluateCatmullRom = [](const FQuickSDFStrokeSample& InP0, const FQuickSDFStrokeSample& InP1, const FQuickSDFStrokeSample& InP2, const FQuickSDFStrokeSample& InP3, double T)
+	auto SafeParam = [](double Value)
 	{
-		const double T2 = T * T;
-		const double T3 = T2 * T;
-		const float Tf = static_cast<float>(T);
-		const float T2f = static_cast<float>(T2);
-		const float T3f = static_cast<float>(T3);
+		return Value > KINDA_SMALL_NUMBER ? Value : KINDA_SMALL_NUMBER;
+	};
 
-		FQuickSDFStrokeSample Result;
-		Result.WorldPos =
-			0.5 * ((2.0 * InP1.WorldPos) +
-				(-InP0.WorldPos + InP2.WorldPos) * T +
-				((2.0 * InP0.WorldPos) - (5.0 * InP1.WorldPos) + (4.0 * InP2.WorldPos) - InP3.WorldPos) * T2 +
-				(-InP0.WorldPos + (3.0 * InP1.WorldPos) - (3.0 * InP2.WorldPos) + InP3.WorldPos) * T3);
-		Result.UV =
-			0.5f * ((2.0f * InP1.UV) +
-				(-InP0.UV + InP2.UV) * Tf +
-				((2.0f * InP0.UV) - (5.0f * InP1.UV) + (4.0f * InP2.UV) - InP3.UV) * T2f +
-				(-InP0.UV + (3.0f * InP1.UV) - (3.0f * InP2.UV) + InP3.UV) * T3f);
-		return Result;
+	auto CentripetalDistance = [&](const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B)
+	{
+		return FMath::Pow(FVector3d::Distance(A.WorldPos, B.WorldPos), 0.5);
+	};
+
+	auto EvaluateCatmullRom = [&](const FQuickSDFStrokeSample& InP0, const FQuickSDFStrokeSample& InP1, const FQuickSDFStrokeSample& InP2, const FQuickSDFStrokeSample& InP3, double T)
+	{
+		const double T0 = 0.0;
+		const double T1 = T0 + SafeParam(CentripetalDistance(InP0, InP1));
+		const double T2 = T1 + SafeParam(CentripetalDistance(InP1, InP2));
+		const double T3 = T2 + SafeParam(CentripetalDistance(InP2, InP3));
+		const double EvalT = FMath::Lerp(T1, T2, T);
+
+		auto BlendSample = [](const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B, double AlphaValue)
+		{
+			FQuickSDFStrokeSample Result;
+			Result.WorldPos = FMath::Lerp(A.WorldPos, B.WorldPos, AlphaValue);
+			Result.UV = FMath::Lerp(A.UV, B.UV, static_cast<float>(AlphaValue));
+			return Result;
+		};
+
+		const FQuickSDFStrokeSample A1 = BlendSample(InP0, InP1, (EvalT - T0) / SafeParam(T1 - T0));
+		const FQuickSDFStrokeSample A2 = BlendSample(InP1, InP2, (EvalT - T1) / SafeParam(T2 - T1));
+		const FQuickSDFStrokeSample A3 = BlendSample(InP2, InP3, (EvalT - T2) / SafeParam(T3 - T2));
+		const FQuickSDFStrokeSample B1 = BlendSample(A1, A2, (EvalT - T0) / SafeParam(T2 - T0));
+		const FQuickSDFStrokeSample B2 = BlendSample(A2, A3, (EvalT - T1) / SafeParam(T3 - T1));
+		return BlendSample(B1, B2, (EvalT - T1) / SafeParam(T2 - T1));
 	};
 
 	auto LerpStrokeSample = [](const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B, double T)
@@ -1045,6 +1092,7 @@ void UQuickSDFPaintTool::ResetStrokeState()
 {
 	StrokeSamples.Reset();
 	bHasLastStampedSample = false;
+	bHasFilteredStrokeSample = false;
 	DistanceSinceLastStamp = 0.0;
 	ActiveStrokeInputMode = EQuickSDFStrokeInputMode::None;
 	PendingStrokeInputMode = EQuickSDFStrokeInputMode::None;
