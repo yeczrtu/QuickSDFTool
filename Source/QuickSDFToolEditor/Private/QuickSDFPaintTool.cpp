@@ -289,8 +289,9 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::SmoothStrokeSample(const FQuickSDFStro
 	const double Distance = FVector3d::Distance(PrevSample.WorldPos, RawSample.WorldPos);
 	const double Radius = FMath::Max(BrushProperties ? static_cast<double>(BrushProperties->BrushRadius) : 1.0, 1.0);
 	const double NormalizedDistance = FMath::Clamp(Distance / Radius, 0.0, 1.0);
-	const float Alpha = static_cast<float>(FMath::Lerp(QuickSDFStrokeSmoothingMinAlpha, QuickSDFStrokeSmoothingMaxAlpha, NormalizedDistance));
-
+	//const float Alpha = static_cast<float>(FMath::Lerp(QuickSDFStrokeSmoothingMinAlpha, QuickSDFStrokeSmoothingMaxAlpha, NormalizedDistance));
+	const float Alpha = 0.15f;
+	
 	FQuickSDFStrokeSample SmoothedSample;
 	SmoothedSample.WorldPos = FMath::Lerp(PrevSample.WorldPos, RawSample.WorldPos, Alpha);
 	SmoothedSample.UV = FMath::Lerp(PrevSample.UV, RawSample.UV, Alpha);
@@ -1050,12 +1051,30 @@ void UQuickSDFPaintTool::StampInterpolatedSegment(
 		Result.UV = FMath::Lerp(A.UV, B.UV, static_cast<float>(T));
 		return Result;
 	};
+	auto EvaluateBSpline = [&](const FQuickSDFStrokeSample& InP0, const FQuickSDFStrokeSample& InP1, const FQuickSDFStrokeSample& InP2, const FQuickSDFStrokeSample& InP3, double T)
+	{
+		const double T2 = T * T;
+		const double T3 = T2 * T;
 
-	FQuickSDFStrokeSample PrevSample = EvaluateCatmullRom(P0, P1, P2, P3, 0.0);
+		// 3次B-Splineの基底関数
+		const double W0 = (1.0 - 3.0 * T + 3.0 * T2 - T3) / 6.0;
+		const double W1 = (4.0 - 6.0 * T2 + 3.0 * T3) / 6.0;
+		const double W2 = (1.0 + 3.0 * T + 3.0 * T2 - 3.0 * T3) / 6.0;
+		const double W3 = T3 / 6.0;
+
+		FQuickSDFStrokeSample Result;
+		Result.WorldPos = InP0.WorldPos * W0 + InP1.WorldPos * W1 + InP2.WorldPos * W2 + InP3.WorldPos * W3;
+		Result.UV = InP0.UV * static_cast<float>(W0) + 
+					InP1.UV * static_cast<float>(W1) + 
+					InP2.UV * static_cast<float>(W2) + 
+					InP3.UV * static_cast<float>(W3);
+		return Result;
+	};
+	FQuickSDFStrokeSample PrevSample = EvaluateBSpline(P0, P1, P2, P3, 0.0);
 	for (int32 Step = 1; Step <= NumSteps; ++Step)
 	{
 		const double T = static_cast<double>(Step) / static_cast<double>(NumSteps);
-		FQuickSDFStrokeSample CurrentSample = EvaluateCatmullRom(P0, P1, P2, P3, T);
+		FQuickSDFStrokeSample CurrentSample = EvaluateBSpline(P0, P1, P2, P3, T);
 		double RemainingSegmentDistance = FVector3d::Distance(PrevSample.WorldPos, CurrentSample.WorldPos);
 
 		if (RemainingSegmentDistance <= KINDA_SMALL_NUMBER)
