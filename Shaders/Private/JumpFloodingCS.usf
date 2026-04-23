@@ -1,0 +1,17 @@
+#include "/Engine/Public/Platform.ush"
+
+Texture2D<float4> InputTexture;
+RWTexture2D<float4> OutputTexture;
+
+float2 StepSize;
+
+[numthreads(8, 8, 1)]
+void JumpFloodingMain(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+    // Example JFA pass pseudo-code
+    // For a real implementation, sample 8 neighbors at offset StepSize.
+    int2 PixelPos = DispatchThreadId.xy;
+    
+    // output best distance
+    OutputTexture[PixelPos] = InputTexture[PixelPos];
+}
