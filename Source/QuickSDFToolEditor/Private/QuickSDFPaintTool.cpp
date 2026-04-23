@@ -103,7 +103,7 @@ static void Compute1DDT(const double* f, double* d, int32 n, TArray<int32>& v, T
     for (int32 q = 1; q < n; q++)
     {
         double denom = 2.0 * q - 2.0 * v[k];
-        if (denom <= 0.0) denom = 1e-6; // ゼロ除算防止
+        if (denom <= 0.0) denom = 1e-6;
 
         double s = ((f[q] + (double)q * q) - (f[v[k]] + (double)v[k] * v[k])) / denom;
         while (s <= z[k])
@@ -237,12 +237,12 @@ static void CombineSDFs(const TArray<FMaskData>& Masks, TArray<double>& OutCombi
     {
         if (Masks[0].SDF[p] <= 0.0)
         {
-            OutCombined[p] = FMath::Clamp(t_min + Masks[0].SDF[p] * 0.05, 0.0, t_min);
+            OutCombined[p] = t_min + Masks[0].SDF[p] * 0.05;
             Handled[p] = true;
         }
         else if (Masks.Last().SDF[p] > 0.0)
         {
-            OutCombined[p] = FMath::Clamp(t_max + Masks.Last().SDF[p] * 0.05, t_max, 1.0);
+            OutCombined[p] = t_max + Masks.Last().SDF[p] * 0.05;
             Handled[p] = true;
         }
 
@@ -260,45 +260,61 @@ static void CombineSDFs(const TArray<FMaskData>& Masks, TArray<double>& OutCombi
             }
             OutCombined[p] = fallbackT;
         }
+
+        double val = OutCombined[p];
+        double k = 0.08; // 丸め幅（この範囲内でグラデーションが滑らかにフェードアウトする）
+    	
+        double h0 = FMath::Max(k - FMath::Abs(val - 0.0), 0.0) / k;
+        val = FMath::Max(val, 0.0) + h0 * h0 * k * 0.25;
+    	
+        double h1 = FMath::Max(k - FMath::Abs(val - 1.0), 0.0) / k;
+        val = FMath::Min(val, 1.0) - h1 * h1 * k * 0.25;
+
+        OutCombined[p] = val;
     }
 }
 
 static TArray<uint16> DownscaleAndConvert(const TArray<double>& CombinedField, int32 HighW, int32 HighH, int32 Factor)
 {
-    if (Factor <= 1)
-    {
-        TArray<uint16> Out;
-        Out.SetNumUninitialized(HighW * HighH);
-        for (int32 i = 0; i < CombinedField.Num(); ++i)
-        {
-            double val = CombinedField[i];
-            if (FMath::IsNaN(val)) val = 0.0;
-            val = FMath::Clamp(val, 0.0, 1.0);
-            Out[i] = (uint16)(val * 65535.0);
-        }
-        return Out;
-    }
-
-    int32 OrigW = HighW / Factor;
-    int32 OrigH = HighH / Factor;
+    int32 OrigW = HighW / FMath::Max(1, Factor);
+    int32 OrigH = HighH / FMath::Max(1, Factor);
     TArray<uint16> Out;
     Out.SetNumUninitialized(OrigW * OrigH);
+	
+    int32 Radius = FMath::Max(1, FMath::CeilToInt(Factor * 1.5f)); 
 
     for (int32 y = 0; y < OrigH; ++y)
     {
         for (int32 x = 0; x < OrigW; ++x)
         {
             double sum = 0.0;
-            for(int32 dy = 0; dy < Factor; ++dy)
+            double weightSum = 0.0;
+        	
+            double cx = (x + 0.5) * Factor;
+            double cy = (y + 0.5) * Factor;
+
+            for(int32 dy = -Radius; dy <= Radius; ++dy)
             {
-                for(int32 dx = 0; dx < Factor; ++dx)
+                int32 hy = FMath::Clamp(FMath::RoundToInt(cy) + dy, 0, HighH - 1);
+                double distY = FMath::Abs(cy - (hy + 0.5));
+                double wy = FMath::Max(0.0, 1.0 - (distY / (Radius + 0.5)));
+
+                for(int32 dx = -Radius; dx <= Radius; ++dx)
                 {
-                    double val = CombinedField[(y * Factor + dy) * HighW + (x * Factor + dx)];
+                    int32 hx = FMath::Clamp(FMath::RoundToInt(cx) + dx, 0, HighW - 1);
+                    double distX = FMath::Abs(cx - (hx + 0.5));
+                    double wx = FMath::Max(0.0, 1.0 - (distX / (Radius + 0.5)));
+                    
+                    double w = wx * wy;
+                    double val = CombinedField[hy * HighW + hx];
                     if (FMath::IsNaN(val)) val = 0.0;
-                    sum += val;
+                    
+                    sum += val * w;
+                    weightSum += w;
                 }
             }
-            double avg = sum / (double)(Factor * Factor);
+            
+            double avg = sum / FMath::Max(weightSum, 1e-6);
             avg = FMath::Clamp(avg, 0.0, 1.0);
             Out[y * OrigW + x] = (uint16)(avg * 65535.0);
         }
@@ -309,8 +325,7 @@ static TArray<uint16> DownscaleAndConvert(const TArray<double>& CombinedField, i
 	static void Create16BitTexture(const TArray<uint16>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName)
 {
 	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
-
-	// FolderPath: "/Game", TextureName: "T_QuickSDF_ThresholdMap" など
+	//TODO:ファイル名を決められるようにする。
 	UTexture2D* NewTex = Cast<UTexture2D>(AssetTools.CreateAsset(TextureName, FolderPath, UTexture2D::StaticClass(), nullptr));
 
 	if (!NewTex) return;
@@ -322,9 +337,11 @@ static TArray<uint16> DownscaleAndConvert(const TArray<double>& CombinedField, i
 
 	NewTex->CompressionSettings = TC_Grayscale;
 	NewTex->SRGB = false;
-	NewTex->MipGenSettings = TMGS_NoMipmaps;
-	NewTex->Filter = TF_Bilinear;
-    
+	NewTex->MipGenSettings = TMGS_FromTextureGroup;
+	NewTex->Filter = TF_Default;
+	NewTex->AddressX = TA_Clamp;
+	NewTex->AddressY = TA_Clamp;
+	
 	NewTex->PostEditChange();
 	NewTex->GetPackage()->MarkPackageDirty();
 
@@ -557,8 +574,7 @@ void UQuickSDFPaintTool::GeneratePerfectSDF()
 	{
 		if (i < Properties->TargetAngles.Num() && Properties->TransientRenderTargets[i]) ValidIndices.Add(i);
 	}
-
-	// 階調の低い順(TargetTが小さい順)にソート
+	
 	ValidIndices.Sort([this](int32 A, int32 B) {
 		return Properties->TargetAngles[A] < Properties->TargetAngles[B];
 	});
