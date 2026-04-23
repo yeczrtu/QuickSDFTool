@@ -71,6 +71,54 @@ public:
 	void ExportToTexture();
 };
 
+struct FOneEuroFilter
+{
+	double MinCutoff;
+	double Beta;
+	double DCutoff;
+	FVector3d LastValue;
+	FVector3d LastDerivative;
+	bool bFirstUpdate;
+
+	FOneEuroFilter(double InMinCutoff = 1.0, double InBeta = 0.007, double InDCutoff = 1.0)
+		: MinCutoff(InMinCutoff), Beta(InBeta), DCutoff(InDCutoff), bFirstUpdate(true) {}
+
+	void Reset() { bFirstUpdate = true; }
+
+	double Alpha(double InCutoff, double InDeltaTime)
+	{
+		double Tau = 1.0 / (2.0 * PI * InCutoff);
+		return 1.0 / (1.0 + Tau / InDeltaTime);
+	}
+
+	FVector3d Update(FVector3d InValue, double InDeltaTime)
+	{
+		if (bFirstUpdate)
+		{
+			bFirstUpdate = false;
+			LastValue = InValue;
+			LastDerivative = FVector3d::Zero();
+			return InValue;
+		}
+
+		if (InDeltaTime <= 0.0) return LastValue;
+
+		// 速度（微分）の計算
+		FVector3d Derivative = (InValue - LastValue) / InDeltaTime;
+		double DAlpha = Alpha(DCutoff, InDeltaTime);
+		FVector3d FilteredDerivative = FMath::Lerp(LastDerivative, Derivative, DAlpha);
+		LastDerivative = FilteredDerivative;
+
+		// カットオフ周波数の計算（速度に応じて変化させる）
+		double Cutoff = MinCutoff + Beta * FilteredDerivative.Size();
+		double A = Alpha(Cutoff, InDeltaTime);
+		FVector3d FilteredValue = FMath::Lerp(LastValue, InValue, A);
+		LastValue = FilteredValue;
+
+		return FilteredValue;
+	}
+};
+
 UCLASS()
 class UQuickSDFPaintTool : public UBaseBrushTool
 {
@@ -172,4 +220,19 @@ protected:
 	bool bStrokeTransactionActive = false;
 	int32 StrokeTransactionAngleIndex = INDEX_NONE;
 	TArray<FColor> StrokeBeforePixels;
+	
+	UPROPERTY(EditAnywhere, Category = "Brush Feel")
+	float StabilizerAmount = 0.2f;
+	
+	UPROPERTY(EditAnywhere, Category = "Brush Feel")
+	float LazyRadius = 5.0f;
+	
+	FVector2D FilteredScreenPosition = FVector2D::ZeroVector;
+	
+private:
+	TArray<FQuickSDFStrokeSample> PointBuffer;
+	double AccumulatedDistance = 0.0;
+	FOneEuroFilter WorldPosFilter;
+	FOneEuroFilter UVFilter;
+	FVector2D BrushResizeStartAbsolutePosition;
 };
