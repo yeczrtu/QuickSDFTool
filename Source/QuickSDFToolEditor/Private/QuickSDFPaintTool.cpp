@@ -29,6 +29,9 @@
 #include "InputCoreTypes.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "InteractiveToolChange.h"
+#include "Misc/ScopedSlowTask.h"
+#include "IAssetTools.h"
+#include "AssetToolsModule.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -38,6 +41,284 @@
 
 namespace
 {
+// ================= SDF計算用の補助関数群 =================
+
+// 双線形補間によるアップスケール
+static TArray<uint8> UpscaleImage(const TArray<FColor>& Src, int32 SrcW, int32 SrcH, int32 Upscale)
+{
+    if (Upscale <= 1)
+    {
+        TArray<uint8> Dst;
+        Dst.SetNumUninitialized(SrcW * SrcH);
+        for (int32 i = 0; i < Src.Num(); ++i) Dst[i] = Src[i].R;
+        return Dst;
+    }
+
+    int32 DstW = SrcW * Upscale;
+    int32 DstH = SrcH * Upscale;
+    TArray<uint8> Dst;
+    Dst.SetNumUninitialized(DstW * DstH);
+
+    for (int32 y = 0; y < DstH; ++y)
+    {
+        float srcY = (float)y / Upscale;
+        int32 y0 = FMath::Clamp(FMath::FloorToInt(srcY), 0, SrcH - 1);
+        int32 y1 = FMath::Clamp(y0 + 1, 0, SrcH - 1);
+        float fy = srcY - y0;
+
+        for (int32 x = 0; x < DstW; ++x)
+        {
+            float srcX = (float)x / Upscale;
+            int32 x0 = FMath::Clamp(FMath::FloorToInt(srcX), 0, SrcW - 1);
+            int32 x1 = FMath::Clamp(x0 + 1, 0, SrcW - 1);
+            float fx = srcX - x0;
+
+            float p00 = Src[y0 * SrcW + x0].R;
+            float p10 = Src[y0 * SrcW + x1].R;
+            float p01 = Src[y1 * SrcW + x0].R;
+            float p11 = Src[y1 * SrcW + x1].R;
+
+            float val = FMath::Lerp(
+                FMath::Lerp(p00, p10, fx),
+                FMath::Lerp(p01, p11, fx),
+                fy);
+
+            Dst[y * DstW + x] = (uint8)FMath::Clamp(FMath::RoundToInt(val), 0, 255);
+        }
+    }
+    return Dst;
+}
+
+// 1D 距離変換 (Felzenszwalb & Huttenlocher 法) - ※精度落ちを防ぐためdoubleで計算
+static void Compute1DDT(const double* f, double* d, int32 n, TArray<int32>& v, TArray<double>& z)
+{
+    int32 k = 0;
+    v[0] = 0;
+    z[0] = -1e12;
+    z[1] = 1e12;
+    for (int32 q = 1; q < n; q++)
+    {
+        double denom = 2.0 * q - 2.0 * v[k];
+        if (denom == 0.0) denom = 1e-6; // ゼロ除算防止
+
+        double s = ((f[q] + (double)q * q) - (f[v[k]] + (double)v[k] * v[k])) / denom;
+        while (s <= z[k])
+        {
+            k--;
+            if (k < 0) { k = 0; break; } // 安全策
+            denom = 2.0 * q - 2.0 * v[k];
+            if (denom == 0.0) denom = 1e-6;
+            s = ((f[q] + (double)q * q) - (f[v[k]] + (double)v[k] * v[k])) / denom;
+        }
+        k++;
+        v[k] = q;
+        z[k] = s;
+        z[k + 1] = 1e12;
+    }
+    k = 0;
+    for (int32 q = 0; q < n; q++)
+    {
+        while (z[k + 1] < q)
+        {
+            k++;
+            if (k >= n) { k = n - 1; break; } // 安全策
+        }
+        double dist = (double)(q - v[k]);
+        d[q] = dist * dist + f[v[k]];
+    }
+}
+
+// 2D 距離変換
+static void Compute2DDT(TArray<double>& grid, int32 width, int32 height)
+{
+    int32 maxDim = FMath::Max(width, height);
+    TArray<double> f, d;
+    f.SetNum(maxDim);
+    d.SetNum(maxDim);
+    TArray<int32> v; v.SetNum(maxDim);
+    TArray<double> z; z.SetNum(maxDim + 1);
+
+    // X方向 (行ごと)
+    for (int32 y = 0; y < height; y++)
+    {
+        for (int32 x = 0; x < width; x++) f[x] = grid[y * width + x];
+        Compute1DDT(f.GetData(), d.GetData(), width, v, z);
+        for (int32 x = 0; x < width; x++) grid[y * width + x] = d[x];
+    }
+    
+    // Y方向 (列ごと)
+    for (int32 x = 0; x < width; x++)
+    {
+        for (int32 y = 0; y < height; y++) f[y] = grid[y * width + x];
+        Compute1DDT(f.GetData(), d.GetData(), height, v, z);
+        for (int32 y = 0; y < height; y++) grid[y * width + x] = d[y];
+    }
+    
+    // 平方根をとって実際の距離にする
+    for (int32 i = 0; i < width * height; ++i)
+    {
+        grid[i] = FMath::Sqrt(FMath::Max(0.0, grid[i]));
+    }
+}
+
+static TArray<double> GenerateSDF(const TArray<uint8>& BinaryImg, int32 W, int32 H)
+{
+    TArray<double> GridIn, GridOut;
+    GridIn.SetNumUninitialized(W * H);
+    GridOut.SetNumUninitialized(W * H);
+
+    for(int32 i=0; i<W*H; ++i)
+    {
+        bool bIsWhite = BinaryImg[i] >= 127;
+        GridIn[i]  = (!bIsWhite) ? 0.0 : 1e10; // 精度落ちしない大きな数
+        GridOut[i] = (bIsWhite)  ? 0.0 : 1e10;
+    }
+
+    Compute2DDT(GridIn, W, H);
+    Compute2DDT(GridOut, W, H);
+
+    TArray<double> SDF;
+    SDF.SetNumUninitialized(W * H);
+    for(int32 i=0; i<W*H; ++i)
+    {
+        SDF[i] = GridIn[i] - GridOut[i];
+    }
+    return SDF;
+}
+
+struct FMaskData
+{
+    TArray<double> SDF;
+    float TargetT;
+};
+
+static void CombineSDFs(const TArray<FMaskData>& Masks, TArray<double>& OutCombined, int32 W, int32 H)
+{
+    OutCombined.SetNumZeroed(W * H);
+    int32 NumMasks = Masks.Num();
+    if(NumMasks == 0) return;
+
+    double t_min = Masks[0].TargetT;
+    double t_max = Masks.Last().TargetT;
+
+    TArray<bool> Handled;
+    Handled.SetNumZeroed(W * H);
+
+    // 階調間の補間
+    for (int32 i = 0; i < NumMasks - 1; ++i)
+    {
+        const FMaskData& M1 = Masks[i];
+        const FMaskData& M2 = Masks[i + 1];
+        for (int32 p = 0; p < W * H; ++p)
+        {
+            if (M1.SDF[p] > 0.0 && M2.SDF[p] <= 0.0)
+            {
+                double d1 = M1.SDF[p];
+                double d2 = -M2.SDF[p];
+                double ratio = d1 / (d1 + d2 + 1e-10);
+                OutCombined[p] = M1.TargetT + (M2.TargetT - M1.TargetT) * ratio;
+                Handled[p] = true;
+            }
+        }
+    }
+
+    for (int32 p = 0; p < W * H; ++p)
+    {
+        if (Masks[0].SDF[p] <= 0.0)
+        {
+            OutCombined[p] = FMath::Clamp(t_min + Masks[0].SDF[p] * 0.05, 0.0, t_min);
+            Handled[p] = true;
+        }
+        
+        if (Masks.Last().SDF[p] > 0.0) // ※Pythonに合わせて独立したif文にする
+        {
+            OutCombined[p] = FMath::Clamp(t_max + Masks.Last().SDF[p] * 0.05, t_max, 1.0);
+            Handled[p] = true;
+        }
+
+        // ペイントの包含関係が崩れていてどの条件にも入らなかったピクセルのフォールバック処理
+        if (!Handled[p])
+        {
+            double fallbackT = t_min;
+            for (int32 i = NumMasks - 1; i >= 0; --i)
+            {
+                if (Masks[i].SDF[p] > 0.0)
+                {
+                    fallbackT = Masks[i].TargetT;
+                    break;
+                }
+            }
+            OutCombined[p] = fallbackT;
+        }
+    }
+}
+
+static TArray<uint16> DownscaleAndConvert(const TArray<double>& CombinedField, int32 HighW, int32 HighH, int32 Factor)
+{
+    if (Factor <= 1)
+    {
+        TArray<uint16> Out;
+        Out.SetNumUninitialized(HighW * HighH);
+        for (int32 i = 0; i < CombinedField.Num(); ++i)
+        {
+            double val = FMath::Clamp(CombinedField[i], 0.0, 1.0);
+            Out[i] = (uint16)(val * 65535.0);
+        }
+        return Out;
+    }
+
+    int32 OrigW = HighW / Factor;
+    int32 OrigH = HighH / Factor;
+    TArray<uint16> Out;
+    Out.SetNumUninitialized(OrigW * OrigH);
+
+    for (int32 y = 0; y < OrigH; ++y)
+    {
+        for (int32 x = 0; x < OrigW; ++x)
+        {
+            double sum = 0.0;
+            for(int32 dy = 0; dy < Factor; ++dy)
+            {
+                for(int32 dx = 0; dx < Factor; ++dx)
+                {
+                    sum += CombinedField[(y * Factor + dy) * HighW + (x * Factor + dx)];
+                }
+            }
+            double avg = sum / (double)(Factor * Factor);
+            avg = FMath::Clamp(avg, 0.0, 1.0);
+            Out[y * OrigW + x] = (uint16)(avg * 65535.0);
+        }
+    }
+    return Out;
+}
+
+	static void Create16BitTexture(const TArray<uint16>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName)
+{
+	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+
+	// FolderPath: "/Game", TextureName: "T_QuickSDF_ThresholdMap" など
+	UTexture2D* NewTex = Cast<UTexture2D>(AssetTools.CreateAsset(TextureName, FolderPath, UTexture2D::StaticClass(), nullptr));
+
+	if (!NewTex) return;
+
+	NewTex->Source.Init(Width, Height, 1, 1, TSF_G16);
+	uint16* MipData = (uint16*)NewTex->Source.LockMip(0);
+	FMemory::Memcpy(MipData, Pixels.GetData(), Pixels.Num() * sizeof(uint16));
+	NewTex->Source.UnlockMip(0);
+
+	NewTex->CompressionSettings = TC_Grayscale;
+	NewTex->SRGB = false;
+	NewTex->MipGenSettings = TMGS_NoMipmaps;
+	NewTex->Filter = TF_Bilinear;
+    
+	NewTex->PostEditChange();
+	NewTex->GetPackage()->MarkPackageDirty();
+
+	TArray<UObject*> Assets;
+	Assets.Add(NewTex);
+	AssetTools.SyncBrowserToAssets(Assets);
+}
+
 constexpr double QuickSDFStrokeSpacingFactor = 0.12;
 constexpr double QuickSDFMinSampleDistanceSq = 1.0e-6;
 constexpr int32 QuickSDFBrushMaskResolution = 128;
@@ -136,26 +417,56 @@ void UQuickSDFToolProperties::RotateLight90Deg()
 
 void UQuickSDFToolProperties::ExportToTexture()
 {
+	UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());
+	if (!Tool) return;
+
+	// AssetToolsモジュールの取得
+	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+
 	for (int32 i = 0; i < TransientRenderTargets.Num(); ++i)
 	{
 		UTextureRenderTarget2D* RT = TransientRenderTargets[i];
-		if (!RT)
-		{
-			continue;
-		}
+		if (!RT) continue;
 
-		FString PackageName = FString::Printf(TEXT("/Game/QuickSDF_Export_%d"), i);
-		UPackage* Package = CreatePackage(*PackageName);
-		if (Package)
+		TArray<FColor> Pixels;
+		if (!Tool->CaptureRenderTargetPixels(RT, Pixels)) continue;
+
+		FString FolderPath = TEXT("/Game/QuickSDF_Exports"); // フォルダ
+		FString AssetName = FString::Printf(TEXT("T_QuickSDF_Angle%d"), i);
+
+		// 1. AssetToolsを使ってアセットを作成（これが重要！）
+		UTexture2D* NewTex = Cast<UTexture2D>(AssetTools.CreateAsset(AssetName, FolderPath, UTexture2D::StaticClass(), nullptr));
+        
+		if (NewTex)
 		{
-			FString TextureName = FString::Printf(TEXT("T_QuickSDF_Angle%d"), i);
-			UTexture2D* NewTex = RT->ConstructTexture2D(Package, TextureName, EObjectFlags::RF_Public | EObjectFlags::RF_Standalone, CTF_Default, nullptr);
-			if (NewTex)
-			{
-				FAssetRegistryModule::AssetCreated(NewTex);
-				NewTex->MarkPackageDirty();
-			}
+			// 2. データの流し込み
+			NewTex->Source.Init(RT->SizeX, RT->SizeY, 1, 1, TSF_BGRA8);
+			void* MipData = NewTex->Source.LockMip(0);
+			FMemory::Memcpy(MipData, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
+			NewTex->Source.UnlockMip(0);
+
+			NewTex->SRGB = RT->SRGB;
+			NewTex->CompressionSettings = TC_Default;
+			NewTex->MipGenSettings = TMGS_NoMipmaps;
+
+			// 3. 更新通知と保存準備
+			NewTex->PostEditChange();
+			NewTex->GetPackage()->MarkPackageDirty();
+            
+			// コンテンツブラウザでそのアセットを選択（ハイライト）させる（任意）
+			TArray<UObject*> AssetsToSync;
+			AssetsToSync.Add(NewTex);
+			AssetTools.SyncBrowserToAssets(AssetsToSync);
 		}
+	}
+}
+
+void UQuickSDFToolProperties::GenerateSDFThresholdMap()
+{
+	UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());
+	if (Tool)
+	{
+		Tool->GeneratePerfectSDF();
 	}
 }
 
@@ -189,6 +500,17 @@ void UQuickSDFPaintTool::InitializeRenderTargets()
 	}
 
 	const int32 NumAngles = Properties->NumAngles;
+	
+	// アングルに対応する階調値の配列を同期
+	if (Properties->TargetAngles.Num() != NumAngles)
+	{
+		Properties->TargetAngles.SetNum(NumAngles);
+		for(int32 i = 0; i < NumAngles; ++i)
+		{
+			Properties->TargetAngles[i] = (float)i / (float)FMath::Max(1, NumAngles - 1);
+		}
+	}
+
 	if (Properties->TransientRenderTargets.Num() != NumAngles)
 	{
 		Properties->TransientRenderTargets.Empty();
@@ -203,6 +525,71 @@ void UQuickSDFPaintTool::InitializeRenderTargets()
 			}
 		}
 	}
+}
+
+void UQuickSDFPaintTool::GeneratePerfectSDF()
+{
+	if (!Properties) return;
+
+	TArray<FMaskData> ProcessedData;
+	int32 OrigW = Properties->Resolution.X;
+	int32 OrigH = Properties->Resolution.Y;
+	int32 Upscale = FMath::Clamp(Properties->UpscaleFactor, 1, 8);
+	int32 HighW = OrigW * Upscale;
+	int32 HighH = OrigH * Upscale;
+
+	TArray<int32> ValidIndices;
+	for (int32 i = 0; i < Properties->TransientRenderTargets.Num(); ++i)
+	{
+		if (i < Properties->TargetAngles.Num() && Properties->TransientRenderTargets[i])
+		{
+			ValidIndices.Add(i);
+		}
+	}
+
+	// 階調の低い順(TargetTが小さい順)にソート
+	ValidIndices.Sort([this](int32 A, int32 B) {
+		return Properties->TargetAngles[A] < Properties->TargetAngles[B];
+	});
+
+	FScopedSlowTask SlowTask(ValidIndices.Num() + 2, LOCTEXT("GenerateSDF", "Generating Perfect SDF..."));
+	SlowTask.MakeDialog(true);
+
+	for (int32 Index : ValidIndices)
+	{
+		SlowTask.EnterProgressFrame(1.f, FText::Format(LOCTEXT("ProcessMask", "Processing Mask {0}..."), Index));
+		if (SlowTask.ShouldCancel()) return;
+
+		UTextureRenderTarget2D* RT = Properties->TransientRenderTargets[Index];
+		TArray<FColor> Pixels;
+		if (!CaptureRenderTargetPixels(RT, Pixels)) continue;
+
+		TArray<uint8> UpscaledPixels = UpscaleImage(Pixels, OrigW, OrigH, Upscale);
+		TArray<double> SDF = GenerateSDF(UpscaledPixels, HighW, HighH);
+
+		FMaskData Data;
+		Data.SDF = MoveTemp(SDF);
+		Data.TargetT = Properties->TargetAngles[Index];
+		ProcessedData.Add(MoveTemp(Data));
+	}
+
+	if (ProcessedData.Num() == 0) return;
+
+	SlowTask.EnterProgressFrame(1.f, LOCTEXT("CombineSDF", "Combining SDFs..."));
+	if (SlowTask.ShouldCancel()) return;
+
+	TArray<double> CombinedField;
+	CombineSDFs(ProcessedData, CombinedField, HighW, HighH);
+
+	SlowTask.EnterProgressFrame(1.f, LOCTEXT("DownscaleSDF", "Downscaling and Saving..."));
+	if (SlowTask.ShouldCancel()) return;
+
+	TArray<uint16> FinalPixels = DownscaleAndConvert(CombinedField, HighW, HighH, Upscale);
+
+	// テクスチャとして保存
+	FString PackageName = TEXT("/Game/QuickSDF_UltraHighRes");
+	FString TextureName = TEXT("T_QuickSDF_ThresholdMap");
+	Create16BitTexture(FinalPixels, OrigW, OrigH, PackageName, TextureName);
 }
 
 void UQuickSDFPaintTool::BuildBrushMaskTexture()

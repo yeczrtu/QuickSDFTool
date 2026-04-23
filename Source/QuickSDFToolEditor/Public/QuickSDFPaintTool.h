@@ -52,14 +52,22 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	int32 EditAngleIndex = 0;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings")
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta=(ClampMin="1", UIMin="1"))
 	int32 NumAngles = 8;
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	int32 UVChannel = 0;
 
+	// 各ペイント対象(AngleIndex)に対応するターゲット階調(t値: 0.0~1.0など)
+	UPROPERTY(EditAnywhere, Category = "Paint Settings")
+	TArray<float> TargetAngles;
+
 	UPROPERTY(EditAnywhere, Category = "Target Settings")
 	FIntPoint Resolution = FIntPoint(1024, 1024);
+
+	// SDF生成時の内部解像度アップスケール係数 (処理負荷軽減のため1にしても動きます)
+	UPROPERTY(EditAnywhere, Category = "Export Settings", meta=(ClampMin="1", UIMin="1", ClampMax="8", UIMax="8"))
+	int32 UpscaleFactor = 4;
 
 	UPROPERTY(Transient)
 	TArray<class UTextureRenderTarget2D*> TransientRenderTargets;
@@ -69,6 +77,10 @@ public:
 
 	UFUNCTION(CallInEditor, Category = "Actions")
 	void ExportToTexture();
+
+	// SDFスレッショルドマップを生成して保存するボタン
+	UFUNCTION(CallInEditor, Category = "Actions")
+	void GenerateSDFThresholdMap();
 };
 
 struct FOneEuroFilter
@@ -144,6 +156,11 @@ public:
 	virtual void OnPropertyModified(UObject* PropertySet, FProperty* Property) override;
 	virtual void DrawHUD( FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI ) override;
 	bool ApplyRenderTargetPixels(int32 AngleIndex, const TArray<FColor>& Pixels);
+
+	// 高精度SDFスレッショルドマップを生成・保存する処理
+	void GeneratePerfectSDF();
+	bool CaptureRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const;
+
 protected:
 	UPROPERTY(Transient)
 	TObjectPtr<UQuickSDFToolProperties> Properties;
@@ -174,7 +191,6 @@ protected:
 	void BeginBrushResizeMode();
 	void UpdateBrushResizeFromCursor();
 	void EndBrushResizeMode();
-	bool CaptureRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const;
 	bool RestoreRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, const TArray<FColor>& Pixels) const;
 	void BeginStrokeTransaction();
 	void EndStrokeTransaction();
