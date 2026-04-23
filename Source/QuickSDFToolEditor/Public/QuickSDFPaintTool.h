@@ -109,6 +109,7 @@ protected:
 	bool TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample);
 	bool TryMakePreviewStrokeSample(const FVector2D& ScreenPosition, FQuickSDFStrokeSample& OutSample) const;
 	void StampSample(const FQuickSDFStrokeSample& Sample);
+	void StampSamples(const TArray<FQuickSDFStrokeSample>& Samples);
 	void AppendStrokeSample(const FQuickSDFStrokeSample& Sample);
 	void StampInterpolatedSegment(
 		const FQuickSDFStrokeSample& P0,

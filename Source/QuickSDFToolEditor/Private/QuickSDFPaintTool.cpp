@@ -44,8 +44,8 @@ constexpr int32 QuickSDFBrushMaskResolution = 64;
 constexpr int32 QuickSDFPreviewActionIncreaseBrush = static_cast<int32>(EStandardToolActions::BaseClientDefinedActionID) + 1;
 constexpr float QuickSDFMinResizeSensitivity = 0.01f;
 constexpr double QuickSDFSubPixelSpacing = 0.35;
-constexpr double QuickSDFStrokeSmoothingMinAlpha = 0.08;
-constexpr double QuickSDFStrokeSmoothingMaxAlpha = 0.35;
+constexpr double QuickSDFStrokeSmoothingMinAlpha = 0.15;
+constexpr double QuickSDFStrokeSmoothingMaxAlpha = 0.85;
 
 class FQuickSDFRenderTargetChange : public FToolCommandChange
 {
@@ -289,12 +289,19 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::SmoothStrokeSample(const FQuickSDFStro
 	const double Distance = FVector3d::Distance(PrevSample.WorldPos, RawSample.WorldPos);
 	const double Radius = FMath::Max(BrushProperties ? static_cast<double>(BrushProperties->BrushRadius) : 1.0, 1.0);
 	const double NormalizedDistance = FMath::Clamp(Distance / Radius, 0.0, 1.0);
-	//const float Alpha = static_cast<float>(FMath::Lerp(QuickSDFStrokeSmoothingMinAlpha, QuickSDFStrokeSmoothingMaxAlpha, NormalizedDistance));
-	const float Alpha = 0.15f;
+	
+	const float Alpha = static_cast<float>(FMath::Lerp(QuickSDFStrokeSmoothingMinAlpha, QuickSDFStrokeSmoothingMaxAlpha, NormalizedDistance));
 	
 	FQuickSDFStrokeSample SmoothedSample;
 	SmoothedSample.WorldPos = FMath::Lerp(PrevSample.WorldPos, RawSample.WorldPos, Alpha);
-	if (FVector2f::Distance(PrevSample.UV, RawSample.UV) > 0.1f)
+	
+	bool bIsSeam = false;
+	if (ActiveStrokeInputMode == EQuickSDFStrokeInputMode::MeshSurface)
+	{
+		bIsSeam = FVector2f::Distance(PrevSample.UV, RawSample.UV) > 0.35f;
+	}
+
+	if (bIsSeam)
 	{
 		SmoothedSample.UV = RawSample.UV;
 	}
@@ -302,6 +309,7 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::SmoothStrokeSample(const FQuickSDFStro
 	{
 		SmoothedSample.UV = FMath::Lerp(PrevSample.UV, RawSample.UV, Alpha);
 	}
+	
 	FilteredStrokeSample = SmoothedSample;
 	return SmoothedSample;
 }
@@ -394,17 +402,9 @@ void UQuickSDFPaintTool::Shutdown(EToolShutdownType ShutdownType)
 
 bool UQuickSDFPaintTool::CaptureRenderTargetPixels(UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const
 {
-	if (!RenderTarget)
-	{
-		return false;
-	}
-
+	if (!RenderTarget) return false;
 	FTextureRenderTargetResource* RTResource = RenderTarget->GameThread_GetRenderTargetResource();
-	if (!RTResource)
-	{
-		return false;
-	}
-
+	if (!RTResource) return false;
 	FReadSurfaceDataFlags ReadFlags(RCM_UNorm);
 	ReadFlags.SetLinearToGamma(false);
 	return RTResource->ReadPixels(OutPixels, ReadFlags);
@@ -412,71 +412,43 @@ bool UQuickSDFPaintTool::CaptureRenderTargetPixels(UTextureRenderTarget2D* Rende
 
 bool UQuickSDFPaintTool::RestoreRenderTargetPixels(UTextureRenderTarget2D* RenderTarget, const TArray<FColor>& Pixels) const
 {
-	if (!RenderTarget || Pixels.Num() != RenderTarget->SizeX * RenderTarget->SizeY)
-	{
-		return false;
-	}
-
+	if (!RenderTarget || Pixels.Num() != RenderTarget->SizeX * RenderTarget->SizeY) return false;
 	UTexture2D* TempTexture = UTexture2D::CreateTransient(RenderTarget->SizeX, RenderTarget->SizeY, PF_B8G8R8A8);
-	if (!TempTexture || !TempTexture->GetPlatformData() || TempTexture->GetPlatformData()->Mips.Num() == 0)
-	{
-		return false;
-	}
-
+	if (!TempTexture || !TempTexture->GetPlatformData() || TempTexture->GetPlatformData()->Mips.Num() == 0) return false;
 	TempTexture->MipGenSettings = TMGS_NoMipmaps;
 	TempTexture->Filter = TF_Nearest;
 	TempTexture->SRGB = false;
-
 	FTexture2DMipMap& Mip = TempTexture->GetPlatformData()->Mips[0];
 	void* Data = Mip.BulkData.Lock(LOCK_READ_WRITE);
 	FMemory::Memcpy(Data, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
 	Mip.BulkData.Unlock();
 	TempTexture->UpdateResource();
-
 	FTextureRenderTargetResource* RTResource = RenderTarget->GameThread_GetRenderTargetResource();
-	if (!RTResource)
-	{
-		return false;
-	}
-
+	if (!RTResource) return false;
 	FCanvas Canvas(RTResource, nullptr, GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(), GMaxRHIFeatureLevel);
 	FCanvasTileItem TileItem(FVector2D::ZeroVector, TempTexture->GetResource(), FVector2D(RenderTarget->SizeX, RenderTarget->SizeY), FLinearColor::White);
 	TileItem.BlendMode = SE_BLEND_Opaque;
 	Canvas.DrawItem(TileItem);
 	Canvas.Flush_GameThread(true);
-
 	ENQUEUE_RENDER_COMMAND(RestoreQuickSDFPaintRTCommand)(
-		[RTResource](FRHICommandListImmediate& RHICmdList)
-		{
+		[RTResource](FRHICommandListImmediate& RHICmdList) {
 			TransitionAndCopyTexture(RHICmdList, RTResource->GetRenderTargetTexture(), RTResource->TextureRHI, {});
 		});
-
 	return true;
 }
 
 bool UQuickSDFPaintTool::ApplyRenderTargetPixels(int32 AngleIndex, const TArray<FColor>& Pixels)
 {
-	if (!Properties || !Properties->TransientRenderTargets.IsValidIndex(AngleIndex))
-	{
-		return false;
-	}
-
+	if (!Properties || !Properties->TransientRenderTargets.IsValidIndex(AngleIndex)) return false;
 	const bool bRestored = RestoreRenderTargetPixels(Properties->TransientRenderTargets[AngleIndex], Pixels);
-	if (bRestored)
-	{
-		RefreshPreviewMaterial();
-	}
+	if (bRestored) RefreshPreviewMaterial();
 	return bRestored;
 }
 
 void UQuickSDFPaintTool::BeginStrokeTransaction()
 {
 	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
-	if (!RT || bStrokeTransactionActive)
-	{
-		return;
-	}
-
+	if (!RT || bStrokeTransactionActive) return;
 	StrokeBeforePixels.Reset();
 	if (CaptureRenderTargetPixels(RT, StrokeBeforePixels))
 	{
@@ -487,17 +459,12 @@ void UQuickSDFPaintTool::BeginStrokeTransaction()
 
 void UQuickSDFPaintTool::EndStrokeTransaction()
 {
-	if (!bStrokeTransactionActive)
-	{
-		return;
-	}
-
+	if (!bStrokeTransactionActive) return;
 	TArray<FColor> AfterPixels;
 	if (Properties && Properties->TransientRenderTargets.IsValidIndex(StrokeTransactionAngleIndex))
 	{
 		if (CaptureRenderTargetPixels(Properties->TransientRenderTargets[StrokeTransactionAngleIndex], AfterPixels) &&
-			AfterPixels.Num() == StrokeBeforePixels.Num() &&
-			AfterPixels != StrokeBeforePixels)
+			AfterPixels.Num() == StrokeBeforePixels.Num() && AfterPixels != StrokeBeforePixels)
 		{
 			TUniquePtr<FQuickSDFRenderTargetChange> Change = MakeUnique<FQuickSDFRenderTargetChange>();
 			Change->AngleIndex = StrokeTransactionAngleIndex;
@@ -506,7 +473,6 @@ void UQuickSDFPaintTool::EndStrokeTransaction()
 			GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("QuickSDFPaintStrokeChange", "Quick SDF Paint Stroke"));
 		}
 	}
-
 	bStrokeTransactionActive = false;
 	StrokeTransactionAngleIndex = INDEX_NONE;
 	StrokeBeforePixels.Reset();
@@ -514,24 +480,13 @@ void UQuickSDFPaintTool::EndStrokeTransaction()
 
 UTextureRenderTarget2D* UQuickSDFPaintTool::GetActiveRenderTarget() const
 {
-	if (!Properties)
-	{
-		return nullptr;
-	}
-
+	if (!Properties) return nullptr;
 	const int32 AngleIdx = FMath::Clamp(Properties->EditAngleIndex, 0, Properties->TransientRenderTargets.Num() - 1);
 	return Properties->TransientRenderTargets.IsValidIndex(AngleIdx) ? Properties->TransientRenderTargets[AngleIdx] : nullptr;
 }
 
-FVector2D UQuickSDFPaintTool::GetPreviewOrigin() const
-{
-	return PreviewCanvasOrigin;
-}
-
-FVector2D UQuickSDFPaintTool::GetPreviewSize() const
-{
-	return PreviewCanvasSize;
-}
+FVector2D UQuickSDFPaintTool::GetPreviewOrigin() const { return PreviewCanvasOrigin; }
+FVector2D UQuickSDFPaintTool::GetPreviewSize() const { return PreviewCanvasSize; }
 
 FVector2D UQuickSDFPaintTool::ConvertInputScreenToCanvasSpace(const FVector2D& ScreenPosition) const
 {
@@ -560,11 +515,7 @@ FVector2f UQuickSDFPaintTool::ScreenToPreviewUV(const FVector2D& ScreenPosition)
 
 FVector2D UQuickSDFPaintTool::GetBrushPixelSize(UTextureRenderTarget2D* RenderTarget) const
 {
-	if (!RenderTarget)
-	{
-		return FVector2D(16.0, 16.0);
-	}
-
+	if (!RenderTarget) return FVector2D(16.0, 16.0);
 	const FVector2D RTSize(RenderTarget->SizeX, RenderTarget->SizeY);
 	if (CurrentComponent && TargetMesh.IsValid())
 	{
@@ -577,7 +528,6 @@ FVector2D UQuickSDFPaintTool::GetBrushPixelSize(UTextureRenderTarget2D* RenderTa
 			return FVector2D(UVBrushSize * RTSize.X, UVBrushSize * RTSize.Y);
 		}
 	}
-
 	const float FallbackDiameter = BrushProperties ? FMath::Max(BrushProperties->BrushRadius * 2.0f, 1.0f) : 16.0f;
 	return FVector2D(FallbackDiameter, FallbackDiameter);
 }
@@ -590,43 +540,25 @@ double UQuickSDFPaintTool::GetCurrentStrokeSpacing(UTextureRenderTarget2D* Rende
 		const double PixelRadius = FMath::Max(static_cast<double>(FMath::Min(PixelSize.X, PixelSize.Y) * 0.5f), 1.0);
 		return FMath::Max(PixelRadius * QuickSDFStrokeSpacingFactor, 1.0);
 	}
-
-	if (!BrushProperties)
-	{
-		return 1.0;
-	}
-
+	if (!BrushProperties) return 1.0;
 	return FMath::Max(static_cast<double>(BrushProperties->BrushRadius) * QuickSDFStrokeSpacingFactor, 0.1);
 }
 
-bool UQuickSDFPaintTool::IsPaintingShadow() const
-{
-	return GetShiftToggle();
-}
+bool UQuickSDFPaintTool::IsPaintingShadow() const { return GetShiftToggle(); }
 
 void FQuickSDFRenderTargetChange::Apply(UObject* Object)
 {
-	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
-	{
-		Tool->ApplyRenderTargetPixels(AngleIndex, AfterPixels);
-	}
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object)) Tool->ApplyRenderTargetPixels(AngleIndex, AfterPixels);
 }
 
 void FQuickSDFRenderTargetChange::Revert(UObject* Object)
 {
-	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
-	{
-		Tool->ApplyRenderTargetPixels(AngleIndex, BeforePixels);
-	}
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object)) Tool->ApplyRenderTargetPixels(AngleIndex, BeforePixels);
 }
 
 void UQuickSDFPaintTool::BeginBrushResizeMode()
 {
-	if (!BrushProperties)
-	{
-		return;
-	}
-
+	if (!BrushProperties) return;
 	if (!bBrushResizeTransactionOpen)
 	{
 		GetToolManager()->BeginUndoTransaction(LOCTEXT("QuickSDFBrushResizeTransaction", "Quick SDF Change Brush Radius"));
@@ -634,7 +566,6 @@ void UQuickSDFPaintTool::BeginBrushResizeMode()
 		BrushProperties->Modify();
 		bBrushResizeTransactionOpen = true;
 	}
-
 	bAdjustingBrushRadius = true;
 	BrushResizeStartScreenPosition = LastInputScreenPosition;
 	BrushResizeStartRadius = BrushProperties->BrushRadius;
@@ -642,11 +573,7 @@ void UQuickSDFPaintTool::BeginBrushResizeMode()
 
 void UQuickSDFPaintTool::UpdateBrushResizeFromCursor()
 {
-	if (!bAdjustingBrushRadius || !BrushProperties)
-	{
-		return;
-	}
-
+	if (!bAdjustingBrushRadius || !BrushProperties) return;
 	const FVector2D Delta = ConvertInputScreenToCanvasSpace(LastInputScreenPosition) - ConvertInputScreenToCanvasSpace(BrushResizeStartScreenPosition);
 	const float NewRadius = FMath::Max(0.1f, BrushResizeStartRadius + (Delta.X * FMath::Max(BrushResizeSensitivity, QuickSDFMinResizeSensitivity)));
 	const float RangeMin = BrushRelativeSizeRange.Min;
@@ -662,14 +589,9 @@ void UQuickSDFPaintTool::UpdateBrushResizeFromCursor()
 
 void UQuickSDFPaintTool::EndBrushResizeMode()
 {
-	if (!bAdjustingBrushRadius)
-	{
-		return;
-	}
-
+	if (!bAdjustingBrushRadius) return;
 	UpdateBrushResizeFromCursor();
 	bAdjustingBrushRadius = false;
-
 	if (bBrushResizeTransactionOpen)
 	{
 		GetToolManager()->EndUndoTransaction();
@@ -685,20 +607,17 @@ FInputRayHit UQuickSDFPaintTool::CanBeginClickDragSequence(const FInputDeviceRay
 		PendingStrokeInputMode = EQuickSDFStrokeInputMode::None;
 		return FInputRayHit(0.0f);
 	}
-
 	if (GetActiveRenderTarget() && IsInPreviewBounds(PressPos.ScreenPosition))
 	{
 		PendingStrokeInputMode = EQuickSDFStrokeInputMode::TexturePreview;
 		return FInputRayHit(0.0f);
 	}
-
 	FHitResult OutHit;
 	if (HitTest(PressPos.WorldRay, OutHit))
 	{
 		PendingStrokeInputMode = EQuickSDFStrokeInputMode::MeshSurface;
 		return FInputRayHit(OutHit.Distance);
 	}
-
 	PendingStrokeInputMode = EQuickSDFStrokeInputMode::None;
 	return Super::CanBeginClickDragSequence(PressPos);
 }
@@ -711,7 +630,6 @@ void UQuickSDFPaintTool::OnClickPress(const FInputDeviceRay& PressPos)
 		EndBrushResizeMode();
 		return;
 	}
-
 	Super::OnClickPress(PressPos);
 }
 
@@ -723,25 +641,19 @@ void UQuickSDFPaintTool::OnClickDrag(const FInputDeviceRay& DragPos)
 		UpdateBrushResizeFromCursor();
 		return;
 	}
-
 	Super::OnClickDrag(DragPos);
 }
 
 void UQuickSDFPaintTool::OnClickRelease(const FInputDeviceRay& ReleasePos)
 {
 	LastInputScreenPosition = ReleasePos.ScreenPosition;
-	if (bAdjustingBrushRadius)
-	{
-		return;
-	}
-
+	if (bAdjustingBrushRadius) return;
 	Super::OnClickRelease(ReleasePos);
 }
 
 bool UQuickSDFPaintTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 {
 	UPrimitiveComponent* ComponentToTrace = nullptr;
-
 	if (CurrentComponent)
 	{
 		ComponentToTrace = Cast<UPrimitiveComponent>(CurrentComponent);
@@ -756,13 +668,11 @@ bool UQuickSDFPaintTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 			ComponentToTrace = TempHit.GetComponent();
 		}
 	}
-
 	if (ComponentToTrace)
 	{
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(QuickSDF), true);
 		Params.bReturnFaceIndex = true;
 		Params.bTraceComplex = true;
-
 		const FVector End = Ray.Origin + Ray.Direction * 100000.0f;
 		if (ComponentToTrace->LineTraceComponent(OutHit, Ray.Origin, End, Params))
 		{
@@ -770,7 +680,6 @@ bool UQuickSDFPaintTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 			return true;
 		}
 	}
-
 	return false;
 }
 
@@ -782,7 +691,6 @@ bool UQuickSDFPaintTool::OnUpdateHover(const FInputDeviceRay& DevicePos)
 		UpdateBrushResizeFromCursor();
 		return true;
 	}
-
 	return Super::OnUpdateHover(DevicePos);
 }
 
@@ -818,10 +726,7 @@ void UQuickSDFPaintTool::OnBeginDrag(const FRay& Ray)
 void UQuickSDFPaintTool::OnUpdateDrag(const FRay& Ray)
 {
 	Super::OnUpdateDrag(Ray);
-	if (bAdjustingBrushRadius)
-	{
-		return;
-	}
+	if (bAdjustingBrushRadius) return;
 
 	FQuickSDFStrokeSample Sample;
 	bool bHasSample = false;
@@ -843,10 +748,7 @@ void UQuickSDFPaintTool::OnUpdateDrag(const FRay& Ray)
 
 void UQuickSDFPaintTool::OnEndDrag(const FRay& Ray)
 {
-	if (bAdjustingBrushRadius)
-	{
-		return;
-	}
+	if (bAdjustingBrushRadius) return;
 
 	if (StrokeSamples.Num() == 2)
 	{
@@ -878,10 +780,7 @@ void UQuickSDFPaintTool::OnEndDrag(const FRay& Ray)
 
 bool UQuickSDFPaintTool::TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample)
 {
-	if (!TargetMeshSpatial.IsValid() || !TargetMesh.IsValid() || !Properties || !CurrentComponent)
-	{
-		return false;
-	}
+	if (!TargetMeshSpatial.IsValid() || !TargetMesh.IsValid() || !Properties || !CurrentComponent) return false;
 
 	const FTransform Transform = CurrentComponent->GetComponentTransform();
 	const FRay LocalRay(Transform.InverseTransformPosition(Ray.Origin), Transform.InverseTransformVector(Ray.Direction));
@@ -891,16 +790,10 @@ bool UQuickSDFPaintTool::TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSam
 	FVector3d BaryCoords(0.0, 0.0, 0.0);
 	const bool bHit = TargetMeshSpatial->FindNearestHitTriangle(LocalRay, HitDistance, HitTID, BaryCoords);
 
-	if (!bHit || HitTID < 0)
-	{
-		return false;
-	}
+	if (!bHit || HitTID < 0) return false;
 
 	const UE::Geometry::FDynamicMeshUVOverlay* UVOverlay = TargetMesh->Attributes()->GetUVLayer(Properties->UVChannel);
-	if (!UVOverlay || !UVOverlay->IsSetTriangle(HitTID))
-	{
-		return false;
-	}
+	if (!UVOverlay || !UVOverlay->IsSetTriangle(HitTID)) return false;
 
 	const UE::Geometry::FIndex3i TriUVs = UVOverlay->GetTriangle(HitTID);
 	const FVector2f UV0 = UVOverlay->GetElement(TriUVs.A);
@@ -917,10 +810,7 @@ bool UQuickSDFPaintTool::TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSam
 bool UQuickSDFPaintTool::TryMakePreviewStrokeSample(const FVector2D& ScreenPosition, FQuickSDFStrokeSample& OutSample) const
 {
 	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
-	if (!RT || !IsInPreviewBounds(ScreenPosition))
-	{
-		return false;
-	}
+	if (!RT || !IsInPreviewBounds(ScreenPosition)) return false;
 
 	OutSample.UV = ScreenToPreviewUV(ScreenPosition);
 	OutSample.WorldPos = FVector3d(OutSample.UV.X * RT->SizeX, OutSample.UV.Y * RT->SizeY, 0.0);
@@ -929,29 +819,34 @@ bool UQuickSDFPaintTool::TryMakePreviewStrokeSample(const FVector2D& ScreenPosit
 
 void UQuickSDFPaintTool::StampSample(const FQuickSDFStrokeSample& Sample)
 {
+	StampSamples({ Sample });
+}
+
+void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Samples)
+{
+	if (Samples.Num() == 0) return;
+
 	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
-	if (!RT || !BrushMaskTexture)
-	{
-		return;
-	}
+	if (!RT || !BrushMaskTexture) return;
 
 	FTextureRenderTargetResource* RTResource = RT->GameThread_GetRenderTargetResource();
-	if (!RTResource)
-	{
-		return;
-	}
+	if (!RTResource) return;
 
 	const FVector2D RTSize(RT->SizeX, RT->SizeY);
 	const FVector2D PixelSize = GetBrushPixelSize(RT);
-	const FVector2D PixelPos(Sample.UV.X * RTSize.X, Sample.UV.Y * RTSize.Y);
-	const FVector2D StampPos = PixelPos - (PixelSize * 0.5f);
 	const FLinearColor PaintColor = IsPaintingShadow() ? FLinearColor::Black : FLinearColor::White;
-
+	
 	FCanvas Canvas(RTResource, nullptr, GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(), GMaxRHIFeatureLevel);
-	FCanvasTileItem BrushItem(StampPos, BrushMaskTexture->GetResource(), PixelSize, PaintColor);
-	BrushItem.BlendMode = SE_BLEND_Translucent;
 
-	Canvas.DrawItem(BrushItem);
+	for (const FQuickSDFStrokeSample& Sample : Samples)
+	{
+		const FVector2D PixelPos(Sample.UV.X * RTSize.X, Sample.UV.Y * RTSize.Y);
+		const FVector2D StampPos = PixelPos - (PixelSize * 0.5f);
+		FCanvasTileItem BrushItem(StampPos, BrushMaskTexture->GetResource(), PixelSize, PaintColor);
+		BrushItem.BlendMode = SE_BLEND_Translucent;
+		Canvas.DrawItem(BrushItem);
+	}
+
 	Canvas.Flush_GameThread(true);
 
 	ENQUEUE_RENDER_COMMAND(UpdateSDFPaintRTCommand)(
@@ -973,10 +868,7 @@ void UQuickSDFPaintTool::AppendStrokeSample(const FQuickSDFStrokeSample& Sample)
 
 	StrokeSamples.Add(Sample);
 	const int32 NumSamples = StrokeSamples.Num();
-	if (NumSamples < 3)
-	{
-		return;
-	}
+	if (NumSamples < 3) return;
 
 	if (NumSamples == 3)
 	{
@@ -1003,59 +895,26 @@ void UQuickSDFPaintTool::StampInterpolatedSegment(
 	const FQuickSDFStrokeSample& P3)
 {
 	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
-	if (!RT)
-	{
-		return;
-	}
+	if (!RT) return;
 
 	const double SegmentLength = FVector3d::Distance(P1.WorldPos, P2.WorldPos);
-	if (SegmentLength <= KINDA_SMALL_NUMBER)
-	{
-		return;
-	}
+	if (SegmentLength <= KINDA_SMALL_NUMBER) return;
 
 	const double Spacing = GetCurrentStrokeSpacing(RT);
 	const int32 NumSteps = FMath::Max(24, FMath::CeilToInt(SegmentLength / FMath::Max(Spacing * QuickSDFSubPixelSpacing, 0.125)) * 8);
 
-	auto SafeParam = [](double Value)
-	{
-		return Value > KINDA_SMALL_NUMBER ? Value : KINDA_SMALL_NUMBER;
-	};
-
-	auto CentripetalDistance = [&](const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B)
-	{
-		return FMath::Pow(FVector3d::Distance(A.WorldPos, B.WorldPos), 0.5);
-	};
-
-	auto EvaluateCatmullRom = [&](const FQuickSDFStrokeSample& InP0, const FQuickSDFStrokeSample& InP1, const FQuickSDFStrokeSample& InP2, const FQuickSDFStrokeSample& InP3, double T)
-	{
-		const double T0 = 0.0;
-		const double T1 = T0 + SafeParam(CentripetalDistance(InP0, InP1));
-		const double T2 = T1 + SafeParam(CentripetalDistance(InP1, InP2));
-		const double T3 = T2 + SafeParam(CentripetalDistance(InP2, InP3));
-		const double EvalT = FMath::Lerp(T1, T2, T);
-
-		auto BlendSample = [](const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B, double AlphaValue)
-		{
-			FQuickSDFStrokeSample Result;
-			Result.WorldPos = FMath::Lerp(A.WorldPos, B.WorldPos, AlphaValue);
-			Result.UV = FMath::Lerp(A.UV, B.UV, static_cast<float>(AlphaValue));
-			return Result;
-		};
-
-		const FQuickSDFStrokeSample A1 = BlendSample(InP0, InP1, (EvalT - T0) / SafeParam(T1 - T0));
-		const FQuickSDFStrokeSample A2 = BlendSample(InP1, InP2, (EvalT - T1) / SafeParam(T2 - T1));
-		const FQuickSDFStrokeSample A3 = BlendSample(InP2, InP3, (EvalT - T2) / SafeParam(T3 - T2));
-		const FQuickSDFStrokeSample B1 = BlendSample(A1, A2, (EvalT - T0) / SafeParam(T2 - T0));
-		const FQuickSDFStrokeSample B2 = BlendSample(A2, A3, (EvalT - T1) / SafeParam(T3 - T1));
-		return BlendSample(B1, B2, (EvalT - T1) / SafeParam(T2 - T1));
-	};
-
-	auto LerpStrokeSample = [](const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B, double T)
+	auto LerpStrokeSample = [this](const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B, double T)
 	{
 		FQuickSDFStrokeSample Result;
 		Result.WorldPos = FMath::Lerp(A.WorldPos, B.WorldPos, T);
-		if (FVector2f::Distance(A.UV, B.UV) > 0.1f)
+		
+		bool bIsSeam = false;
+		if (ActiveStrokeInputMode == EQuickSDFStrokeInputMode::MeshSurface)
+		{
+			bIsSeam = FVector2f::Distance(A.UV, B.UV) > 0.35f;
+		}
+
+		if (bIsSeam)
 		{
 			Result.UV = (T < 0.5) ? A.UV : B.UV;
 		}
@@ -1065,12 +924,12 @@ void UQuickSDFPaintTool::StampInterpolatedSegment(
 		}
 		return Result;
 	};
+
 	auto EvaluateBSpline = [&](const FQuickSDFStrokeSample& InP0, const FQuickSDFStrokeSample& InP1, const FQuickSDFStrokeSample& InP2, const FQuickSDFStrokeSample& InP3, double T)
 	{
 		const double T2 = T * T;
 		const double T3 = T2 * T;
 
-		// ワールド座標は4点を使って滑らかにスプライン補間する
 		const double W0 = (1.0 - 3.0 * T + 3.0 * T2 - T3) / 6.0;
 		const double W1 = (4.0 - 6.0 * T2 + 3.0 * T3) / 6.0;
 		const double W2 = (1.0 + 3.0 * T + 3.0 * T2 - 3.0 * T3) / 6.0;
@@ -1079,22 +938,26 @@ void UQuickSDFPaintTool::StampInterpolatedSegment(
 		FQuickSDFStrokeSample Result;
 		Result.WorldPos = InP0.WorldPos * W0 + InP1.WorldPos * W1 + InP2.WorldPos * W2 + InP3.WorldPos * W3;
 
-		// 【UVジャンプ対策】
-		// UVの補間は P1 と P2 の間で行う（P0とP3のシームの影響を排除するため）。
-		// P1とP2のUV距離が 0.1 (テクスチャの10%) 以上離れている場合はシームとみなす。
-		if (FVector2f::Distance(InP1.UV, InP2.UV) > 0.1f)
+		bool bIsSeam = false;
+		if (ActiveStrokeInputMode == EQuickSDFStrokeInputMode::MeshSurface)
 		{
-			// 中間のUVを作らず、近い方のUVをそのまま採用する
+			bIsSeam = FVector2f::Distance(InP1.UV, InP2.UV) > 0.35f; // 閾値を0.1 -> 0.35へ緩和
+		}
+
+		if (bIsSeam)
+		{
 			Result.UV = (T < 0.5) ? InP1.UV : InP2.UV;
 		}
 		else
 		{
-			// 同じアイランド内なら普通に線形補間する
 			Result.UV = FMath::Lerp(InP1.UV, InP2.UV, static_cast<float>(T));
 		}
 
 		return Result;
 	};
+
+	TArray<FQuickSDFStrokeSample> BatchStamps;
+
 	FQuickSDFStrokeSample PrevSample = EvaluateBSpline(P0, P1, P2, P3, 0.0);
 	for (int32 Step = 1; Step <= NumSteps; ++Step)
 	{
@@ -1113,7 +976,9 @@ void UQuickSDFPaintTool::StampInterpolatedSegment(
 			const double DistanceToNextStamp = Spacing - DistanceSinceLastStamp;
 			const double Alpha = DistanceToNextStamp / RemainingSegmentDistance;
 			FQuickSDFStrokeSample Stamp = LerpStrokeSample(PrevSample, CurrentSample, Alpha);
-			StampSample(Stamp);
+			
+			BatchStamps.Add(Stamp);
+			
 			LastStampedSample = Stamp;
 			bHasLastStampedSample = true;
 
@@ -1130,6 +995,8 @@ void UQuickSDFPaintTool::StampInterpolatedSegment(
 		DistanceSinceLastStamp += RemainingSegmentDistance;
 		PrevSample = CurrentSample;
 	}
+	
+	StampSamples(BatchStamps);
 }
 
 void UQuickSDFPaintTool::ResetStrokeState()
