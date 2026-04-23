@@ -41,18 +41,22 @@
 
 namespace
 {
-// ================= SDF計算用の補助関数群 =================
+// レンダーターゲットのカラー配列を確実にグレースケール（0～255）にする
+static TArray<uint8> ConvertToGrayscale(const TArray<FColor>& Src)
+{
+    TArray<uint8> Dst;
+    Dst.SetNumUninitialized(Src.Num());
+    for(int32 i = 0; i < Src.Num(); ++i)
+    {
+        Dst[i] = (uint8)(((int32)Src[i].R + (int32)Src[i].G + (int32)Src[i].B) / 3);
+    }
+    return Dst;
+}
 
 // 双線形補間によるアップスケール
-static TArray<uint8> UpscaleImage(const TArray<FColor>& Src, int32 SrcW, int32 SrcH, int32 Upscale)
+static TArray<uint8> UpscaleImage(const TArray<uint8>& Src, int32 SrcW, int32 SrcH, int32 Upscale)
 {
-    if (Upscale <= 1)
-    {
-        TArray<uint8> Dst;
-        Dst.SetNumUninitialized(SrcW * SrcH);
-        for (int32 i = 0; i < Src.Num(); ++i) Dst[i] = Src[i].R;
-        return Dst;
-    }
+    if (Upscale <= 1) return Src;
 
     int32 DstW = SrcW * Upscale;
     int32 DstH = SrcH * Upscale;
@@ -73,10 +77,10 @@ static TArray<uint8> UpscaleImage(const TArray<FColor>& Src, int32 SrcW, int32 S
             int32 x1 = FMath::Clamp(x0 + 1, 0, SrcW - 1);
             float fx = srcX - x0;
 
-            float p00 = Src[y0 * SrcW + x0].R;
-            float p10 = Src[y0 * SrcW + x1].R;
-            float p01 = Src[y1 * SrcW + x0].R;
-            float p11 = Src[y1 * SrcW + x1].R;
+            float p00 = Src[y0 * SrcW + x0];
+            float p10 = Src[y0 * SrcW + x1];
+            float p01 = Src[y1 * SrcW + x0];
+            float p11 = Src[y1 * SrcW + x1];
 
             float val = FMath::Lerp(
                 FMath::Lerp(p00, p10, fx),
@@ -89,7 +93,7 @@ static TArray<uint8> UpscaleImage(const TArray<FColor>& Src, int32 SrcW, int32 S
     return Dst;
 }
 
-// 1D 距離変換 (Felzenszwalb & Huttenlocher 法) - ※精度落ちを防ぐためdoubleで計算
+// 1D 距離変換 (Felzenszwalb & Huttenlocher 法)
 static void Compute1DDT(const double* f, double* d, int32 n, TArray<int32>& v, TArray<double>& z)
 {
     int32 k = 0;
@@ -99,15 +103,15 @@ static void Compute1DDT(const double* f, double* d, int32 n, TArray<int32>& v, T
     for (int32 q = 1; q < n; q++)
     {
         double denom = 2.0 * q - 2.0 * v[k];
-        if (denom == 0.0) denom = 1e-6; // ゼロ除算防止
+        if (denom <= 0.0) denom = 1e-6; // ゼロ除算防止
 
         double s = ((f[q] + (double)q * q) - (f[v[k]] + (double)v[k] * v[k])) / denom;
         while (s <= z[k])
         {
             k--;
-            if (k < 0) { k = 0; break; } // 安全策
+            if (k < 0) { k = 0; break; }
             denom = 2.0 * q - 2.0 * v[k];
-            if (denom == 0.0) denom = 1e-6;
+            if (denom <= 0.0) denom = 1e-6;
             s = ((f[q] + (double)q * q) - (f[v[k]] + (double)v[k] * v[k])) / denom;
         }
         k++;
@@ -118,10 +122,10 @@ static void Compute1DDT(const double* f, double* d, int32 n, TArray<int32>& v, T
     k = 0;
     for (int32 q = 0; q < n; q++)
     {
-        while (z[k + 1] < q)
+        while (z[k + 1] < (double)q)
         {
             k++;
-            if (k >= n) { k = n - 1; break; } // 安全策
+            if (k >= n) { k = n - 1; break; }
         }
         double dist = (double)(q - v[k]);
         d[q] = dist * dist + f[v[k]];
@@ -138,7 +142,6 @@ static void Compute2DDT(TArray<double>& grid, int32 width, int32 height)
     TArray<int32> v; v.SetNum(maxDim);
     TArray<double> z; z.SetNum(maxDim + 1);
 
-    // X方向 (行ごと)
     for (int32 y = 0; y < height; y++)
     {
         for (int32 x = 0; x < width; x++) f[x] = grid[y * width + x];
@@ -146,7 +149,6 @@ static void Compute2DDT(TArray<double>& grid, int32 width, int32 height)
         for (int32 x = 0; x < width; x++) grid[y * width + x] = d[x];
     }
     
-    // Y方向 (列ごと)
     for (int32 x = 0; x < width; x++)
     {
         for (int32 y = 0; y < height; y++) f[y] = grid[y * width + x];
@@ -154,7 +156,6 @@ static void Compute2DDT(TArray<double>& grid, int32 width, int32 height)
         for (int32 y = 0; y < height; y++) grid[y * width + x] = d[y];
     }
     
-    // 平方根をとって実際の距離にする
     for (int32 i = 0; i < width * height; ++i)
     {
         grid[i] = FMath::Sqrt(FMath::Max(0.0, grid[i]));
@@ -166,12 +167,20 @@ static TArray<double> GenerateSDF(const TArray<uint8>& BinaryImg, int32 W, int32
     TArray<double> GridIn, GridOut;
     GridIn.SetNumUninitialized(W * H);
     GridOut.SetNumUninitialized(W * H);
+	
+    double maxDistSq = (double)(W * W + H * H + 100.0);
 
-    for(int32 i=0; i<W*H; ++i)
+    bool bHasBlack = false;
+    bool bHasWhite = false;
+
+    for(int32 i = 0; i < W * H; ++i)
     {
         bool bIsWhite = BinaryImg[i] >= 127;
-        GridIn[i]  = (!bIsWhite) ? 0.0 : 1e10; // 精度落ちしない大きな数
-        GridOut[i] = (bIsWhite)  ? 0.0 : 1e10;
+        if(bIsWhite) bHasWhite = true;
+        else bHasBlack = true;
+
+        GridIn[i]  = (!bIsWhite) ? 0.0 : maxDistSq;
+        GridOut[i] = (bIsWhite)  ? 0.0 : maxDistSq;
     }
 
     Compute2DDT(GridIn, W, H);
@@ -179,9 +188,11 @@ static TArray<double> GenerateSDF(const TArray<uint8>& BinaryImg, int32 W, int32
 
     TArray<double> SDF;
     SDF.SetNumUninitialized(W * H);
-    for(int32 i=0; i<W*H; ++i)
+    for(int32 i = 0; i < W * H; ++i)
     {
-        SDF[i] = GridIn[i] - GridOut[i];
+        if (!bHasBlack) SDF[i] = maxDistSq;
+        else if (!bHasWhite) SDF[i] = -maxDistSq;
+        else SDF[i] = GridIn[i] - GridOut[i];
     }
     return SDF;
 }
@@ -229,8 +240,7 @@ static void CombineSDFs(const TArray<FMaskData>& Masks, TArray<double>& OutCombi
             OutCombined[p] = FMath::Clamp(t_min + Masks[0].SDF[p] * 0.05, 0.0, t_min);
             Handled[p] = true;
         }
-        
-        if (Masks.Last().SDF[p] > 0.0) // ※Pythonに合わせて独立したif文にする
+        else if (Masks.Last().SDF[p] > 0.0)
         {
             OutCombined[p] = FMath::Clamp(t_max + Masks.Last().SDF[p] * 0.05, t_max, 1.0);
             Handled[p] = true;
@@ -261,7 +271,9 @@ static TArray<uint16> DownscaleAndConvert(const TArray<double>& CombinedField, i
         Out.SetNumUninitialized(HighW * HighH);
         for (int32 i = 0; i < CombinedField.Num(); ++i)
         {
-            double val = FMath::Clamp(CombinedField[i], 0.0, 1.0);
+            double val = CombinedField[i];
+            if (FMath::IsNaN(val)) val = 0.0;
+            val = FMath::Clamp(val, 0.0, 1.0);
             Out[i] = (uint16)(val * 65535.0);
         }
         return Out;
@@ -281,7 +293,9 @@ static TArray<uint16> DownscaleAndConvert(const TArray<double>& CombinedField, i
             {
                 for(int32 dx = 0; dx < Factor; ++dx)
                 {
-                    sum += CombinedField[(y * Factor + dy) * HighW + (x * Factor + dx)];
+                    double val = CombinedField[(y * Factor + dy) * HighW + (x * Factor + dx)];
+                    if (FMath::IsNaN(val)) val = 0.0;
+                    sum += val;
                 }
             }
             double avg = sum / (double)(Factor * Factor);
@@ -541,10 +555,7 @@ void UQuickSDFPaintTool::GeneratePerfectSDF()
 	TArray<int32> ValidIndices;
 	for (int32 i = 0; i < Properties->TransientRenderTargets.Num(); ++i)
 	{
-		if (i < Properties->TargetAngles.Num() && Properties->TransientRenderTargets[i])
-		{
-			ValidIndices.Add(i);
-		}
+		if (i < Properties->TargetAngles.Num() && Properties->TransientRenderTargets[i]) ValidIndices.Add(i);
 	}
 
 	// 階調の低い順(TargetTが小さい順)にソート
@@ -564,7 +575,8 @@ void UQuickSDFPaintTool::GeneratePerfectSDF()
 		TArray<FColor> Pixels;
 		if (!CaptureRenderTargetPixels(RT, Pixels)) continue;
 
-		TArray<uint8> UpscaledPixels = UpscaleImage(Pixels, OrigW, OrigH, Upscale);
+		TArray<uint8> GrayPixels = ConvertToGrayscale(Pixels);
+		TArray<uint8> UpscaledPixels = UpscaleImage(GrayPixels, OrigW, OrigH, Upscale);
 		TArray<double> SDF = GenerateSDF(UpscaledPixels, HighW, HighH);
 
 		FMaskData Data;
