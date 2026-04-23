@@ -64,10 +64,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Target Settings")
 	FIntPoint Resolution = FIntPoint(1024, 1024);
-
-	// SDF生成時の内部解像度アップスケール係数 (処理負荷軽減のため1にしても動きます)
+	
 	UPROPERTY(EditAnywhere, Category = "Export Settings", meta=(ClampMin="1", UIMin="1", ClampMax="8", UIMax="8"))
-	int32 UpscaleFactor = 4;
+	int32 UpscaleFactor = 1;
 
 	UPROPERTY(Transient)
 	TArray<class UTextureRenderTarget2D*> TransientRenderTargets;
@@ -78,7 +77,6 @@ public:
 	UFUNCTION(CallInEditor, Category = "Actions")
 	void ExportToTexture();
 
-	// SDFスレッショルドマップを生成して保存するボタン
 	UFUNCTION(CallInEditor, Category = "Actions")
 	void GenerateSDFThresholdMap();
 };
