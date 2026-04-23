@@ -276,13 +276,14 @@ void UQuickSDFPaintTool::RefreshPreviewMaterial()
 	if (UTextureRenderTarget2D* ActiveRT = GetActiveRenderTarget())
 	{
 		PreviewMaterial->SetTextureParameterValue(TEXT("BaseColor"), ActiveRT);
+		PreviewMaterial->SetScalarParameterValue(TEXT("UVChannel"), (float)Properties->UVChannel);
 	}
 }
 
 FQuickSDFStrokeSample UQuickSDFPaintTool::SmoothStrokeSample(const FQuickSDFStrokeSample& RawSample)
 {
 #if 0//todo impliment one euro filter
-	double MinCutoff = FMath::Lerp(5.0, 0.1, FMath::Clamp(StabilizerAmount, 0.0f, 1.0f));
+	double MinCutoff = 1.0;//FMath::Lerp(5.0, 0.1, FMath::Clamp(StabilizerAmount, 0.0f, 1.0f));
 	WorldPosFilter.MinCutoff = MinCutoff;
 	UVFilter.MinCutoff = MinCutoff;
 
@@ -836,20 +837,9 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 
 void UQuickSDFPaintTool::AppendStrokeSample(const FQuickSDFStrokeSample& Sample)
 {
-	double MinDistance = 0.1;
-
-	if (ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview)
-	{
-		MinDistance = 0.5; 
-	}
-	else if (BrushProperties)
-	{
-		MinDistance = BrushProperties->BrushRadius * 0.1;
-	}
 	if (PointBuffer.Num() > 0)
 	{
-		double DistSq = FVector3d::DistSquared(PointBuffer.Last().WorldPos, Sample.WorldPos);
-		if (DistSq < MinDistance * MinDistance)
+		if (FVector3d::DistSquared(PointBuffer.Last().WorldPos, Sample.WorldPos) < 1e-8)
 		{
 			return;
 		}
@@ -863,7 +853,7 @@ void UQuickSDFPaintTool::AppendStrokeSample(const FQuickSDFStrokeSample& Sample)
 		StampInterpolatedSegment(PointBuffer[L-4], PointBuffer[L-3], PointBuffer[L-2], PointBuffer[L-1]);
         
 		
-		if (PointBuffer.Num() > 8) {
+		if (PointBuffer.Num() > 4) {
 			PointBuffer.RemoveAt(0);
 		}
 	}
@@ -970,7 +960,8 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 
 	if (PropertySet == Properties)
 	{
-		if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex))
+		if (Property && (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex) ||
+				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, UVChannel)))
 		{
 			RefreshPreviewMaterial();
 		}
@@ -979,23 +970,70 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 
 void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI)
 {
-	Super::DrawHUD(Canvas, RenderAPI);
+    Super::DrawHUD(Canvas, RenderAPI);
 
-	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
-	if (RT)
-	{
-		PreviewCanvasOrigin = FVector2D(10.0f, 10.0f);
-		PreviewCanvasSize = FVector2D(256.0f, 256.0f);
-		const FVector2D PreviewOrigin = GetPreviewOrigin();
-		const FVector2D PreviewSize = GetPreviewSize();
-		FCanvasTileItem TileItem(PreviewOrigin, RT->GetResource(), PreviewSize, FLinearColor::White);
-		TileItem.BlendMode = SE_BLEND_Opaque;
-		Canvas->DrawItem(TileItem);
+    UTextureRenderTarget2D* RT = GetActiveRenderTarget();
+    if (RT)
+    {
+        // 1. プレビューテクスチャの描画
+        PreviewCanvasOrigin = FVector2D(10.0f, 10.0f);
+        PreviewCanvasSize = FVector2D(256.0f, 256.0f);
+        const FVector2D PreviewOrigin = GetPreviewOrigin();
+        const FVector2D PreviewSize = GetPreviewSize();
+        
+        FCanvasTileItem TileItem(PreviewOrigin, RT->GetResource(), PreviewSize, FLinearColor::White);
+        TileItem.BlendMode = SE_BLEND_Opaque;
+        Canvas->DrawItem(TileItem);
 
-		FCanvasBoxItem BorderItem(PreviewOrigin, PreviewSize);
-		BorderItem.SetColor(IsInPreviewBounds(LastInputScreenPosition) ? FLinearColor::Yellow : FLinearColor::Gray);
-		Canvas->DrawItem(BorderItem);
-	}
+        // --- ここからUV重ね合わせ表示の追加 ---
+        if (TargetMesh.IsValid() && TargetMesh->HasAttributes())
+        {
+            const UE::Geometry::FDynamicMeshUVOverlay* UVOverlay = TargetMesh->Attributes()->GetUVLayer(Properties->UVChannel);
+            if (UVOverlay)
+            {
+                // 線の色と不透明度を設定
+                FLinearColor UVLineColor(0.0f, 1.0f, 0.0f, 0.3f); // 半透明の緑色
+
+                for (int32 Tid : TargetMesh->TriangleIndicesItr())
+                {
+                    if (UVOverlay->IsSetTriangle(Tid))
+                    {
+                        UE::Geometry::FIndex3i UVIndices = UVOverlay->GetTriangle(Tid);
+                        FVector2f UV0 = UVOverlay->GetElement(UVIndices.A);
+                        FVector2f UV1 = UVOverlay->GetElement(UVIndices.B);
+                        FVector2f UV2 = UVOverlay->GetElement(UVIndices.C);
+
+                        // UV(0-1) を プレビューのピクセル座標に変換するラムダ関数
+                        auto UVToScreen = [&](const FVector2f& UV) -> FVector2D {
+                            return FVector2D(
+                                PreviewOrigin.X + (double)UV.X * PreviewSize.X,
+                                PreviewOrigin.Y + (double)UV.Y * PreviewSize.Y
+                            );
+                        };
+
+                        FVector2D P0 = UVToScreen(UV0);
+                        FVector2D P1 = UVToScreen(UV1);
+                        FVector2D P2 = UVToScreen(UV2);
+
+                        // 三角形の3辺を描画
+                        FCanvasLineItem Line0(P0, P1); Line0.SetColor(UVLineColor);
+                        Canvas->DrawItem(Line0);
+                        FCanvasLineItem Line1(P1, P2); Line1.SetColor(UVLineColor);
+                        Canvas->DrawItem(Line1);
+                        FCanvasLineItem Line2(P2, P0); Line2.SetColor(UVLineColor);
+                        Canvas->DrawItem(Line2);
+                    }
+                }
+            }
+        }
+        // --- ここまで ---
+
+        // 2. ボーダーの描画
+        FCanvasBoxItem BorderItem(PreviewOrigin, PreviewSize);
+        BorderItem.SetColor(IsInPreviewBounds(LastInputScreenPosition) ? FLinearColor::Yellow : FLinearColor::Gray);
+        Canvas->DrawItem(BorderItem);
+    }
+
 
 	const FString PaintModeLabel = IsPaintingShadow() ? TEXT("Shadow") : TEXT("Light");
 	const FString ShortcutLabel = bAdjustingBrushRadius ? TEXT("Ctrl+F active: move mouse, click to confirm") : TEXT("Shift: toggle paint, Ctrl+F: resize brush");

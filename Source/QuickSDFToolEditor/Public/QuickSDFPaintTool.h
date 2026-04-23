@@ -80,7 +80,7 @@ struct FOneEuroFilter
 	FVector3d LastDerivative;
 	bool bFirstUpdate;
 
-	FOneEuroFilter(double InMinCutoff = 1.0, double InBeta = 0.007, double InDCutoff = 1.0)
+	FOneEuroFilter(double InMinCutoff = 1.0, double InBeta = 0.007, double InDCutoff = 4.0)
 		: MinCutoff(InMinCutoff), Beta(InBeta), DCutoff(InDCutoff), bFirstUpdate(true) {}
 
 	void Reset() { bFirstUpdate = true; }
@@ -102,14 +102,12 @@ struct FOneEuroFilter
 		}
 
 		if (InDeltaTime <= 0.0) return LastValue;
-
-		// 速度（微分）の計算
+		
 		FVector3d Derivative = (InValue - LastValue) / InDeltaTime;
 		double DAlpha = Alpha(DCutoff, InDeltaTime);
 		FVector3d FilteredDerivative = FMath::Lerp(LastDerivative, Derivative, DAlpha);
 		LastDerivative = FilteredDerivative;
-
-		// カットオフ周波数の計算（速度に応じて変化させる）
+		
 		double Cutoff = MinCutoff + Beta * FilteredDerivative.Size();
 		double A = Alpha(Cutoff, InDeltaTime);
 		FVector3d FilteredValue = FMath::Lerp(LastValue, InValue, A);
