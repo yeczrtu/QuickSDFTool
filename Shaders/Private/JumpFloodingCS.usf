@@ -5,13 +5,89 @@ RWTexture2D<float4> OutputTexture;
 
 float2 StepSize;
 
+static bool IsValidSeed(float4 Value)
+{
+    return Value.w > 0.5f;
+}
+
+static float2 DecodeSeed(float4 Value)
+{
+    return Value.xy;
+}
+
+static float4 EncodeSeed(float2 SeedPos, float Valid)
+{
+    return float4(SeedPos, 0.0f, Valid);
+}
+
 [numthreads(8, 8, 1)]
 void JumpFloodingMain(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
-    // Example JFA pass pseudo-code
-    // For a real implementation, sample 8 neighbors at offset StepSize.
-    int2 PixelPos = DispatchThreadId.xy;
-    
-    // output best distance
-    OutputTexture[PixelPos] = InputTexture[PixelPos];
+    int2 PixelPos = int2(DispatchThreadId.xy);
+
+    uint Width = 0;
+    uint Height = 0;
+    OutputTexture.GetDimensions(Width, Height);
+
+    if (PixelPos.x < 0 || PixelPos.y < 0 || PixelPos.x >= (int)Width || PixelPos.y >= (int)Height)
+    {
+        return;
+    }
+
+    float4 CurrentValue = InputTexture[PixelPos];
+
+    // 現在のピクセルが既にシードならそのまま維持
+    if (IsValidSeed(CurrentValue) && all(DecodeSeed(CurrentValue) == float2(PixelPos)))
+    {
+        OutputTexture[PixelPos] = CurrentValue;
+        return;
+    }
+
+    float2 BestSeed = DecodeSeed(CurrentValue);
+    float BestDistSq = 3.402823e38f;
+    bool bHasBest = false;
+
+    // 8方向サンプル
+    const int2 Offsets[8] =
+    {
+        int2(-1, -1), int2( 0, -1), int2( 1, -1),
+        int2(-1,  0),                 int2( 1,  0),
+        int2(-1,  1), int2( 0,  1), int2( 1,  1)
+    };
+
+    float2 Step = max(abs(StepSize), float2(1.0f, 1.0f));
+
+    for (int i = 0; i < 8; ++i)
+    {
+        int2 SamplePos = PixelPos + int2((float2)Offsets[i] * Step);
+        SamplePos.x = clamp(SamplePos.x, 0, (int)Width - 1);
+        SamplePos.y = clamp(SamplePos.y, 0, (int)Height - 1);
+
+        float4 Neighbor = InputTexture[SamplePos];
+        if (!IsValidSeed(Neighbor))
+        {
+            continue;
+        }
+
+        float2 SeedPos = DecodeSeed(Neighbor);
+        float2 Delta = SeedPos - float2(PixelPos);
+        float DistSq = dot(Delta, Delta);
+
+        if (!bHasBest || DistSq < BestDistSq)
+        {
+            BestDistSq = DistSq;
+            BestSeed = SeedPos;
+            bHasBest = true;
+        }
+    }
+
+    if (bHasBest)
+    {
+        OutputTexture[PixelPos] = EncodeSeed(BestSeed, 1.0f);
+    }
+    else
+    {
+        // 有効な候補がなければ入力を維持
+        OutputTexture[PixelPos] = CurrentValue;
+    }
 }
