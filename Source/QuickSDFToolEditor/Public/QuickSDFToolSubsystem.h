@@ -29,4 +29,10 @@ public:
 	
 	void ExportToTexture(class UTextureRenderTarget2D* RT, const FString& FolderPath, const FString& AssetName);
 	void Create16BitTexture(const TArray<uint16>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName);
+	
+	UPROPERTY()
+	TObjectPtr<class UQuickSDFAsset> ActiveSDFAsset;
+
+	void SetActiveSDFAsset(class UQuickSDFAsset* InAsset) { ActiveSDFAsset = InAsset; }
+	class UQuickSDFAsset* GetActiveSDFAsset() const { return ActiveSDFAsset; }
 };

@@ -39,6 +39,9 @@ class UQuickSDFToolProperties : public UInteractiveToolPropertySet
 	GENERATED_BODY()
 
 public:
+	UPROPERTY(EditAnywhere, Category = "Asset Settings")
+	class UQuickSDFAsset* TargetAsset = nullptr;
+
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	int32 EditAngleIndex = 0;
 
@@ -62,9 +65,6 @@ public:
 	
 	UPROPERTY(EditAnywhere, Category = "Export Settings", meta=(ClampMin="1", UIMin="1", ClampMax="8", UIMax="8"))
 	int32 UpscaleFactor = 1;
-
-	UPROPERTY(Transient)
-	TArray<class UTextureRenderTarget2D*> TransientRenderTargets;
 
 	UFUNCTION(CallInEditor, Category = "Actions")
 	void ExportToTexture();

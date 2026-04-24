@@ -46,7 +46,7 @@ public:
 	class UTexture2D* FinalSDFTexture;
 
 	// Sets up render targets for painting
-	void InitializeRenderTargets();
+	void InitializeRenderTargets(class UWorld* InWorld);
 	// Merges render targets back to standard textures
 	void BakeToTextures();
 };

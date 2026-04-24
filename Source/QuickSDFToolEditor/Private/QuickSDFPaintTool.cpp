@@ -1,5 +1,6 @@
 #include "QuickSDFPaintTool.h"
 #include "QuickSDFToolSubsystem.h"
+#include "QuickSDFAsset.h"
 #include "SDFProcessor.h"
 #include "InteractiveToolManager.h"
 #include "ToolBuilderUtil.h"
@@ -119,17 +120,21 @@ void UQuickSDFToolProperties::ExportToTexture()
 	UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());
 	if (!Tool) return;
 	
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return;
+
+	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
 	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
 
-	for (int32 i = 0; i < TransientRenderTargets.Num(); ++i)
+	for (int32 i = 0; i < Asset->AngleDataList.Num(); ++i)
 	{
-		UTextureRenderTarget2D* RT = TransientRenderTargets[i];
+		UTextureRenderTarget2D* RT = Asset->AngleDataList[i].PaintRenderTarget;
 		if (!RT) continue;
 
 		TArray<FColor> Pixels;
-		if (!Tool->CaptureRenderTargetPixels(RT, Pixels)) continue;
+		if (!Subsystem->CaptureRenderTargetPixels(RT, Pixels)) continue;
 
-		FString FolderPath = TEXT("/Game/QuickSDF_Exports"); // TODO:ファイル名をきめる処理
+		FString FolderPath = TEXT("/Game/QuickSDF_Exports");
 		FString AssetName = FString::Printf(TEXT("T_QuickSDF_Angle%d"), i);
 		
 		UTexture2D* NewTex = Cast<UTexture2D>(AssetTools.CreateAsset(AssetName, FolderPath, UTexture2D::StaticClass(), nullptr));
@@ -147,11 +152,15 @@ void UQuickSDFToolProperties::ExportToTexture()
 			NewTex->PostEditChange();
 			NewTex->GetPackage()->MarkPackageDirty();
 
+			// エクスポートしたテクスチャをアセットに紐づけておくことで、次回ロード時に復元されます
+			Asset->AngleDataList[i].TextureMask = NewTex;
+
 			TArray<UObject*> AssetsToSync;
 			AssetsToSync.Add(NewTex);
 			AssetTools.SyncBrowserToAssets(AssetsToSync);
 		}
 	}
+	Asset->Modify(); // アセットを更新状態にする
 }
 
 void UQuickSDFToolProperties::GenerateSDFThresholdMap()
@@ -187,54 +196,32 @@ void UQuickSDFPaintTool::RegisterActions(FInteractiveToolActionSet& ActionSet)
 
 void UQuickSDFPaintTool::InitializeRenderTargets()
 {
-	if (!Properties)
-	{
-		return;
-	}
 
-	const int32 NumAngles = Properties->NumAngles;
-	
-	// アングルに対応する階調値の配列を同期
-	if (Properties->TargetAngles.Num() != NumAngles)
-	{
-		Properties->TargetAngles.SetNum(NumAngles);
-		for(int32 i = 0; i < NumAngles; ++i)
-		{
-			Properties->TargetAngles[i] = ((float)i / (float)FMath::Max(1, NumAngles - 1)) * 180.0f;
-		}
-	}
-
-	if (Properties->TransientRenderTargets.Num() != NumAngles)
-	{
-		Properties->TransientRenderTargets.Empty();
-		for (int32 i = 0; i < NumAngles; ++i)
-		{
-			UTextureRenderTarget2D* RT = UKismetRenderingLibrary::CreateRenderTarget2D(this, Properties->Resolution.X, Properties->Resolution.Y, RTF_RGBA8);
-			if (RT)
-			{
-				RT->ClearColor = FLinearColor::White;
-				RT->UpdateResourceImmediate(true);
-				Properties->TransientRenderTargets.Add(RT);
-			}
-		}
-	}
 }
 
 void UQuickSDFPaintTool::GenerateSDF()
 {
 	if (!Properties) return;
+	
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return;
+
+	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
 
 	TArray<FMaskData> ProcessedData;
-	int32 OrigW = Properties->Resolution.X;
-	int32 OrigH = Properties->Resolution.Y;
+	int32 OrigW = Asset->Resolution.X;
+	int32 OrigH = Asset->Resolution.Y;
 	int32 Upscale = FMath::Clamp(Properties->UpscaleFactor, 1, 8);
 	int32 HighW = OrigW * Upscale;
 	int32 HighH = OrigH * Upscale;
 
 	TArray<int32> ValidIndices;
-	for (int32 i = 0; i < Properties->TransientRenderTargets.Num(); ++i)
+	for (int32 i = 0; i < Asset->AngleDataList.Num(); ++i)
 	{
-		if (i < Properties->TargetAngles.Num() && Properties->TransientRenderTargets[i]) ValidIndices.Add(i);
+		if (i < Properties->TargetAngles.Num() && Asset->AngleDataList[i].PaintRenderTarget) 
+		{
+			ValidIndices.Add(i);
+		}
 	}
 	
 	ValidIndices.Sort([this](int32 A, int32 B) {
@@ -249,7 +236,7 @@ void UQuickSDFPaintTool::GenerateSDF()
 		SlowTask.EnterProgressFrame(1.f, FText::Format(LOCTEXT("ProcessMask", "Processing Mask {0}..."), Index));
 		if (SlowTask.ShouldCancel()) return;
 
-		UTextureRenderTarget2D* RT = Properties->TransientRenderTargets[Index];
+		UTextureRenderTarget2D* RT = Asset->AngleDataList[Index].PaintRenderTarget;
 		TArray<FColor> Pixels;
 		if (!CaptureRenderTargetPixels(RT, Pixels)) continue;
 
@@ -275,13 +262,9 @@ void UQuickSDFPaintTool::GenerateSDF()
 	if (SlowTask.ShouldCancel()) return;
 
 	TArray<uint16> FinalPixels = FSDFProcessor::DownscaleAndConvert(CombinedField, HighW, HighH, Upscale);
-	//TODO:名前が被らないように自動で決定する
 	FString PackageName = TEXT("/Game/QuickSDF_GENERATED");
 	FString TextureName = TEXT("T_QuickSDF_ThresholdMap");
-	if (UQuickSDFToolSubsystem* QuickSDFToolSubsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>())
-	{
-		QuickSDFToolSubsystem->Create16BitTexture(FinalPixels, OrigW, OrigH, PackageName, TextureName);
-	}
+	Subsystem->Create16BitTexture(FinalPixels, OrigW, OrigH, PackageName, TextureName);
 }
 
 void UQuickSDFPaintTool::BuildBrushMaskTexture()
@@ -336,18 +319,46 @@ void UQuickSDFPaintTool::Setup()
 	Properties = NewObject<UQuickSDFToolProperties>(this);
 	AddToolPropertySource(Properties);
 
-	InitializeRenderTargets();
+	if (UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>())
+	{
+		ChangeTargetComponent(Subsystem->GetTargetMeshComponent());
+
+		// サブシステムにアセットがない場合は仮で新規作成
+		if (!Subsystem->GetActiveSDFAsset())
+		{
+			UQuickSDFAsset* NewAsset = NewObject<UQuickSDFAsset>(Subsystem);
+			NewAsset->Resolution = FIntPoint(1024, 1024);
+			NewAsset->UVChannel = 0;
+			for (int32 i = 0; i < 8; ++i)
+			{
+				FQuickSDFAngleData Data;
+				Data.Angle = (i / 7.0f) * 180.0f;
+				NewAsset->AngleDataList.Add(Data);
+			}
+			Subsystem->SetActiveSDFAsset(NewAsset);
+		}
+
+		UQuickSDFAsset* ActiveAsset = Subsystem->GetActiveSDFAsset();
+		ActiveAsset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+
+		// アセットのデータをツールのプロパティ(UI)に同期させる
+		Properties->TargetAsset = ActiveAsset;
+		Properties->Resolution = ActiveAsset->Resolution;
+		Properties->UVChannel = ActiveAsset->UVChannel;
+		Properties->NumAngles = ActiveAsset->AngleDataList.Num();
+		Properties->TargetAngles.SetNum(Properties->NumAngles);
+		for (int32 i = 0; i < Properties->NumAngles; ++i)
+		{
+			Properties->TargetAngles[i] = ActiveAsset->AngleDataList[i].Angle;
+		}
+	}
+
 	BuildBrushMaskTexture();
 	ResetStrokeState();
 
 	BrushResizeBehavior = NewObject<UQuickSDFBrushResizeInputBehavior>(this);
 	BrushResizeBehavior->Initialize(this);
 	AddInputBehavior(BrushResizeBehavior);
-	
-	if (UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>())
-	{
-		ChangeTargetComponent(Subsystem->GetTargetMeshComponent());
-	}
 }
 
 void UQuickSDFPaintTool::OnTick(float DeltaTime)
@@ -529,8 +540,15 @@ bool UQuickSDFPaintTool::RestoreRenderTargetPixels(UTextureRenderTarget2D* Rende
 
 bool UQuickSDFPaintTool::ApplyRenderTargetPixels(int32 AngleIndex, const TArray<FColor>& Pixels)
 {
-	if (!Properties || !Properties->TransientRenderTargets.IsValidIndex(AngleIndex)) return false;
-	const bool bRestored = RestoreRenderTargetPixels(Properties->TransientRenderTargets[AngleIndex], Pixels);
+	if (!Properties) return false;
+	
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return false;
+
+	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
+	if (!Asset->AngleDataList.IsValidIndex(AngleIndex)) return false;
+	
+	const bool bRestored = RestoreRenderTargetPixels(Asset->AngleDataList[AngleIndex].PaintRenderTarget, Pixels);
 	if (bRestored) RefreshPreviewMaterial();
 	return bRestored;
 }
@@ -539,11 +557,21 @@ void UQuickSDFPaintTool::BeginStrokeTransaction()
 {
 	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
 	if (!RT || bStrokeTransactionActive) return;
+	
 	StrokeBeforePixels.Reset();
 	if (CaptureRenderTargetPixels(RT, StrokeBeforePixels))
 	{
 		bStrokeTransactionActive = true;
-		StrokeTransactionAngleIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Properties->TransientRenderTargets.Num() - 1);
+		
+		UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+		if (Subsystem && Subsystem->GetActiveSDFAsset() && Subsystem->GetActiveSDFAsset()->AngleDataList.Num() > 0)
+		{
+			StrokeTransactionAngleIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Subsystem->GetActiveSDFAsset()->AngleDataList.Num() - 1);
+		}
+		else
+		{
+			StrokeTransactionAngleIndex = 0;
+		}
 	}
 }
 
@@ -551,18 +579,25 @@ void UQuickSDFPaintTool::EndStrokeTransaction()
 {
 	if (!bStrokeTransactionActive) return;
 	TArray<FColor> AfterPixels;
-	if (Properties && Properties->TransientRenderTargets.IsValidIndex(StrokeTransactionAngleIndex))
+	
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	if (Properties && Subsystem && Subsystem->GetActiveSDFAsset())
 	{
-		if (CaptureRenderTargetPixels(Properties->TransientRenderTargets[StrokeTransactionAngleIndex], AfterPixels) &&
-			AfterPixels.Num() == StrokeBeforePixels.Num() && AfterPixels != StrokeBeforePixels)
+		UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
+		if (Asset->AngleDataList.IsValidIndex(StrokeTransactionAngleIndex))
 		{
-			TUniquePtr<FQuickSDFRenderTargetChange> Change = MakeUnique<FQuickSDFRenderTargetChange>();
-			Change->AngleIndex = StrokeTransactionAngleIndex;
-			Change->BeforePixels = MoveTemp(StrokeBeforePixels);
-			Change->AfterPixels = MoveTemp(AfterPixels);
-			GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("QuickSDFPaintStrokeChange", "Quick SDF Paint Stroke"));
+			if (CaptureRenderTargetPixels(Asset->AngleDataList[StrokeTransactionAngleIndex].PaintRenderTarget, AfterPixels) &&
+				AfterPixels.Num() == StrokeBeforePixels.Num() && AfterPixels != StrokeBeforePixels)
+			{
+				TUniquePtr<FQuickSDFRenderTargetChange> Change = MakeUnique<FQuickSDFRenderTargetChange>();
+				Change->AngleIndex = StrokeTransactionAngleIndex;
+				Change->BeforePixels = MoveTemp(StrokeBeforePixels);
+				Change->AfterPixels = MoveTemp(AfterPixels);
+				GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("QuickSDFPaintStrokeChange", "Quick SDF Paint Stroke"));
+			}
 		}
 	}
+	
 	bStrokeTransactionActive = false;
 	StrokeTransactionAngleIndex = INDEX_NONE;
 	StrokeBeforePixels.Reset();
@@ -571,8 +606,15 @@ void UQuickSDFPaintTool::EndStrokeTransaction()
 UTextureRenderTarget2D* UQuickSDFPaintTool::GetActiveRenderTarget() const
 {
 	if (!Properties) return nullptr;
-	const int32 AngleIdx = FMath::Clamp(Properties->EditAngleIndex, 0, Properties->TransientRenderTargets.Num() - 1);
-	return Properties->TransientRenderTargets.IsValidIndex(AngleIdx) ? Properties->TransientRenderTargets[AngleIdx] : nullptr;
+
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return nullptr;
+
+	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
+	if (Asset->AngleDataList.Num() == 0) return nullptr;
+
+	const int32 AngleIdx = FMath::Clamp(Properties->EditAngleIndex, 0, Asset->AngleDataList.Num() - 1);
+	return Asset->AngleDataList[AngleIdx].PaintRenderTarget;
 }
 
 FVector2D UQuickSDFPaintTool::GetPreviewOrigin() const { return PreviewCanvasOrigin; }
@@ -1080,12 +1122,73 @@ void UQuickSDFPaintTool::ResetStrokeState()
 
 void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Property)
 {
-	Super::OnPropertyModified(PropertySet, Property);
+Super::OnPropertyModified(PropertySet, Property);
 
 	if (PropertySet == Properties)
 	{
+		UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+		UQuickSDFAsset* ActiveAsset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+
+		if (ActiveAsset)
+		{
+			// 詳細パネルから別のアセットに切り替えた場合の処理
+			if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAsset))
+			{
+				if (Properties->TargetAsset != nullptr)
+				{
+					Subsystem->SetActiveSDFAsset(Properties->TargetAsset);
+					ActiveAsset = Properties->TargetAsset;
+					ActiveAsset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+					
+					// 新しいアセットの値をUIにロード
+					Properties->Resolution = ActiveAsset->Resolution;
+					Properties->UVChannel = ActiveAsset->UVChannel;
+					Properties->NumAngles = ActiveAsset->AngleDataList.Num();
+					Properties->TargetAngles.SetNum(Properties->NumAngles);
+					for (int32 i = 0; i < Properties->NumAngles; ++i)
+					{
+						Properties->TargetAngles[i] = ActiveAsset->AngleDataList[i].Angle;
+					}
+					RefreshPreviewMaterial();
+				}
+			}
+
+			// アングルの「数」が変わった場合、アセットの配列サイズを同期
+			if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, NumAngles))
+			{
+				Properties->TargetAngles.SetNum(Properties->NumAngles);
+				ActiveAsset->AngleDataList.SetNum(Properties->NumAngles);
+				for (int32 i = 0; i < Properties->NumAngles; ++i)
+				{
+					Properties->TargetAngles[i] = ((float)i / (float)FMath::Max(1, Properties->NumAngles - 1)) * 180.0f;
+					ActiveAsset->AngleDataList[i].Angle = Properties->TargetAngles[i];
+				}
+				ActiveAsset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+			}
+
+			// 手動でアングルの「角度」が変わった場合
+			if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngles))
+			{
+				for (int32 i = 0; i < FMath::Min(Properties->TargetAngles.Num(), ActiveAsset->AngleDataList.Num()); ++i)
+				{
+					ActiveAsset->AngleDataList[i].Angle = Properties->TargetAngles[i];
+				}
+			}
+
+			// 解像度やUVチャンネルの同期
+			if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, Resolution))
+			{
+				ActiveAsset->Resolution = Properties->Resolution;
+			}
+
+			if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, UVChannel))
+			{
+				ActiveAsset->UVChannel = Properties->UVChannel;
+				RefreshPreviewMaterial();
+			}
+		}
+
 		if (Property && (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex) ||
-				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, UVChannel)||
 				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bOverlayOriginalShadow)))
 		{
 			RefreshPreviewMaterial();
