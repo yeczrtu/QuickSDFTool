@@ -4,6 +4,7 @@
 #include "Toolkits/BaseToolkit.h"
 #include "QuickSDFEditorMode.h"
 
+class UQuickSDFPreviewWidget;
 class FQuickSDFEditorModeToolkit : public FModeToolkit
 {
 public:
@@ -18,4 +19,7 @@ public:
 	// 横のUIのタブ
 	virtual void GetToolPaletteNames(TArray<FName>& PaletteNames) const override;
 	virtual FText GetToolPaletteDisplayName(FName Palette) const override;
+	virtual TSharedPtr<SWidget> GetInlineContent() const override;
+private:
+	TStrongObjectPtr<UQuickSDFPreviewWidget> PreviewWidgetInstance;
 };

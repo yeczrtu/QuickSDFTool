@@ -1,4 +1,5 @@
 #include "QuickSDFPaintTool.h"
+#include "QuickSDFToolSubsystem.h"
 #include "SDFProcessor.h"
 #include "InteractiveToolManager.h"
 #include "ToolBuilderUtil.h"
@@ -42,34 +43,6 @@
 
 namespace
 {
-	static void Create16BitTexture(const TArray<uint16>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName)
-{
-	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
-	//TODO:ファイル名を決められるようにする。
-	UTexture2D* NewTex = Cast<UTexture2D>(AssetTools.CreateAsset(TextureName, FolderPath, UTexture2D::StaticClass(), nullptr));
-
-	if (!NewTex) return;
-
-	NewTex->Source.Init(Width, Height, 1, 1, TSF_G16);
-	uint16* MipData = (uint16*)NewTex->Source.LockMip(0);
-	FMemory::Memcpy(MipData, Pixels.GetData(), Pixels.Num() * sizeof(uint16));
-	NewTex->Source.UnlockMip(0);
-
-	NewTex->CompressionSettings = TC_Grayscale;
-	NewTex->SRGB = false;
-	NewTex->MipGenSettings = TMGS_FromTextureGroup;
-	NewTex->Filter = TF_Default;
-	NewTex->AddressX = TA_Clamp;
-	NewTex->AddressY = TA_Clamp;
-	
-	NewTex->PostEditChange();
-	NewTex->GetPackage()->MarkPackageDirty();
-
-	TArray<UObject*> Assets;
-	Assets.Add(NewTex);
-	AssetTools.SyncBrowserToAssets(Assets);
-}
-
 constexpr double QuickSDFStrokeSpacingFactor = 0.12;
 constexpr double QuickSDFMinSampleDistanceSq = 1.0e-6;
 constexpr int32 QuickSDFBrushMaskResolution = 128;
@@ -141,31 +114,6 @@ void UQuickSDFBrushResizeInputBehavior::ForceEndCapture(const FInputCaptureData&
 {
 }
 
-void UQuickSDFToolProperties::RotateLight90Deg()
-{
-	static float Angle = 0.0f;
-	Angle += 90.0f;
-#if WITH_EDITOR
-	if (GEditor)
-	{
-		UWorld* World = GEditor->GetEditorWorldContext().World();
-		if (World)
-		{
-			for (TActorIterator<ADirectionalLight> It(World); It; ++It)
-			{
-				ADirectionalLight* DirLight = *It;
-				if (DirLight)
-				{
-					FRotator NewRotation(-45.0f, Angle, 0.0f);
-					DirLight->SetActorRotation(NewRotation);
-					break;
-				}
-			}
-		}
-	}
-#endif
-}
-
 void UQuickSDFToolProperties::ExportToTexture()
 {
 	UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());
@@ -211,7 +159,7 @@ void UQuickSDFToolProperties::GenerateSDFThresholdMap()
 	UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());
 	if (Tool)
 	{
-		Tool->GeneratePerfectSDF();
+		Tool->GenerateSDF();
 	}
 }
 
@@ -252,7 +200,7 @@ void UQuickSDFPaintTool::InitializeRenderTargets()
 		Properties->TargetAngles.SetNum(NumAngles);
 		for(int32 i = 0; i < NumAngles; ++i)
 		{
-			Properties->TargetAngles[i] = (float)i / (float)FMath::Max(1, NumAngles - 1);
+			Properties->TargetAngles[i] = ((float)i / (float)FMath::Max(1, NumAngles - 1)) * 180.0f;
 		}
 	}
 
@@ -272,7 +220,7 @@ void UQuickSDFPaintTool::InitializeRenderTargets()
 	}
 }
 
-void UQuickSDFPaintTool::GeneratePerfectSDF()
+void UQuickSDFPaintTool::GenerateSDF()
 {
 	if (!Properties) return;
 
@@ -311,7 +259,7 @@ void UQuickSDFPaintTool::GeneratePerfectSDF()
 
 		FMaskData Data;
 		Data.SDF = MoveTemp(SDF);
-		Data.TargetT = Properties->TargetAngles[Index];
+		Data.TargetT = Properties->TargetAngles[Index] / 180.0f;
 		ProcessedData.Add(MoveTemp(Data));
 	}
 
@@ -328,9 +276,12 @@ void UQuickSDFPaintTool::GeneratePerfectSDF()
 
 	TArray<uint16> FinalPixels = FSDFProcessor::DownscaleAndConvert(CombinedField, HighW, HighH, Upscale);
 	//TODO:名前が被らないように自動で決定する
-	FString PackageName = TEXT("/Game/QuickSDF_UltraHighRes");
+	FString PackageName = TEXT("/Game/QuickSDF_GENERATED");
 	FString TextureName = TEXT("T_QuickSDF_ThresholdMap");
-	Create16BitTexture(FinalPixels, OrigW, OrigH, PackageName, TextureName);
+	if (UQuickSDFToolSubsystem* QuickSDFToolSubsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>())
+	{
+		QuickSDFToolSubsystem->Create16BitTexture(FinalPixels, OrigW, OrigH, PackageName, TextureName);
+	}
 }
 
 void UQuickSDFPaintTool::BuildBrushMaskTexture()
@@ -405,6 +356,7 @@ void UQuickSDFPaintTool::RefreshPreviewMaterial()
 	{
 		PreviewMaterial->SetTextureParameterValue(TEXT("BaseColor"), ActiveRT);
 		PreviewMaterial->SetScalarParameterValue(TEXT("UVChannel"), (float)Properties->UVChannel);
+		PreviewMaterial->SetScalarParameterValue(TEXT("OverlayOriginalShadow"), Properties->bOverlayOriginalShadow);
 	}
 }
 
@@ -1082,7 +1034,8 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 	if (PropertySet == Properties)
 	{
 		if (Property && (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex) ||
-				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, UVChannel)))
+				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, UVChannel)||
+				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bOverlayOriginalShadow)))
 		{
 			RefreshPreviewMaterial();
 		}
@@ -1106,7 +1059,7 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
         TileItem.BlendMode = SE_BLEND_Opaque;
         Canvas->DrawItem(TileItem);
     	
-        if (TargetMesh.IsValid() && TargetMesh->HasAttributes())
+        if (TargetMesh.IsValid() && TargetMesh->HasAttributes() && Properties->bOverlayUV)
         {
             const UE::Geometry::FDynamicMeshUVOverlay* UVOverlay = TargetMesh->Attributes()->GetUVLayer(Properties->UVChannel);
             if (UVOverlay)

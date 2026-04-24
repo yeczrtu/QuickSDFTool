@@ -16,6 +16,7 @@ class UQuickSDFBrushResizeInputBehavior : public UAnyButtonInputBehavior
 	GENERATED_BODY()
 
 public:
+	//TODO:入力系をエンジンのMeshPaintModeを参考にあわせる
 	void Initialize(class UQuickSDFPaintTool* InTool);
 
 	virtual EInputDevices GetSupportedDevices() override;
@@ -45,9 +46,14 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	int32 UVChannel = 0;
-
-	// 各ペイント対象(AngleIndex)に対応するターゲット階調(t値: 0.0~1.0など)
+	
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
+	bool bOverlayOriginalShadow = false;
+	
+	UPROPERTY(EditAnywhere, Category = "Paint Settings")
+	bool bOverlayUV = true;
+	
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (UIMin = "0.0", UIMax = "180.0"))
 	TArray<float> TargetAngles;
 
 	UPROPERTY(EditAnywhere, Category = "Target Settings")
@@ -58,9 +64,6 @@ public:
 
 	UPROPERTY(Transient)
 	TArray<class UTextureRenderTarget2D*> TransientRenderTargets;
-
-	UFUNCTION(CallInEditor, Category = "Actions")
-	void RotateLight90Deg();
 
 	UFUNCTION(CallInEditor, Category = "Actions")
 	void ExportToTexture();
@@ -120,7 +123,8 @@ class UQuickSDFPaintTool : public UBaseBrushTool
 {
 	GENERATED_BODY()
 	friend class UQuickSDFBrushResizeInputBehavior;
-
+	friend class UQuickSDFPreviewWidget;
+	
 public:
 	UQuickSDFPaintTool();
 
@@ -143,9 +147,10 @@ public:
 	virtual void DrawHUD( FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI ) override;
 	bool ApplyRenderTargetPixels(int32 AngleIndex, const TArray<FColor>& Pixels);
 	
-	void GeneratePerfectSDF();
+	void GenerateSDF();
 	bool CaptureRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const;
-
+	class UTextureRenderTarget2D* GetActiveRenderTarget() const;
+	
 protected:
 	UPROPERTY(Transient)
 	TObjectPtr<UQuickSDFToolProperties> Properties;
@@ -164,7 +169,6 @@ protected:
 		const FQuickSDFStrokeSample& P1,
 		const FQuickSDFStrokeSample& P2,
 		const FQuickSDFStrokeSample& P3);
-	class UTextureRenderTarget2D* GetActiveRenderTarget() const;
 	FVector2D GetPreviewOrigin() const;
 	FVector2D GetPreviewSize() const;
 	FVector2D ConvertInputScreenToCanvasSpace(const FVector2D& ScreenPosition) const;

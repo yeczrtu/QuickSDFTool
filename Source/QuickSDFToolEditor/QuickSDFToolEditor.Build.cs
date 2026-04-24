@@ -14,13 +14,14 @@ public class QuickSDFToolEditor : ModuleRules
 			{
 				"Core",
 				"QuickSDFTool",
-				"UnrealEd",
 				"InteractiveToolsFramework",
 				"EditorInteractiveToolsFramework",
 				"GeometryCore",
 				"DynamicMesh",
 				"ModelingComponents",
-				"MeshConversion"
+				"MeshConversion",
+				"EditorSubsystem",
+				"UMG"
 			}
 		);
 
@@ -36,6 +37,7 @@ public class QuickSDFToolEditor : ModuleRules
 				"EditorFramework",
 				"RenderCore",
 				"RHI",
+				"UnrealEd",
 				"ApplicationCore"
 			}
 		);

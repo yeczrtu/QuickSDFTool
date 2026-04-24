@@ -1,14 +1,24 @@
 #include "QuickSDFEditorModeToolkit.h"
-#include "QuickSDFEditorMode.h"
 #include "Engine/Selection.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Text/STextBlock.h"
 #include "EditorModeManager.h"
+#include "QuickSDFPreviewWidget.h"
+#include "Editor.h"
 
 #define LOCTEXT_NAMESPACE "FQuickSDFEditorModeToolkit"
 
 FQuickSDFEditorModeToolkit::FQuickSDFEditorModeToolkit()
 {
+	UClass* WidgetClass = StaticLoadClass(UUserWidget::StaticClass(), nullptr, TEXT("/QuickSDFTool/Widget/WBP_TexturePreview.WBP_TexturePreview_C"));
+	if (WidgetClass)
+	{
+		if (!PreviewWidgetInstance.IsValid())
+		{
+			UWorld* World = GLevelEditorModeTools().GetWorld();
+			PreviewWidgetInstance = TStrongObjectPtr<UQuickSDFPreviewWidget>(CreateWidget<UQuickSDFPreviewWidget>(World, WidgetClass));
+		}
+	}
 }
 
 void FQuickSDFEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& InitToolkitHost)
@@ -43,6 +53,28 @@ FText FQuickSDFEditorModeToolkit::GetToolPaletteDisplayName(FName Palette) const
 		return LOCTEXT("aaaaa", "aiueo");
 	}
 	return FText();
+}
+
+TSharedPtr<SWidget> FQuickSDFEditorModeToolkit::GetInlineContent() const
+{
+	TSharedPtr<SWidget> Dst = FModeToolkit::GetInlineContent();
+	
+	if (PreviewWidgetInstance.IsValid())
+	{
+		return SNew(SVerticalBox)
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			[
+				Dst.ToSharedRef()
+			]
+			+ SVerticalBox::Slot()
+			.FillHeight(1.0f)
+			[
+				PreviewWidgetInstance->TakeWidget()
+			];
+	}
+	
+	return Dst;
 }
 
 #undef LOCTEXT_NAMESPACE
