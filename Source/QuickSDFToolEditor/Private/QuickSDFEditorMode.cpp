@@ -3,7 +3,10 @@
 #include "EngineUtils.h"
 #include "Engine/DirectionalLight.h"
 #include "InteractiveToolManager.h"
+#include "QuickSDFEditorModeCommands.h"
 #include "QuickSDFPaintToolBuilder.h"
+#include "QuickSDFSelectTool.h"
+#include "QuickSDFToolSubsystem.h"
 #include "Tools/EdModeInteractiveToolsContext.h"
 
 
@@ -20,14 +23,15 @@ UQuickSDFEditorMode::UQuickSDFEditorMode()
 void UQuickSDFEditorMode::Enter()
 {
 	Super::Enter();
-	//GetToolManager()->RegisterToolType(TEXT("QuickSDFPaintTool"), NewObject<UQuickSDFPaintToolBuilder>(this));
-	// コマンドを作ってビルダーと紐づけてレジストもする。参考↓
-	//Engine/Plugins/MeshPainting/Source/MeshPaintEditorMode/Private/MeshPaintMode.cpp:146 
-	UEditorInteractiveToolsContext* UseToolsContext = GetInteractiveToolsContext(GetDefaultToolScope());
-	UseToolsContext->ToolManager->RegisterToolType(TEXT("QuickSDFPaintTool"), NewObject<UQuickSDFPaintToolBuilder>(this));
+	
+	FQuickSDFEditorModeCommands ToolManagerCommands = FQuickSDFEditorModeCommands::Get();
+	
+	RegisterTool(ToolManagerCommands.SelectTextureAsset, TEXT("QuickSDFSelectTool"), NewObject<UQuickSDFSelectToolBuilder>(this));
+	RegisterTool(ToolManagerCommands.PaintTextureColor, TEXT("QuickSDFPaintTool"), NewObject<UQuickSDFPaintToolBuilder>(this));
+	
 	GetInteractiveToolsContext()->StartTool(TEXT("QuickSDFPaintTool"));
 	GetToolManager()->ConfigureChangeTrackingMode(EToolChangeTrackingMode::NoChangeTracking);
-	Toolkit->SetCurrentPalette(TEXT("test"));
+	Toolkit->SetCurrentPalette(FName(TEXT("Default")));
 }
 
 void UQuickSDFEditorMode::Exit()
@@ -39,6 +43,40 @@ void UQuickSDFEditorMode::Exit()
 void UQuickSDFEditorMode::Tick(FEditorViewportClient* ViewportClient, float DeltaTime)
 {
 
+}
+
+TMap<FName, TArray<TSharedPtr<FUICommandInfo>>> UQuickSDFEditorMode::GetModeCommands() const
+{
+	return FQuickSDFEditorModeCommands::GetCommands();
+}
+
+void UQuickSDFEditorMode::ActorSelectionChangeNotify()
+{
+	if (UQuickSDFToolSubsystem* QuickSDFToolSubsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>())
+	{
+		FToolBuilderState SelectionState;
+		GetToolManager()->GetContextQueriesAPI()->GetCurrentSelectionState(SelectionState);
+
+		UMeshComponent* TargetComp = nullptr;
+		
+		if (SelectionState.SelectedComponents.Num() > 0)
+		{
+			TargetComp = Cast<UMeshComponent>(SelectionState.SelectedComponents[0]);
+		}
+		
+		if (TargetComp == nullptr && SelectionState.SelectedActors.Num() > 0)
+		{
+			if (AActor* SelectedActor = Cast<AActor>(SelectionState.SelectedActors[0]))
+			{
+				TargetComp = SelectedActor->FindComponentByClass<UMeshComponent>();
+			}
+		}
+		
+		if (TargetComp)
+		{
+			QuickSDFToolSubsystem->SetTargetComponent(TargetComp);
+		}
+	}
 }
 
 void UQuickSDFEditorMode::CreateToolkit()

@@ -343,6 +343,24 @@ void UQuickSDFPaintTool::Setup()
 	BrushResizeBehavior = NewObject<UQuickSDFBrushResizeInputBehavior>(this);
 	BrushResizeBehavior->Initialize(this);
 	AddInputBehavior(BrushResizeBehavior);
+	
+	if (UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>())
+	{
+		ChangeTargetComponent(Subsystem->GetTargetMeshComponent());
+	}
+}
+
+void UQuickSDFPaintTool::OnTick(float DeltaTime)
+{
+	Super::OnTick(DeltaTime);
+	
+	if (UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>())
+	{
+		if (CurrentComponent.Get() != Subsystem->GetTargetMeshComponent())
+		{
+			ChangeTargetComponent(Subsystem->GetTargetMeshComponent());
+		}
+	}
 }
 
 void UQuickSDFPaintTool::RefreshPreviewMaterial()
@@ -384,14 +402,15 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::SmoothStrokeSample(const FQuickSDFStro
 #endif
 }
 
-void UQuickSDFPaintTool::ChangeTargetComponent(UPrimitiveComponent* NewComponent)
+void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 {
-	if (CurrentComponent == NewComponent)
+	if (CurrentComponent.Get() == NewComponent)
 	{
 		return;
 	}
 
-	if (CurrentComponent)
+	// 以前のコンポーネントのマテリアルを復元
+	if (CurrentComponent.IsValid())
 	{
 		for (int32 i = 0; i < OriginalMaterials.Num(); ++i)
 		{
@@ -408,7 +427,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UPrimitiveComponent* NewComponent
 	TargetMesh.Reset();
 	ResetStrokeState();
 
-	if (!CurrentComponent)
+	if (!CurrentComponent.IsValid())
 	{
 		return;
 	}
@@ -416,12 +435,11 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UPrimitiveComponent* NewComponent
 	bool bValidMeshLoaded = false;
 	TSharedPtr<UE::Geometry::FDynamicMesh3> TempMesh = MakeShared<UE::Geometry::FDynamicMesh3>();
 
-	if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(CurrentComponent))
+	if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(CurrentComponent.Get()))
 	{
 		if (UStaticMesh* StaticMesh = SMC->GetStaticMesh())
 		{
-			const FMeshDescription* MeshDesc = StaticMesh->GetMeshDescription(0);
-			if (MeshDesc)
+			if (const FMeshDescription* MeshDesc = StaticMesh->GetMeshDescription(0))
 			{
 				FMeshDescriptionToDynamicMesh Converter;
 				Converter.Convert(MeshDesc, *TempMesh);
@@ -432,7 +450,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UPrimitiveComponent* NewComponent
 
 	if (!bValidMeshLoaded || TempMesh->TriangleCount() <= 0)
 	{
-		CurrentComponent = nullptr;
+		CurrentComponent.Reset();
 		return;
 	}
 
@@ -449,6 +467,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UPrimitiveComponent* NewComponent
 		return;
 	}
 
+	// 新しいコンポーネントのマテリアルをプレビュー用に差し替え
 	for (int32 i = 0; i < CurrentComponent->GetNumMaterials(); ++i)
 	{
 		OriginalMaterials.Add(CurrentComponent->GetMaterial(i));
@@ -465,9 +484,10 @@ void UQuickSDFPaintTool::Shutdown(EToolShutdownType ShutdownType)
 		GetToolManager()->EndUndoTransaction();
 		bBrushResizeTransactionOpen = false;
 	}
-
+	
 	ChangeTargetComponent(nullptr);
-	UInteractiveTool::Shutdown(ShutdownType);
+	
+	Super::Shutdown(ShutdownType); // ツール終了処理
 }
 
 bool UQuickSDFPaintTool::CaptureRenderTargetPixels(UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const
@@ -587,7 +607,8 @@ FVector2D UQuickSDFPaintTool::GetBrushPixelSize(UTextureRenderTarget2D* RenderTa
 {
 	if (!RenderTarget) return FVector2D(16.0, 16.0);
 	const FVector2D RTSize(RenderTarget->SizeX, RenderTarget->SizeY);
-	if (CurrentComponent && TargetMesh.IsValid())
+
+	if (CurrentComponent.IsValid() && TargetMesh.IsValid())
 	{
 		const FTransform Transform = CurrentComponent->GetComponentTransform();
 		const float MeshBoundsMax = static_cast<float>(TargetMesh->GetBounds().MaxDim());
@@ -598,6 +619,7 @@ FVector2D UQuickSDFPaintTool::GetBrushPixelSize(UTextureRenderTarget2D* RenderTa
 			return FVector2D(UVBrushSize * RTSize.X, UVBrushSize * RTSize.Y);
 		}
 	}
+	
 	const float FallbackDiameter = BrushProperties ? FMath::Max(BrushProperties->BrushRadius * 2.0f, 1.0f) : 16.0f;
 	return FVector2D(FallbackDiameter, FallbackDiameter);
 }
@@ -726,33 +748,18 @@ void UQuickSDFPaintTool::OnClickRelease(const FInputDeviceRay& ReleasePos)
 
 bool UQuickSDFPaintTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 {
-	UPrimitiveComponent* ComponentToTrace = nullptr;
-	if (CurrentComponent)
-	{
-		ComponentToTrace = Cast<UPrimitiveComponent>(CurrentComponent);
-	}
-	else
-	{
-		UWorld* World = GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld();
-		FHitResult TempHit;
-		FCollisionQueryParams SearchParams(SCENE_QUERY_STAT(QuickSDFSearch), true);
-		if (World->LineTraceSingleByChannel(TempHit, Ray.Origin, Ray.Origin + Ray.Direction * 100000.f, ECC_Visibility, SearchParams))
-		{
-			ComponentToTrace = TempHit.GetComponent();
-		}
-	}
-	if (ComponentToTrace)
+	if (CurrentComponent.IsValid())
 	{
 		FCollisionQueryParams Params(SCENE_QUERY_STAT(QuickSDF), true);
 		Params.bReturnFaceIndex = true;
 		Params.bTraceComplex = true;
-		const FVector End = Ray.Origin + Ray.Direction * 100000.0f;
-		if (ComponentToTrace->LineTraceComponent(OutHit, Ray.Origin, End, Params))
+
+		if (CurrentComponent->LineTraceComponent(OutHit, Ray.Origin, Ray.Origin + Ray.Direction * 100000.0f, Params))
 		{
-			ChangeTargetComponent(OutHit.GetComponent());
 			return true;
 		}
 	}
+
 	return false;
 }
 
@@ -836,8 +843,8 @@ void UQuickSDFPaintTool::OnEndDrag(const FRay& Ray)
 
 bool UQuickSDFPaintTool::TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample)
 {
-	if (!TargetMeshSpatial.IsValid() || !TargetMesh.IsValid() || !Properties || !CurrentComponent) return false;
-
+	if (!TargetMeshSpatial.IsValid() || !TargetMesh.IsValid() || !Properties || !CurrentComponent.IsValid()) return false;
+	
 	const FTransform Transform = CurrentComponent->GetComponentTransform();
 	const FRay LocalRay(Transform.InverseTransformPosition(Ray.Origin), Transform.InverseTransformVector(Ray.Direction));
 

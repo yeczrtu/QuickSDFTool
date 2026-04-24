@@ -38,24 +38,9 @@ FText FQuickSDFEditorModeToolkit::GetBaseToolkitName() const
 
 void FQuickSDFEditorModeToolkit::GetToolPaletteNames(TArray<FName>& PaletteNames) const
 {
-	PaletteNames.Add(FName(TEXT("test")));
-	PaletteNames.Add(FName(TEXT("aiueo")));
+	PaletteNames.Add(FName(TEXT("Default")));
 }
-
-FText FQuickSDFEditorModeToolkit::GetToolPaletteDisplayName(FName Palette) const
-{
-	if (Palette == FName(TEXT("test")))
-	{
-		return LOCTEXT("test", "test");
-	}
-	if (Palette == FName(TEXT("aiueo")))
-	{
-		return LOCTEXT("aaaaa", "aiueo");
-	}
-	return FText();
-}
-
-TSharedPtr<SWidget> FQuickSDFEditorModeToolkit::GetInlineContent() const
+/*TSharedPtr<SWidget> FQuickSDFEditorModeToolkit::GetInlineContent() const
 {
 	TSharedPtr<SWidget> Dst = FModeToolkit::GetInlineContent();
 	
@@ -75,6 +60,6 @@ TSharedPtr<SWidget> FQuickSDFEditorModeToolkit::GetInlineContent() const
 	}
 	
 	return Dst;
-}
+}*/
 
 #undef LOCTEXT_NAMESPACE

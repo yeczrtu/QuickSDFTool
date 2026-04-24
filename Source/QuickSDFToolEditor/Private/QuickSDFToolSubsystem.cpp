@@ -9,6 +9,17 @@
 #include "TextureResource.h"
 #include "Editor.h"
 
+void UQuickSDFToolSubsystem::SetTargetComponent(UMeshComponent* NewComponent)
+{
+	CurrentTargetComponent = NewComponent;
+}
+
+UMeshComponent* UQuickSDFToolSubsystem::GetTargetMeshComponent() const
+{
+	if (!CurrentTargetComponent.IsValid()) return nullptr;
+	return CurrentTargetComponent.Get();
+}
+
 bool UQuickSDFToolSubsystem::CaptureRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget,
                                                        TArray<FColor>& OutPixels) const
 {

@@ -18,6 +18,8 @@ public:
 	virtual void Enter() override;
 	virtual void Exit() override;
 	virtual void Tick(FEditorViewportClient* ViewportClient, float DeltaTime) override;
+	virtual TMap<FName, TArray<TSharedPtr<FUICommandInfo>>> GetModeCommands() const override;
+	virtual void ActorSelectionChangeNotify() override;
 	// Set the main directional light rotation for previewing
 	void SetPreviewLightAngle(float AzimuthAngle);
 	

@@ -8,6 +8,7 @@
 #include "InteractiveToolBuilder.h"
 #include "InteractiveToolActionSet.h"
 #include "QuickSDFToolTypes.h"
+#include "Components/MeshComponent.h"
 #include "QuickSDFPaintTool.generated.h"
 
 UCLASS()
@@ -16,7 +17,7 @@ class UQuickSDFBrushResizeInputBehavior : public UAnyButtonInputBehavior
 	GENERATED_BODY()
 
 public:
-	//TODO:入力系をエンジンのMeshPaintModeを参考にあわせる
+	//TODO:入力系をコマンドに移動させる
 	void Initialize(class UQuickSDFPaintTool* InTool);
 
 	virtual EInputDevices GetSupportedDevices() override;
@@ -131,6 +132,8 @@ public:
 	virtual void RegisterActions(FInteractiveToolActionSet& ActionSet) override;
 	virtual void Setup() override;
 	virtual void Shutdown(EToolShutdownType ShutdownType) override;
+	virtual void OnTick(float DeltaTime) override;
+	
 	virtual FInputRayHit CanBeginClickDragSequence(const FInputDeviceRay& PressPos) override;
 	virtual void OnClickPress(const FInputDeviceRay& PressPos) override;
 	virtual void OnClickDrag(const FInputDeviceRay& DragPos) override;
@@ -158,7 +161,7 @@ protected:
 	void BuildBrushMaskTexture();
 	void RefreshPreviewMaterial();
 	FQuickSDFStrokeSample SmoothStrokeSample(const FQuickSDFStrokeSample& RawSample);
-	void ChangeTargetComponent(class UPrimitiveComponent* NewComponent);
+	void ChangeTargetComponent(class UMeshComponent* NewComponent);
 	bool TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample);
 	bool TryMakePreviewStrokeSample(const FVector2D& ScreenPosition, FQuickSDFStrokeSample& OutSample) const;
 	void StampSample(const FQuickSDFStrokeSample& Sample);
@@ -185,12 +188,11 @@ protected:
 	void EndStrokeTransaction();
 	void ResetStrokeState();
 	void InitializeRenderTargets();
-	
-	UPROPERTY(Transient)
-	class UPrimitiveComponent* CurrentComponent;
 
 	TSharedPtr<UE::Geometry::FDynamicMesh3> TargetMesh;
 	TSharedPtr<UE::Geometry::FDynamicMeshAABBTree3> TargetMeshSpatial;
+
+	TWeakObjectPtr<class UMeshComponent> CurrentComponent;
 
 	UPROPERTY()
 	TArray<UMaterialInterface*> OriginalMaterials;

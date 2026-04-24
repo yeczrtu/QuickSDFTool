@@ -10,6 +10,18 @@ class UQuickSDFToolSubsystem : public UEditorSubsystem
 	GENERATED_BODY()
 
 public:
+	UPROPERTY()
+	TWeakObjectPtr<UMeshComponent> CurrentTargetComponent;
+
+	// 現在生成されている作業用RT
+	UPROPERTY()
+	TArray<TObjectPtr<UTextureRenderTarget2D>> TransientRenderTargets;
+
+	// --- ロジック (Logic) ---
+	void SetTargetComponent(UMeshComponent* NewComponent);
+	UMeshComponent* GetTargetMeshComponent() const;
+	
+	
 	bool CaptureRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const;
 	bool RestoreRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, const TArray<FColor>& Pixels) const;
 	

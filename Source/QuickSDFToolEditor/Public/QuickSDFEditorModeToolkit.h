@@ -16,10 +16,9 @@ public:
 	/** IToolkit interface */
 	virtual FName GetToolkitFName() const override;
 	virtual FText GetBaseToolkitName() const override;
-	// 横のUIのタブ
 	virtual void GetToolPaletteNames(TArray<FName>& PaletteNames) const override;
-	virtual FText GetToolPaletteDisplayName(FName Palette) const override;
-	virtual TSharedPtr<SWidget> GetInlineContent() const override;
+
+	//virtual TSharedPtr<SWidget> GetInlineContent() const override;
 private:
 	TStrongObjectPtr<UQuickSDFPreviewWidget> PreviewWidgetInstance;
 };
