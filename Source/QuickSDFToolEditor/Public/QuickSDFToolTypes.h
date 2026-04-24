@@ -12,4 +12,5 @@ struct FQuickSDFStrokeSample
 {
 	FVector3d WorldPos = FVector3d::Zero();
 	FVector2f UV = FVector2f::ZeroVector;
+	float LocalUVScale = 1.0f;
 };

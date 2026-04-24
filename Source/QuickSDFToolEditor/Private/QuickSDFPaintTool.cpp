@@ -848,6 +848,14 @@ bool UQuickSDFPaintTool::TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSam
 
 	if (!bHit || HitTID < 0) return false;
 
+	UE::Geometry::FIndex3i TriV = TargetMesh->GetTriangle(HitTID);
+
+	// 2. インデックスからローカル頂点座標を取得し、ワールド座標に変換
+	FVector3d V0 = Transform.TransformPosition(TargetMesh->GetVertex(TriV.A));
+	FVector3d V1 = Transform.TransformPosition(TargetMesh->GetVertex(TriV.B));
+	FVector3d V2 = Transform.TransformPosition(TargetMesh->GetVertex(TriV.C));
+
+	// UV座標を取得
 	const UE::Geometry::FDynamicMeshUVOverlay* UVOverlay = TargetMesh->Attributes()->GetUVLayer(Properties->UVChannel);
 	if (!UVOverlay || !UVOverlay->IsSetTriangle(HitTID)) return false;
 
@@ -856,6 +864,21 @@ bool UQuickSDFPaintTool::TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSam
 	const FVector2f UV1 = UVOverlay->GetElement(TriUVs.B);
 	const FVector2f UV2 = UVOverlay->GetElement(TriUVs.C);
 
+	// ワールド空間での三角形の面積（の2倍）を計算
+	double AreaWorld = FVector3d::CrossProduct(V1 - V0, V2 - V0).Size();
+	// UV空間での三角形の面積（の2倍）を計算
+	double AreaUV = FMath::Abs((UV1.X - UV0.X) * (UV2.Y - UV0.Y) - (UV2.X - UV0.X) * (UV1.Y - UV0.Y));
+
+	// 1ワールド単位あたりのUV単位（スケール）を計算
+	// 面積比の平方根をとることで線形スケールを得る
+	if (AreaWorld > KINDA_SMALL_NUMBER)
+	{
+		OutSample.LocalUVScale = FMath::Sqrt(AreaUV / AreaWorld);
+	}
+	else
+	{
+		OutSample.LocalUVScale = 0.001f;
+	}
 	OutSample.UV = UV0 * static_cast<float>(BaryCoords.X) +
 		UV1 * static_cast<float>(BaryCoords.Y) +
 		UV2 * static_cast<float>(BaryCoords.Z);
@@ -889,13 +912,26 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 	if (!RTResource) return;
 
 	const FVector2D RTSize(RT->SizeX, RT->SizeY);
-	const FVector2D PixelSize = GetBrushPixelSize(RT);
 	const FLinearColor PaintColor = IsPaintingShadow() ? FLinearColor::Black : FLinearColor::White;
 	
 	FCanvas Canvas(RTResource, nullptr, GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(), GMaxRHIFeatureLevel);
 
 	for (const FQuickSDFStrokeSample& Sample : Samples)
 	{
+		float BrushRadiusWorld = BrushProperties ? BrushProperties->BrushRadius : 10.0f;
+		FVector2D PixelSize;
+		
+		if (ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview)
+		{
+			// プレビュー表示（2D）の場合は以前の固定計算
+			PixelSize = GetBrushPixelSize(RT);
+		}
+		else
+		{
+			// 3Dメッシュ上の場合は、計算したローカルスケールを使用
+			float UVRadius = BrushRadiusWorld * Sample.LocalUVScale;
+			PixelSize = FVector2D(UVRadius * RTSize.X * 2.0f, UVRadius * RTSize.Y * 2.0f);
+		}
 		const FVector2D PixelPos(Sample.UV.X * RTSize.X, Sample.UV.Y * RTSize.Y);
 		const FVector2D StampPos = PixelPos - (PixelSize * 0.5f);
 		FCanvasTileItem BrushItem(StampPos, BrushMaskTexture->GetResource(), PixelSize, PaintColor);
@@ -984,6 +1020,13 @@ void UQuickSDFPaintTool::StampInterpolatedSegment(
         FVector2f V2 = a23 * U2 + b23 * U3;
         Out.UV = (float)a2 * V1 + (float)b2 * V2;
         
+    	double s1 = a1 * P0.LocalUVScale + b1 * P1.LocalUVScale;
+    	double s2 = a2 * P1.LocalUVScale + b2 * P2.LocalUVScale;
+    	double s3 = a3 * P2.LocalUVScale + b3 * P3.LocalUVScale;
+    	double sv1 = a12 * s1 + b12 * s2;
+    	double sv2 = a23 * s2 + b23 * s3;
+    	Out.LocalUVScale = (float)(a2 * sv1 + b2 * sv2);
+    	
         return Out;
     };
 	
@@ -1007,6 +1050,7 @@ void UQuickSDFPaintTool::StampInterpolatedSegment(
             FQuickSDFStrokeSample Stamp;
             Stamp.WorldPos = FMath::Lerp(Prev.WorldPos, Curr.WorldPos, Ratio);
             Stamp.UV = FMath::Lerp(Prev.UV, Curr.UV, (float)Ratio);
+        	Stamp.LocalUVScale = FMath::Lerp(Prev.LocalUVScale, Curr.LocalUVScale, (float)Ratio);
             Batch.Add(Stamp);
             AccumulatedDistance -= Spacing;
         }
