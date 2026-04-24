@@ -7,20 +7,8 @@
 #include "DynamicMesh/DynamicMeshAABBTree3.h"
 #include "InteractiveToolBuilder.h"
 #include "InteractiveToolActionSet.h"
+#include "QuickSDFToolTypes.h"
 #include "QuickSDFPaintTool.generated.h"
-
-struct FQuickSDFStrokeSample
-{
-	FVector3d WorldPos = FVector3d(0.0, 0.0, 0.0);
-	FVector2f UV = FVector2f::ZeroVector;
-};
-
-enum class EQuickSDFStrokeInputMode : uint8
-{
-	None,
-	MeshSurface,
-	TexturePreview
-};
 
 UCLASS()
 class UQuickSDFBrushResizeInputBehavior : public UAnyButtonInputBehavior
@@ -154,8 +142,7 @@ public:
 	virtual void OnPropertyModified(UObject* PropertySet, FProperty* Property) override;
 	virtual void DrawHUD( FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI ) override;
 	bool ApplyRenderTargetPixels(int32 AngleIndex, const TArray<FColor>& Pixels);
-
-	// 高精度SDFスレッショルドマップを生成・保存する処理
+	
 	void GeneratePerfectSDF();
 	bool CaptureRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const;
 
