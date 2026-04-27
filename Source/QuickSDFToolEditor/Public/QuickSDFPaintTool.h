@@ -158,6 +158,9 @@ public:
 	bool CaptureRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const;
 	class UTextureRenderTarget2D* GetActiveRenderTarget() const;
 	
+	void AddKeyframe();
+	void RemoveKeyframe(int32 Index);
+	
 protected:
 	UPROPERTY(Transient)
 	TObjectPtr<UQuickSDFToolProperties> Properties;
