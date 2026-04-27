@@ -36,7 +36,7 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 	OnDragEnded = InArgs._OnDragEnded;
 
 	auto ColorAttr = TAttribute<FSlateColor>::CreateLambda([this]() {
-		return bIsActive.Get() ? FSlateColor(FLinearColor(1.0f, 0.6f, 0.1f, 1.0f)) : FSlateColor(FLinearColor(0.4f, 0.4f, 0.4f, 1.0f));
+		return bIsActive.Get() ? FSlateColor(FLinearColor(1.0f, 0.6f, 0.1f, 1.0f)) : FSlateColor(FLinearColor(1.0f, 1.0f, 1.0f, 0.5f));
 	});
 
 	ChildSlot
@@ -54,48 +54,32 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 				SNew(SBorder)
 				.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
 				.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this]() {
-					return bIsActive.Get() ? FLinearColor(1.0f, 0.6f, 0.1f, 0.5f) : FLinearColor(1.0f, 1.0f, 1.0f, 0.1f);
+					return bIsActive.Get() ? FLinearColor(1.0f, 0.6f, 0.1f, 1.0f) : FLinearColor(1.0f, 1.0f, 1.0f, 0.2f);
 				}))
 			]
 		]
 
-		// 2. The Thumbnail Frame
+		// 2. The Small Handle Preview (Top)
 		+ SOverlay::Slot()
 		.HAlign(HAlign_Center)
-		.VAlign(VAlign_Center)
+		.VAlign(VAlign_Top)
+		.Padding(0, 5, 0, 0)
 		[
 			SNew(SBorder)
 			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
 			.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this]() {
-				return bIsActive.Get() ? FLinearColor(1.0f, 0.6f, 0.1f, 1.0f) : FLinearColor(0.05f, 0.05f, 0.05f, 1.0f);
+				return bIsActive.Get() ? FLinearColor(1.0f, 0.6f, 0.1f, 1.0f) : FLinearColor(0.1f, 0.1f, 0.1f, 1.0f);
 			}))
-			.Padding(2.0f)
+			.Padding(1.0f)
 			[
 				SNew(SBox)
-				.WidthOverride(64.0f)
-				.HeightOverride(64.0f)
+				.WidthOverride(24.0f)
+				.HeightOverride(24.0f)
 				[
-					SNew(SOverlay)
-					
-					// Texture Preview
-					+ SOverlay::Slot()
-					[
-						SNew(SImage)
-						.Image(TAttribute<const FSlateBrush*>::CreateLambda([this]() {
-							return TextureBrush.Get() ? TextureBrush.Get() : FAppStyle::GetBrush("DefaultBrush");
-						}))
-					]
-
-					// Shadow overlay for inactive
-					+ SOverlay::Slot()
-					[
-						SNew(SBorder)
-						.Visibility(TAttribute<EVisibility>::CreateLambda([this]() {
-							return bIsActive.Get() ? EVisibility::Collapsed : EVisibility::Visible;
-						}))
-						.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-						.BorderBackgroundColor(FLinearColor(0, 0, 0, 0.4f))
-					]
+					SNew(SImage)
+					.Image(TAttribute<const FSlateBrush*>::CreateLambda([this]() {
+						return TextureBrush.Get() ? TextureBrush.Get() : FAppStyle::GetBrush("DefaultBrush");
+					}))
 				]
 			]
 		]
@@ -104,14 +88,14 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 		+ SOverlay::Slot()
 		.HAlign(HAlign_Center)
 		.VAlign(VAlign_Bottom)
-		.Padding(0, 0, 0, -18)
+		.Padding(0, 0, 0, -16)
 		[
 			SNew(STextBlock)
 			.Text(TAttribute<FText>::CreateLambda([this]() {
 				return FText::FromString(FString::Printf(TEXT("%.0f\u00B0"), Angle.Get()));
 			}))
 			.ColorAndOpacity(ColorAttr)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
 			.ShadowOffset(FVector2D(1, 1))
 			.ShadowColorAndOpacity(FLinearColor::Black)
 		]
@@ -223,7 +207,7 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 					.Padding(10.0f, 10.0f)
 					[
 						SNew(SBox)
-						.HeightOverride(100.0f)
+						.HeightOverride(70.0f)
 						[
 							SNew(SOverlay)
 							
@@ -234,29 +218,29 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 								SNew(SBorder)
 								.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
 								.BorderBackgroundColor(FLinearColor(0.01f, 0.01f, 0.01f, 1.0f))
-								.Padding(FMargin(0, 2))
+								.Padding(FMargin(0, 1))
 							]
 
 							// Filmstrip decorative holes (Top)
 							+ SOverlay::Slot()
 							.VAlign(VAlign_Top)
-							.Padding(0, 5)
+							.Padding(0, 3)
 							[
 								SNew(SHorizontalBox)
-								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(10).HeightOverride(6).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.2f, 0.2f, 0.2f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
+								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(6).HeightOverride(4).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.15f, 0.15f, 0.15f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
 								+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
-								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(10).HeightOverride(6).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.2f, 0.2f, 0.2f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
+								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(6).HeightOverride(4).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.15f, 0.15f, 0.15f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
 							]
 
 							// Filmstrip decorative holes (Bottom)
 							+ SOverlay::Slot()
 							.VAlign(VAlign_Bottom)
-							.Padding(0, 5)
+							.Padding(0, 3)
 							[
 								SNew(SHorizontalBox)
-								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(10).HeightOverride(6).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.2f, 0.2f, 0.2f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
+								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(6).HeightOverride(4).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.15f, 0.15f, 0.15f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
 								+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
-								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(10).HeightOverride(6).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.2f, 0.2f, 0.2f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
+								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(6).HeightOverride(4).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.15f, 0.15f, 0.15f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
 							]
 
 							// The actual canvas for keyframes
@@ -411,9 +395,81 @@ void SQuickSDFTimeline::RebuildTimeline()
 		}
 	}
 
-	float CanvasHeight = 100.0f;
+	float CanvasHeight = 70.0f;
+	float KeyframeWidth = 30.0f;
 
-	// Add tick marks for 0, 90, 180
+	// 1. Add Filmstrip Background (One segment per keyframe)
+	for (int32 i = 0; i < Props->NumAngles; ++i)
+	{
+		// 'i' here is the visual order (0th smallest, 1st smallest...)
+		TimelineTrackCanvas->AddSlot()
+		.Position(TAttribute<FVector2D>::CreateLambda([this, i]() {
+			UQuickSDFPaintTool* Tool = GetActivePaintTool();
+			if (!Tool || !Tool->Properties) return FVector2D::ZeroVector;
+			UQuickSDFToolProperties* P = Tool->Properties;
+
+			TArray<int32> Indices;
+			for (int32 k = 0; k < P->TargetAngles.Num(); ++k) Indices.Add(k);
+			Indices.Sort([P](int32 A, int32 B) { return P->TargetAngles[A] < P->TargetAngles[B]; });
+
+			if (!Indices.IsValidIndex(i)) return FVector2D::ZeroVector;
+
+			float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
+			float PrevAngle = (i == 0) ? 0.0f : P->TargetAngles[Indices[i - 1]];
+			float CurrAngle = P->TargetAngles[Indices[i]];
+			float L = (i == 0) ? 0.0f : (PrevAngle + CurrAngle) * 0.5f;
+			
+			return FVector2D(FMath::Max(0.0f, TrackWidth) * (L / 180.0f) + 20.0f, 0.0f);
+		}))
+		.Size(TAttribute<FVector2D>::CreateLambda([this, i]() {
+			UQuickSDFPaintTool* Tool = GetActivePaintTool();
+			if (!Tool || !Tool->Properties) return FVector2D::ZeroVector;
+			UQuickSDFToolProperties* P = Tool->Properties;
+
+			TArray<int32> Indices;
+			for (int32 k = 0; k < P->TargetAngles.Num(); ++k) Indices.Add(k);
+			Indices.Sort([P](int32 A, int32 B) { return P->TargetAngles[A] < P->TargetAngles[B]; });
+
+			if (!Indices.IsValidIndex(i)) return FVector2D::ZeroVector;
+
+			float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
+			float PrevAngle = (i == 0) ? 0.0f : P->TargetAngles[Indices[i - 1]];
+			float CurrAngle = P->TargetAngles[Indices[i]];
+			float NextAngle = (i == Indices.Num() - 1) ? 180.0f : P->TargetAngles[Indices[i + 1]];
+			
+			float L = (i == 0) ? 0.0f : (PrevAngle + CurrAngle) * 0.5f;
+			float R = (i == Indices.Num() - 1) ? 180.0f : (CurrAngle + NextAngle) * 0.5f;
+			
+			return FVector2D(FMath::Max(0.0f, TrackWidth) * ((R - L) / 180.0f), 70.0f);
+		}))
+		[
+			SNew(SBorder)
+			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+			.BorderBackgroundColor(FLinearColor(0.05f, 0.05f, 0.05f, 1.0f))
+			.Padding(1.0f)
+			[
+				SNew(SImage)
+				.Image(TAttribute<const FSlateBrush*>::CreateLambda([this, i]() -> FSlateBrush* {
+					UQuickSDFPaintTool* Tool = GetActivePaintTool();
+					if (!Tool || !Tool->Properties) return nullptr;
+					UQuickSDFToolProperties* P = Tool->Properties;
+
+					TArray<int32> Indices;
+					for (int32 k = 0; k < P->TargetAngles.Num(); ++k) Indices.Add(k);
+					Indices.Sort([P](int32 A, int32 B) { return P->TargetAngles[A] < P->TargetAngles[B]; });
+
+					if (Indices.IsValidIndex(i))
+					{
+						int32 KeyIndex = Indices[i];
+						if (KeyframeBrushes.IsValidIndex(KeyIndex)) return KeyframeBrushes[KeyIndex].Get();
+					}
+					return nullptr;
+				}))
+			]
+		];
+	}
+
+	// 2. Add tick marks (Middle layer)
 	for (int32 i = 0; i <= 2; ++i)
 	{
 		float TickAngle = i * 90.0f;
@@ -428,41 +484,26 @@ void SQuickSDFTimeline::RebuildTimeline()
 		[
 			SNew(SBorder)
 			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-			.BorderBackgroundColor(FLinearColor(0.2f, 0.2f, 0.2f, 0.5f))
+			.BorderBackgroundColor(FLinearColor(0.5f, 0.5f, 0.5f, 0.3f))
 		];
 	}
 
-	// Add Current Light Indicator
-	TimelineTrackCanvas->AddSlot()
-	.Position(TAttribute<FVector2D>::CreateLambda([this]() {
-		float LightYaw = GetCurrentLightYaw();
-		float Percent = FMath::Clamp(LightYaw / 180.0f, 0.0f, 1.0f);
-		float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
-		return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 19.0f, 0.0f);
-	}))
-	.Size(FVector2D(2.0f, CanvasHeight))
-	[
-		SNew(SBorder)
-		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-		.BorderBackgroundColor(FLinearColor(1.0f, 1.0f, 0.0f, 0.6f)) // Yellow
-	];
-
-	for (int32 i = 0; i < Props->NumAngles; ++i)
+	// 3. Add Keyframes in two passes to handle "Z-Order" (Active on top)
+	auto AddKeyframeToCanvas = [this, Props, CanvasHeight, KeyframeWidth](int32 i)
 	{
 		TimelineTrackCanvas->AddSlot()
-		.Position(TAttribute<FVector2D>::CreateLambda([this, i]() {
+		.Position(TAttribute<FVector2D>::CreateLambda([this, i, KeyframeWidth]() {
 			UQuickSDFPaintTool* ActiveTool = GetActivePaintTool();
 			if (ActiveTool && ActiveTool->Properties && ActiveTool->Properties->TargetAngles.IsValidIndex(i))
 			{
 				float CurrentAngle = ActiveTool->Properties->TargetAngles[i];
 				float Percent = FMath::Clamp(CurrentAngle / 180.0f, 0.0f, 1.0f);
 				float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
-				// Offset to center the 80px keyframe (64px image + padding)
-				return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 20.0f - 40.0f, 0.0f);
+				return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 20.0f - (KeyframeWidth * 0.5f), 0.0f);
 			}
 			return FVector2D::ZeroVector;
 		}))
-		.Size(FVector2D(80.0f, CanvasHeight))
+		.Size(FVector2D(KeyframeWidth, CanvasHeight))
 		[
 			SNew(SQuickSDFTimelineKeyframe)
 			.Index(i)
@@ -486,7 +527,37 @@ void SQuickSDFTimeline::RebuildTimeline()
 			.OnDragStarted(this, &SQuickSDFTimeline::OnKeyframeDragStarted)
 			.OnDragEnded(this, &SQuickSDFTimeline::OnKeyframeDragEnded)
 		];
+	};
+
+	// Pass 1: Non-active keyframes
+	for (int32 i = 0; i < Props->NumAngles; ++i)
+	{
+		if (Props->EditAngleIndex != i)
+		{
+			AddKeyframeToCanvas(i);
+		}
 	}
+
+	// Pass 2: Active keyframe (should be on top of other keyframes)
+	if (Props->TargetAngles.IsValidIndex(Props->EditAngleIndex))
+	{
+		AddKeyframeToCanvas(Props->EditAngleIndex);
+	}
+
+	// 4. Add Current Light Indicator (Top layer)
+	TimelineTrackCanvas->AddSlot()
+	.Position(TAttribute<FVector2D>::CreateLambda([this]() {
+		float LightYaw = GetCurrentLightYaw();
+		float Percent = FMath::Clamp(LightYaw / 180.0f, 0.0f, 1.0f);
+		float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
+		return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 19.0f, 0.0f);
+	}))
+	.Size(FVector2D(2.0f, CanvasHeight))
+	[
+		SNew(SBorder)
+		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+		.BorderBackgroundColor(FLinearColor(1.0f, 1.0f, 0.0f, 0.8f)) // Yellow
+	];
 }
 
 FReply SQuickSDFTimeline::OnAddKeyframeClicked()
