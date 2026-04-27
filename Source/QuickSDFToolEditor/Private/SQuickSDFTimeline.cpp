@@ -184,7 +184,7 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 		.Padding(FMargin(10.0f, 0.0f, 10.0f, 0.0f))
 		[
 			SNew(SBox)
-			.WidthOverride(800.0f) // Wider for spatial timeline
+			.WidthOverride(800.0f) // Wider for timeline
 			[
 				SNew(SExpandableArea)
 				.InitiallyCollapsed(false)
@@ -197,7 +197,7 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 					.VAlign(VAlign_Center)
 					[
 						SNew(STextBlock)
-						.Text(LOCTEXT("TimelineAreaTitle", "Spatial Timeline"))
+						.Text(LOCTEXT("TimelineAreaTitle", "Timeline"))
 						.Font(FAppStyle::GetFontStyle("SmallFont"))
 					]
 
@@ -412,7 +412,12 @@ void SQuickSDFTimeline::OnSymmetryModeStateChanged(ECheckBoxState NewState)
 float SQuickSDFTimeline::GetCurrentLightYaw() const
 {
 	UQuickSDFPaintTool* Tool = GetActivePaintTool();
-	if (Tool && Tool->GetToolManager() && Tool->GetToolManager()->GetContextQueriesAPI())
+	if (!Tool) return 0.0f;
+
+	// Use mesh relative calculation if we have a target component
+	TObjectPtr<UMeshComponent> MeshComp = Tool->CurrentComponent.Get();
+
+	if (Tool->GetToolManager() && Tool->GetToolManager()->GetContextQueriesAPI())
 	{
 		if (UWorld* World = Tool->GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld())
 		{
@@ -420,26 +425,56 @@ float SQuickSDFTimeline::GetCurrentLightYaw() const
 			{
 				if (ADirectionalLight* DirLight = *It)
 				{
-					// Normalize yaw to 0-360 then map to 0-180 if needed, or just take positive
-					float Yaw = DirLight->GetActorRotation().Yaw;
-					while (Yaw < 0.0f) Yaw += 360.0f;
-					while (Yaw >= 360.0f) Yaw -= 360.0f;
+					float RelativeAngle = 0.0f;
+
+					if (MeshComp)
+					{
+						FVector MeshForward = MeshComp->GetForwardVector();
+						FVector MeshRight = MeshComp->GetRightVector();
+						FVector LightForward = DirLight->GetActorForwardVector();
+
+						// Project light direction onto the mesh's horizontal plane
+						float ProjX = FVector::DotProduct(LightForward, MeshForward);
+						float ProjY = FVector::DotProduct(LightForward, MeshRight);
+
+						// If the light is behind the mesh, we don't show it on the front-sweep timeline
+						if (ProjX > 0.0f)
+						{
+							return -1.0f;
+						}
+
+						// The user wants:
+						// Front (-MeshForward) -> 90 degrees
+						// Left Side (Light points Right, MeshRight) -> 0 degrees
+						// Right Side (Light points Left, -MeshRight) -> 180 degrees
+						// Formula: Atan2(-ProjY, -ProjX) + 90
+						// Front (-1, 0) -> Atan2(0, 1) = 0 -> 90
+						// Left (0, 1)   -> Atan2(-1, 0) = -90 -> 0
+						// Right (0, -1) -> Atan2(1, 0) = 90 -> 180
+						RelativeAngle = FMath::RadiansToDegrees(FMath::Atan2(-ProjY, -ProjX)) + 90.0f;
+					}
+					else
+					{
+						// Fallback to world yaw if no mesh is selected
+						RelativeAngle = DirLight->GetActorRotation().Yaw;
+						while (RelativeAngle < 0.0f) RelativeAngle += 360.0f;
+						while (RelativeAngle >= 360.0f) RelativeAngle -= 360.0f;
+						if (RelativeAngle > 180.0f) return -1.0f;
+					}
 					
 					// If symmetry mode is on, we only care about 0-90
 					bool bSymmetry = Tool->Properties && Tool->Properties->bSymmetryMode;
 					if (bSymmetry)
 					{
-						// Map 0-360 to 0-90 in a symmetric way
-						// 0-90 -> 0-90
-						// 90-180 -> 90-0
-						// 180-270 -> 0-90
-						// 270-360 -> 90-0
-						if (Yaw > 180.0f) Yaw = 360.0f - Yaw;
-						if (Yaw > 90.0f) Yaw = 180.0f - Yaw;
-						return FMath::Clamp(Yaw, 0.0f, 90.0f);
+						// Map 0-180 to 0-90 in a symmetric way around the front (90)
+						// 90 (Front) -> 90
+						// 0 (Left Side) -> 0
+						// 180 (Right Side) -> 0
+						if (RelativeAngle > 90.0f) RelativeAngle = 180.0f - RelativeAngle;
+						return FMath::Clamp(RelativeAngle, 0.0f, 90.0f);
 					}
 					
-					return FMath::Clamp(Yaw, 0.0f, 180.0f);
+					return FMath::Clamp(RelativeAngle, 0.0f, 180.0f);
 				}
 			}
 		}
@@ -673,6 +708,8 @@ void SQuickSDFTimeline::RebuildTimeline()
 		float MaxAngle = bSymmetry ? 90.0f : 180.0f;
 		
 		float LightYaw = GetCurrentLightYaw();
+		if (LightYaw < 0.0f) return FVector2D(-1000.0f, -1000.0f); // Hide if in back hemisphere
+
 		float Percent = FMath::Clamp(LightYaw / MaxAngle, 0.0f, 1.0f);
 		float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
 		return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 19.0f, 0.0f);
