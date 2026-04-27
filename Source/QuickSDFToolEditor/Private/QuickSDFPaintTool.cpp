@@ -251,6 +251,15 @@ void UQuickSDFPaintTool::GenerateSDF()
 
 	for (int32 Index : ValidIndices)
 	{
+		float RawAngle = Asset->AngleDataList[Index].Angle;
+		
+		if (Properties->bSymmetryMode)
+		{
+			if (RawAngle < -0.01f || RawAngle > 90.01f) 
+			{
+				continue; 
+			}
+		}
 		// プログレスバー更新
 		SlowTask.EnterProgressFrame(1.f, FText::Format(LOCTEXT("ProcessMask", "Processing Mask {0}..."), Index));
 		if (SlowTask.ShouldCancel()) return;
@@ -262,8 +271,7 @@ void UQuickSDFPaintTool::GenerateSDF()
 		TArray<uint8> GrayPixels = FSDFProcessor::ConvertToGrayscale(Pixels);
 		TArray<uint8> UpscaledPixels = FSDFProcessor::UpscaleImage(GrayPixels, OrigW, OrigH, Upscale);
 		TArray<double> SDF = FSDFProcessor::GenerateSDF(UpscaledPixels, HighW, HighH);
-
-		float RawAngle = Asset->AngleDataList[Index].Angle;
+		
 		FMaskData Data;
 		Data.SDF = MoveTemp(SDF);
 		Data.TargetT = FMath::Clamp(FMath::Abs(RawAngle) / MaxAngle, 0.0f, 1.0f);
