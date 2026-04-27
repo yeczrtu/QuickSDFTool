@@ -768,6 +768,11 @@ void SQuickSDFTimeline::OnKeyframeClicked(int32 Index)
 			Props->EditAngleIndex = Index;
 			FProperty* Prop = Props->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex));
 			Tool->OnPropertyModified(Props, Prop);
+
+			if (Props->bAutoSyncLight)
+			{
+				OnSyncLightClicked();
+			}
 		}
 	}
 }

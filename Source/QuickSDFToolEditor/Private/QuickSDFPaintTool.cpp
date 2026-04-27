@@ -771,7 +771,7 @@ FInputRayHit UQuickSDFPaintTool::CanBeginClickDragSequence(const FInputDeviceRay
 		PendingStrokeInputMode = EQuickSDFStrokeInputMode::None;
 		return FInputRayHit(0.0f);
 	}
-	if (GetActiveRenderTarget() && IsInPreviewBounds(PressPos.ScreenPosition))
+	if (Properties->bShowPreview && GetActiveRenderTarget() && IsInPreviewBounds(PressPos.ScreenPosition))
 	{
 		PendingStrokeInputMode = EQuickSDFStrokeInputMode::TexturePreview;
 		return FInputRayHit(0.0f);

@@ -61,6 +61,9 @@ public:
 	bool bOverlayUV = true;
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
+	bool bAutoSyncLight = true;
+
+	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bEnableOnionSkin = false;
 	
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
