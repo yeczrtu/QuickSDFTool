@@ -14,8 +14,11 @@ public:
 		SLATE_ARGUMENT(int32, Index)
 		SLATE_ATTRIBUTE(float, Angle)
 		SLATE_ATTRIBUTE(bool, bIsActive)
+		SLATE_ATTRIBUTE(bool, bSnapEnabled)
 		SLATE_EVENT(FOnKeyframeAngleChanged, OnAngleChanged)
 		SLATE_EVENT(FSimpleDelegate, OnClicked)
+		SLATE_EVENT(FSimpleDelegate, OnDragStarted)
+		SLATE_EVENT(FSimpleDelegate, OnDragEnded)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
@@ -29,9 +32,12 @@ private:
 	int32 Index = 0;
 	TAttribute<float> Angle;
 	TAttribute<bool> bIsActive;
+	TAttribute<bool> bSnapEnabled;
 	bool bIsDragging = false;
 	FOnKeyframeAngleChanged OnAngleChanged;
 	FSimpleDelegate OnClicked;
+	FSimpleDelegate OnDragStarted;
+	FSimpleDelegate OnDragEnded;
 };
 
 /**
@@ -55,15 +61,22 @@ private:
 	FReply OnDeleteKeyframeClicked();
 	void OnKeyframeClicked(int32 Index);
 	void OnKeyframeAngleChanged(float NewAngle, int32 Index);
+	void OnKeyframeDragStarted();
+	void OnKeyframeDragEnded();
+
+	ECheckBoxState IsGridSnapEnabled() const;
+	void OnGridSnapStateChanged(ECheckBoxState NewState);
 
 	// State
 	UQuickSDFPaintTool* GetActivePaintTool() const;
+	float GetCurrentLightYaw() const;
 	
 	// Caching
 	int32 CachedNumAngles = -1;
 	int32 CachedEditAngleIndex = -1;
 	TArray<float> CachedAngles;
 	TArray<UTexture2D*> CachedTextures;
+	bool bGridSnapEnabled = true;
 
 	// Widget refs
 	TSharedPtr<class SCanvas> TimelineTrackCanvas;

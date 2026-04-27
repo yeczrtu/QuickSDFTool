@@ -15,6 +15,9 @@
 #include "Editor.h"
 #include "QuickSDFToolSubsystem.h"
 #include "Engine/Texture2D.h"
+#include "EngineUtils.h"
+#include "Engine/DirectionalLight.h"
+#include "QuickSDFAsset.h"
 
 #define LOCTEXT_NAMESPACE "SQuickSDFTimeline"
 
@@ -23,18 +26,33 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 	Index = InArgs._Index;
 	Angle = InArgs._Angle;
 	bIsActive = InArgs._bIsActive;
+	bSnapEnabled = InArgs._bSnapEnabled;
 	OnAngleChanged = InArgs._OnAngleChanged;
 	OnClicked = InArgs._OnClicked;
+	OnDragStarted = InArgs._OnDragStarted;
+	OnDragEnded = InArgs._OnDragEnded;
 
 	auto ColorAttr = TAttribute<FSlateColor>::CreateLambda([this]() {
-		return bIsActive.Get()
-			? FSlateColor(FLinearColor(1.0f, 0.6f, 0.1f, 1.0f))
-			: FSlateColor(FLinearColor(0.2f, 0.2f, 0.2f, 1.0f));
+		return bIsActive.Get() ? FSlateColor(FLinearColor(1.0f, 0.6f, 0.1f, 1.0f)) : FSlateColor(FLinearColor(0.2f, 0.2f, 0.2f, 1.0f));
 	});
 
 	ChildSlot
 	[
 		SNew(SVerticalBox)
+
+		// The Angle Text
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.HAlign(HAlign_Center)
+		.Padding(0, 0, 0, 2)
+		[
+			SNew(STextBlock)
+			.Text(TAttribute<FText>::CreateLambda([this]() {
+				return FText::FromString(FString::Printf(TEXT("%.0f\u00B0"), Angle.Get()));
+			}))
+			.ColorAndOpacity(ColorAttr)
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+		]
 		
 		// The Head of the needle (small square/diamond)
 		+ SVerticalBox::Slot()
@@ -47,8 +65,8 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 			.Padding(1.0f)
 			[
 				SNew(SBox)
-				.WidthOverride(12.0f)
-				.HeightOverride(12.0f)
+				.WidthOverride(8.0f)
+				.HeightOverride(8.0f)
 			]
 		]
 		
@@ -75,6 +93,7 @@ FReply SQuickSDFTimelineKeyframe::OnMouseButtonDown(const FGeometry& MyGeometry,
 	{
 		bIsDragging = true;
 		OnClicked.ExecuteIfBound();
+		OnDragStarted.ExecuteIfBound();
 		return FReply::Handled().CaptureMouse(SharedThis(this));
 	}
 	return FReply::Unhandled();
@@ -85,6 +104,7 @@ FReply SQuickSDFTimelineKeyframe::OnMouseButtonUp(const FGeometry& MyGeometry, c
 	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bIsDragging)
 	{
 		bIsDragging = false;
+		OnDragEnded.ExecuteIfBound();
 		return FReply::Handled().ReleaseMouseCapture();
 	}
 	return FReply::Unhandled();
@@ -111,6 +131,11 @@ FReply SQuickSDFTimelineKeyframe::OnMouseMove(const FGeometry& MyGeometry, const
 			{
 				float Percent = FMath::Clamp((LocalPos.X - 20.0f) / TrackWidth, 0.0f, 1.0f);
 				float NewAngle = Percent * 180.0f;
+
+				if (bSnapEnabled.Get())
+				{
+					NewAngle = FMath::RoundToFloat(NewAngle / 5.0f) * 5.0f;
+				}
 				
 				// Notify parent immediately
 				OnAngleChanged.ExecuteIfBound(NewAngle);
@@ -145,14 +170,29 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 				[
 					SNew(SHorizontalBox)
 
+					// Snap Checkbox
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(10.0f, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(SCheckBox)
+						.IsChecked(this, &SQuickSDFTimeline::IsGridSnapEnabled)
+						.OnCheckStateChanged(this, &SQuickSDFTimeline::OnGridSnapStateChanged)
+						[
+							SNew(STextBlock)
+							.Text(LOCTEXT("SnapText", "Snap"))
+						]
+					]
+
 					// Timeline Track Canvas
 					+ SHorizontalBox::Slot()
 					.FillWidth(1.0f)
 					.VAlign(VAlign_Center)
-					.Padding(0.0f, 10.0f)
+					.Padding(10.0f, 10.0f)
 					[
 						SNew(SBox)
-						.HeightOverride(60.0f)
+						.HeightOverride(40.0f)
 						[
 							SNew(SOverlay)
 							
@@ -251,6 +291,39 @@ void SQuickSDFTimeline::Tick(const FGeometry& AllottedGeometry, const double InC
 	}
 }
 
+ECheckBoxState SQuickSDFTimeline::IsGridSnapEnabled() const
+{
+	return bGridSnapEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+}
+
+void SQuickSDFTimeline::OnGridSnapStateChanged(ECheckBoxState NewState)
+{
+	bGridSnapEnabled = (NewState == ECheckBoxState::Checked);
+}
+
+float SQuickSDFTimeline::GetCurrentLightYaw() const
+{
+	UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	if (Tool && Tool->GetToolManager() && Tool->GetToolManager()->GetContextQueriesAPI())
+	{
+		if (UWorld* World = Tool->GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld())
+		{
+			for (TActorIterator<ADirectionalLight> It(World); It; ++It)
+			{
+				if (ADirectionalLight* DirLight = *It)
+				{
+					// Normalize yaw to 0-360 then map to 0-180 if needed, or just take positive
+					float Yaw = DirLight->GetActorRotation().Yaw;
+					while (Yaw < 0.0f) Yaw += 360.0f;
+					while (Yaw >= 360.0f) Yaw -= 360.0f;
+					return FMath::Clamp(Yaw, 0.0f, 180.0f);
+				}
+			}
+		}
+	}
+	return 0.0f;
+}
+
 void SQuickSDFTimeline::RebuildTimeline()
 {
 	if (!TimelineTrackCanvas.IsValid()) return;
@@ -275,13 +348,28 @@ void SQuickSDFTimeline::RebuildTimeline()
 			// Center the 2px tick mark (20px offset + Percent * TrackWidth - 1px)
 			return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 19.0f, 0.0f);
 		}))
-		.Size(FVector2D(2.0f, 60.0f))
+		.Size(FVector2D(2.0f, 40.0f))
 		[
 			SNew(SBorder)
 			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
 			.BorderBackgroundColor(FLinearColor(0.3f, 0.3f, 0.3f, 1.0f))
 		];
 	}
+
+	// Add Current Light Indicator
+	TimelineTrackCanvas->AddSlot()
+	.Position(TAttribute<FVector2D>::CreateLambda([this]() {
+		float LightYaw = GetCurrentLightYaw();
+		float Percent = FMath::Clamp(LightYaw / 180.0f, 0.0f, 1.0f);
+		float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
+		return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 19.0f, 0.0f);
+	}))
+	.Size(FVector2D(2.0f, 40.0f))
+	[
+		SNew(SBorder)
+		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+		.BorderBackgroundColor(FLinearColor(1.0f, 1.0f, 0.0f, 0.8f)) // Yellow
+	];
 
 	for (int32 i = 0; i < Props->NumAngles; ++i)
 	{
@@ -297,7 +385,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 			}
 			return FVector2D::ZeroVector;
 		}))
-		.Size(FVector2D(40.0f, 60.0f))
+		.Size(FVector2D(40.0f, 40.0f))
 		[
 			SNew(SQuickSDFTimelineKeyframe)
 			.Index(i)
@@ -311,8 +399,11 @@ void SQuickSDFTimeline::RebuildTimeline()
 				UQuickSDFPaintTool* ActiveTool = GetActivePaintTool();
 				return ActiveTool && ActiveTool->Properties && ActiveTool->Properties->EditAngleIndex == i;
 			}))
+			.bSnapEnabled(TAttribute<bool>::CreateLambda([this]() { return bGridSnapEnabled; }))
 			.OnClicked(this, &SQuickSDFTimeline::OnKeyframeClicked, i)
 			.OnAngleChanged(this, &SQuickSDFTimeline::OnKeyframeAngleChanged, i)
+			.OnDragStarted(this, &SQuickSDFTimeline::OnKeyframeDragStarted)
+			.OnDragEnded(this, &SQuickSDFTimeline::OnKeyframeDragEnded)
 		];
 	}
 }
@@ -365,11 +456,44 @@ void SQuickSDFTimeline::OnKeyframeAngleChanged(float NewAngle, int32 Index)
 			{
 				Props->TargetAngles[Index] = NewAngle;
 				
+				UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+				if (Subsystem && Subsystem->GetActiveSDFAsset())
+				{
+					if (Subsystem->GetActiveSDFAsset()->AngleDataList.IsValidIndex(Index))
+					{
+						Subsystem->GetActiveSDFAsset()->AngleDataList[Index].Angle = NewAngle;
+					}
+				}
+
 				// Fire property modified to update the preview light
 				FProperty* Prop = Props->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngles));
 				Tool->OnPropertyModified(Props, Prop);
 			}
 		}
+	}
+}
+
+void SQuickSDFTimeline::OnKeyframeDragStarted()
+{
+	UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	if (Tool && Tool->GetToolManager())
+	{
+		Tool->GetToolManager()->BeginUndoTransaction(LOCTEXT("TimelineDrag", "Drag Timeline Keyframe"));
+		
+		UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+		if (Subsystem && Subsystem->GetActiveSDFAsset())
+		{
+			Subsystem->GetActiveSDFAsset()->Modify();
+		}
+	}
+}
+
+void SQuickSDFTimeline::OnKeyframeDragEnded()
+{
+	UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	if (Tool && Tool->GetToolManager())
+	{
+		Tool->GetToolManager()->EndUndoTransaction();
 	}
 }
 

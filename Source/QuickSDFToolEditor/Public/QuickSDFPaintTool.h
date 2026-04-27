@@ -57,6 +57,9 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bOverlayUV = true;
 	
+	UPROPERTY(EditAnywhere, Category = "Paint Settings")
+	bool bEnableOnionSkin = false;
+	
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (UIMin = "0.0", UIMax = "180.0"))
 	TArray<float> TargetAngles;
 	

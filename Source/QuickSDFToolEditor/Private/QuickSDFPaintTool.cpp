@@ -1308,6 +1308,38 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
         TileItem.BlendMode = SE_BLEND_Opaque;
         Canvas->DrawItem(TileItem);
     	
+    	if (Properties->bEnableOnionSkin)
+    	{
+    		UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+    		if (Subsystem && Subsystem->GetActiveSDFAsset())
+    		{
+    			UQuickSDFAsset* ActiveAsset = Subsystem->GetActiveSDFAsset();
+				
+    			// Previous frame (Red)
+    			if (Properties->EditAngleIndex > 0 && ActiveAsset->AngleDataList.IsValidIndex(Properties->EditAngleIndex - 1))
+    			{
+    				UTextureRenderTarget2D* PrevRT = ActiveAsset->AngleDataList[Properties->EditAngleIndex - 1].PaintRenderTarget;
+    				if (PrevRT)
+    				{
+    					FCanvasTileItem PrevTile(PreviewOrigin, PrevRT->GetResource(), PreviewSize, FLinearColor(1.0f, 0.0f, 0.0f, 0.5f));
+    					PrevTile.BlendMode = SE_BLEND_Additive;
+    					Canvas->DrawItem(PrevTile);
+    				}
+    			}
+				
+    			// Next frame (Green)
+    			if (Properties->EditAngleIndex < ActiveAsset->AngleDataList.Num() - 1 && ActiveAsset->AngleDataList.IsValidIndex(Properties->EditAngleIndex + 1))
+    			{
+    				UTextureRenderTarget2D* NextRT = ActiveAsset->AngleDataList[Properties->EditAngleIndex + 1].PaintRenderTarget;
+    				if (NextRT)
+    				{
+    					FCanvasTileItem NextTile(PreviewOrigin, NextRT->GetResource(), PreviewSize, FLinearColor(0.0f, 1.0f, 0.0f, 0.5f));
+    					NextTile.BlendMode = SE_BLEND_Additive;
+    					Canvas->DrawItem(NextTile);
+    				}
+    			}
+    		}
+    	}
         if (TargetMesh.IsValid() && TargetMesh->HasAttributes() && Properties->bOverlayUV)
         {
             const UE::Geometry::FDynamicMeshUVOverlay* UVOverlay = TargetMesh->Attributes()->GetUVLayer(Properties->UVChannel);
