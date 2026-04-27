@@ -59,6 +59,9 @@ public:
 	
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (UIMin = "0.0", UIMax = "180.0"))
 	TArray<float> TargetAngles;
+	
+	UPROPERTY(EditAnywhere, Category = "Paint Settings")
+	TArray<class UTexture2D*> TargetTextures;
 
 	UPROPERTY(EditAnywhere, Category = "Target Settings")
 	FIntPoint Resolution = FIntPoint(1024, 1024);
@@ -125,6 +128,7 @@ class UQuickSDFPaintTool : public UBaseBrushTool
 	GENERATED_BODY()
 	friend class UQuickSDFBrushResizeInputBehavior;
 	friend class UQuickSDFPreviewWidget;
+	friend class SQuickSDFTimeline;
 	
 public:
 	UQuickSDFPaintTool();

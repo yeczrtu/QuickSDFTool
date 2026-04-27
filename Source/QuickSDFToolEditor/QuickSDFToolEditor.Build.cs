@@ -38,7 +38,11 @@ public class QuickSDFToolEditor : ModuleRules
 				"RenderCore",
 				"RHI",
 				"UnrealEd",
-				"ApplicationCore"
+				"ApplicationCore",
+				"LevelEditor",
+				"PropertyEditor",
+				"Projects",
+				"EditorStyle"
 			}
 		);
 	}

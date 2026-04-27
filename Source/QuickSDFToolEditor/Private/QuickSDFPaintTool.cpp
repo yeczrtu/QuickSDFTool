@@ -346,10 +346,13 @@ void UQuickSDFPaintTool::Setup()
 		Properties->Resolution = ActiveAsset->Resolution;
 		Properties->UVChannel = ActiveAsset->UVChannel;
 		Properties->NumAngles = ActiveAsset->AngleDataList.Num();
+		
 		Properties->TargetAngles.SetNum(Properties->NumAngles);
+		Properties->TargetTextures.SetNum(Properties->NumAngles);
 		for (int32 i = 0; i < Properties->NumAngles; ++i)
 		{
 			Properties->TargetAngles[i] = ActiveAsset->AngleDataList[i].Angle;
+			Properties->TargetTextures[i] = ActiveAsset->AngleDataList[i].TextureMask;
 		}
 	}
 
@@ -1174,7 +1177,31 @@ Super::OnPropertyModified(PropertySet, Property);
 					ActiveAsset->AngleDataList[i].Angle = Properties->TargetAngles[i];
 				}
 			}
+			// 手動で「テクスチャスロット」に画像がアサイン（または削除）された場合
+			if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetTextures))
+			{
+				for (int32 i = 0; i < FMath::Min(Properties->TargetTextures.Num(), ActiveAsset->AngleDataList.Num()); ++i)
+				{
+					// UIのテクスチャとアセットのテクスチャに差分があれば更新
+					if (ActiveAsset->AngleDataList[i].TextureMask != Properties->TargetTextures[i])
+					{
+						ActiveAsset->AngleDataList[i].TextureMask = Properties->TargetTextures[i];
 
+						// 画像がセットされたならキャンバスに転写、外されたなら白紙に戻す
+						if (Properties->TargetTextures[i] != nullptr)
+						{
+							Subsystem->DrawTextureToRenderTarget(Properties->TargetTextures[i], ActiveAsset->AngleDataList[i].PaintRenderTarget);
+						}
+						else
+						{
+							Subsystem->ClearRenderTarget(ActiveAsset->AngleDataList[i].PaintRenderTarget);
+						}
+						
+						ActiveAsset->Modify(); // 変更をマーク
+					}
+				}
+				RefreshPreviewMaterial();
+			}//TODO:後からテクスチャを追加する処理を実装する
 			// 解像度やUVチャンネルの同期
 			if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, Resolution))
 			{

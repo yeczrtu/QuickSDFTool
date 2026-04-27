@@ -8,6 +8,9 @@
 #include "QuickSDFSelectTool.h"
 #include "QuickSDFToolSubsystem.h"
 #include "Tools/EdModeInteractiveToolsContext.h"
+#include "SQuickSDFTimeline.h"
+#include "LevelEditor.h"
+#include "SLevelViewport.h"
 
 
 const FEditorModeID UQuickSDFEditorMode::EM_QuickSDFEditorModeId = TEXT("EM_QuickSDFEditorMode");
@@ -32,10 +35,44 @@ void UQuickSDFEditorMode::Enter()
 	GetInteractiveToolsContext()->StartTool(TEXT("QuickSDFPaintTool"));
 	GetToolManager()->ConfigureChangeTrackingMode(EToolChangeTrackingMode::NoChangeTracking);
 	Toolkit->SetCurrentPalette(FName(TEXT("Default")));
+	
+	// Add Timeline UI to viewport overlay
+	if (FModuleManager::Get().IsModuleLoaded("LevelEditor"))
+	{
+		FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
+		TSharedPtr<ILevelEditor> LevelEditor = LevelEditorModule.GetFirstLevelEditor();
+		if (LevelEditor.IsValid())
+		{
+			TSharedPtr<SLevelViewport> ActiveViewport = LevelEditor->GetActiveViewportInterface();
+			if (ActiveViewport.IsValid())
+			{
+				TimelineWidget = SNew(SQuickSDFTimeline);
+				ActiveViewport->AddOverlayWidget(TimelineWidget.ToSharedRef());
+			}
+		}
+	}
 }
 
 void UQuickSDFEditorMode::Exit()
 {
+	if (TimelineWidget.IsValid())
+	{
+		if (FModuleManager::Get().IsModuleLoaded("LevelEditor"))
+		{
+			FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
+			TSharedPtr<ILevelEditor> LevelEditor = LevelEditorModule.GetFirstLevelEditor();
+			if (LevelEditor.IsValid())
+			{
+				TSharedPtr<SLevelViewport> ActiveViewport = LevelEditor->GetActiveViewportInterface();
+				if (ActiveViewport.IsValid())
+				{
+					ActiveViewport->RemoveOverlayWidget(TimelineWidget.ToSharedRef());
+				}
+			}
+		}
+		TimelineWidget.Reset();
+	}
+	
 	Super::Exit();
 	// Clean up tools
 }

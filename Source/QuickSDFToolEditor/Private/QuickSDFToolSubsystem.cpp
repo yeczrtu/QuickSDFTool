@@ -155,3 +155,39 @@ void UQuickSDFToolSubsystem::Create16BitTexture(const TArray<uint16>& Pixels, in
 	Assets.Add(NewTex);
 	AssetTools.SyncBrowserToAssets(Assets);
 }
+
+void UQuickSDFToolSubsystem::DrawTextureToRenderTarget(UTexture2D* SourceTex, UTextureRenderTarget2D* TargetRT)
+{
+	if (!SourceTex || !TargetRT) return;
+	FTextureRenderTargetResource* RTResource = TargetRT->GameThread_GetRenderTargetResource();
+	if (!RTResource) return;
+
+	FCanvas Canvas(RTResource, nullptr, GEditor->GetEditorWorldContext().World(), GMaxRHIFeatureLevel);
+	Canvas.Clear(FLinearColor::White); // 背景を白でクリア
+	
+	FCanvasTileItem TileItem(FVector2D::ZeroVector, SourceTex->GetResource(), FVector2D(TargetRT->SizeX, TargetRT->SizeY), FLinearColor::White);
+	TileItem.BlendMode = SE_BLEND_Opaque;
+	Canvas.DrawItem(TileItem);
+	Canvas.Flush_GameThread(true);
+
+	ENQUEUE_RENDER_COMMAND(UpdateQuickSDFRTCommand)(
+		[RTResource](FRHICommandListImmediate& RHICmdList) {
+			TransitionAndCopyTexture(RHICmdList, RTResource->GetRenderTargetTexture(), RTResource->TextureRHI, {});
+		});
+}
+
+void UQuickSDFToolSubsystem::ClearRenderTarget(UTextureRenderTarget2D* TargetRT, FLinearColor ClearColor)
+{
+	if (!TargetRT) return;
+	FTextureRenderTargetResource* RTResource = TargetRT->GameThread_GetRenderTargetResource();
+	if (!RTResource) return;
+
+	FCanvas Canvas(RTResource, nullptr, GEditor->GetEditorWorldContext().World(), GMaxRHIFeatureLevel);
+	Canvas.Clear(ClearColor);
+	Canvas.Flush_GameThread(true);
+
+	ENQUEUE_RENDER_COMMAND(ClearQuickSDFRTCommand)(
+		[RTResource](FRHICommandListImmediate& RHICmdList) {
+			TransitionAndCopyTexture(RHICmdList, RTResource->GetRenderTargetTexture(), RTResource->TextureRHI, {});
+		});
+}

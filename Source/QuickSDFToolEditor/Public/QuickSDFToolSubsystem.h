@@ -35,4 +35,8 @@ public:
 
 	void SetActiveSDFAsset(class UQuickSDFAsset* InAsset) { ActiveSDFAsset = InAsset; }
 	class UQuickSDFAsset* GetActiveSDFAsset() const { return ActiveSDFAsset; }
+	
+	void DrawTextureToRenderTarget(class UTexture2D* SourceTex, class UTextureRenderTarget2D* TargetRT);
+	
+	void ClearRenderTarget(class UTextureRenderTarget2D* TargetRT, FLinearColor ClearColor = FLinearColor::White);
 };

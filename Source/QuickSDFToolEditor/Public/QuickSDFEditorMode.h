@@ -25,4 +25,7 @@ public:
 	
 protected:
 	virtual void CreateToolkit() override;
+
+private:
+	TSharedPtr<class SQuickSDFTimeline> TimelineWidget;
 };
