@@ -20,6 +20,9 @@
 #include "Engine/DirectionalLight.h"
 #include "QuickSDFAsset.h"
 #include "Brushes/SlateImageBrush.h"
+#include "Widgets/Layout/SExpandableArea.h"
+#include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Layout/SScaleBox.h"
 
 #define LOCTEXT_NAMESPACE "SQuickSDFTimeline"
 
@@ -64,7 +67,7 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 		+ SOverlay::Slot()
 		.HAlign(HAlign_Center)
 		.VAlign(VAlign_Top)
-		.Padding(0, 5, 0, 0)
+		.Padding(0, 2, 0, 0)
 		[
 			SNew(SBorder)
 			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
@@ -74,8 +77,8 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 			.Padding(1.0f)
 			[
 				SNew(SBox)
-				.WidthOverride(24.0f)
-				.HeightOverride(24.0f)
+				.WidthOverride(20.0f)
+				.HeightOverride(20.0f)
 				[
 					SNew(SImage)
 					.Image(TAttribute<const FSlateBrush*>::CreateLambda([this]() {
@@ -89,14 +92,14 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 		+ SOverlay::Slot()
 		.HAlign(HAlign_Center)
 		.VAlign(VAlign_Bottom)
-		.Padding(0, 0, 0, -16)
+		.Padding(0, 0, 0, 0)
 		[
 			SNew(STextBlock)
 			.Text(TAttribute<FText>::CreateLambda([this]() {
 				return FText::FromString(FString::Printf(TEXT("%.0f\u00B0"), Angle.Get()));
 			}))
 			.ColorAndOpacity(ColorAttr)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
 			.ShadowOffset(FVector2D(1, 1))
 			.ShadowColorAndOpacity(FLinearColor::Black)
 		]
@@ -178,29 +181,40 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		.HAlign(HAlign_Center)
-		.Padding(10.0f)
+		.Padding(FMargin(10.0f, 0.0f, 10.0f, 0.0f))
 		[
 			SNew(SBox)
-			.WidthOverride(800.0f) // Wider for spatial timeline
+			.WidthOverride(800.0f) // Wider for timeline
 			[
-				SNew(SBorder)
-				.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-				.Padding(4.0f)
+				SNew(SExpandableArea)
+				.InitiallyCollapsed(false)
+				.Padding(0.0f)
+				.HeaderContent()
 				[
-					SNew(SVerticalBox)
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					[
+						SNew(STextBlock)
+						.Text(LOCTEXT("TimelineAreaTitle", "Timeline"))
+						.Font(FAppStyle::GetFontStyle("SmallFont"))
+					]
 
-					// Top Row: Controls
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(0.0f, 2.0f)
+					+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
+
+					// Controls (Snap, Symmetry, Add/Delete)
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
 					[
 						SNew(SHorizontalBox)
-
+						
 						// Snap Checkbox
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.VAlign(VAlign_Center)
-						.Padding(10.0f, 0.0f, 0.0f, 0.0f)
+						.Padding(5.0f, 0.0f)
 						[
 							SNew(SCheckBox)
 							.IsChecked(this, &SQuickSDFTimeline::IsGridSnapEnabled)
@@ -208,6 +222,7 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 							[
 								SNew(STextBlock)
 								.Text(LOCTEXT("SnapText", "Snap"))
+								.Font(FAppStyle::GetFontStyle("SmallFont"))
 							]
 						]
 
@@ -215,7 +230,7 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.VAlign(VAlign_Center)
-						.Padding(10.0f, 0.0f, 0.0f, 0.0f)
+						.Padding(5.0f, 0.0f)
 						[
 							SNew(SCheckBox)
 							.IsChecked(this, &SQuickSDFTimeline::IsSymmetryModeEnabled)
@@ -223,87 +238,93 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 							[
 								SNew(STextBlock)
 								.Text(LOCTEXT("SymmetryText", "Symmetry"))
+								.Font(FAppStyle::GetFontStyle("SmallFont"))
 							]
 						]
-
-						+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
 
 						// Controls (Add/Delete)
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
-						.VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, 10.0f, 0.0f)
+						.Padding(2.0f, 0.0f)
 						[
-							SNew(SHorizontalBox)
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(2.0f)
+							SNew(SButton)
+							.OnClicked(this, &SQuickSDFTimeline::OnAddKeyframeClicked)
+							.ContentPadding(FMargin(4.0f, 0.0f))
 							[
-								SNew(SButton)
+								SNew(STextBlock)
 								.Text(LOCTEXT("AddFrameBtn", "+"))
-								.ToolTipText(LOCTEXT("AddFrameToolTip", "Add a new light angle keyframe"))
-								.OnClicked(this, &SQuickSDFTimeline::OnAddKeyframeClicked)
-								.ContentPadding(FMargin(8.0f, 2.0f))
+								.Font(FAppStyle::GetFontStyle("BoldFont"))
 							]
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(2.0f)
+						]
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.Padding(2.0f, 0.0f)
+						[
+							SNew(SButton)
+							.OnClicked(this, &SQuickSDFTimeline::OnDeleteKeyframeClicked)
+							.ContentPadding(FMargin(4.0f, 0.0f))
 							[
-								SNew(SButton)
+								SNew(STextBlock)
 								.Text(LOCTEXT("DelFrameBtn", "-"))
-								.ToolTipText(LOCTEXT("DelFrameToolTip", "Remove the selected keyframe"))
-								.OnClicked(this, &SQuickSDFTimeline::OnDeleteKeyframeClicked)
-								.ContentPadding(FMargin(8.0f, 2.0f))
+								.Font(FAppStyle::GetFontStyle("BoldFont"))
 							]
 						]
 					]
-
-					// Bottom Row: Timeline Track
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(0.0f, 5.0f)
+				]
+				.BodyContent()
+				[
+					SNew(SBorder)
+					.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+					.Padding(0.0f)
 					[
-						SNew(SBox)
-						.HeightOverride(44.0f)
+						SNew(SVerticalBox)
+						// Bottom Row: Timeline Track
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(0.0f)
 						[
-							SNew(SOverlay)
-							
-							// Track background line
-							+ SOverlay::Slot()
-							.VAlign(VAlign_Center)
+							SNew(SBox)
+							.HeightOverride(32.0f)
 							[
-								SNew(SBorder)
-								.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-								.BorderBackgroundColor(FLinearColor(0.01f, 0.01f, 0.01f, 1.0f))
-								.Padding(FMargin(0, 1))
-							]
+								SNew(SOverlay)
+								
+								// Track background line
+								+ SOverlay::Slot()
+								.VAlign(VAlign_Center)
+								[
+									SNew(SBorder)
+									.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+									.BorderBackgroundColor(FLinearColor(0.01f, 0.01f, 0.01f, 1.0f))
+									.Padding(FMargin(0, 1))
+								]
 
-							// Filmstrip decorative holes (Top)
-							+ SOverlay::Slot()
-							.VAlign(VAlign_Top)
-							.Padding(0, 3)
-							[
-								SNew(SHorizontalBox)
-								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(6).HeightOverride(4).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.15f, 0.15f, 0.15f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
-								+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
-								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(6).HeightOverride(4).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.15f, 0.15f, 0.15f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
-							]
+								// Filmstrip decorative holes (Top)
+								+ SOverlay::Slot()
+								.VAlign(VAlign_Top)
+								.Padding(0, 3)
+								[
+									SNew(SHorizontalBox)
+									+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(6).HeightOverride(4).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.15f, 0.15f, 0.15f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
+									+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
+									+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(6).HeightOverride(4).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.15f, 0.15f, 0.15f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
+								]
 
-							// Filmstrip decorative holes (Bottom)
-							+ SOverlay::Slot()
-							.VAlign(VAlign_Bottom)
-							.Padding(0, 3)
-							[
-								SNew(SHorizontalBox)
-								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(6).HeightOverride(4).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.15f, 0.15f, 0.15f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
-								+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
-								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(6).HeightOverride(4).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.15f, 0.15f, 0.15f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
-							]
+								// Filmstrip decorative holes (Bottom)
+								+ SOverlay::Slot()
+								.VAlign(VAlign_Bottom)
+								.Padding(0, 3)
+								[
+									SNew(SHorizontalBox)
+									+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(6).HeightOverride(4).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.15f, 0.15f, 0.15f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
+									+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
+									+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(6).HeightOverride(4).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.15f, 0.15f, 0.15f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
+								]
 
-							// The actual canvas for keyframes
-							+ SOverlay::Slot()
-							[
-								SAssignNew(TimelineTrackCanvas, SCanvas)
+								// The actual canvas for keyframes
+								+ SOverlay::Slot()
+								[
+									SAssignNew(TimelineTrackCanvas, SCanvas)
+								]
 							]
 						]
 					]
@@ -460,8 +481,8 @@ void SQuickSDFTimeline::RebuildTimeline()
 		}
 	}
 
-	float CanvasHeight = 44.0f;
-	float KeyframeWidth = 30.0f;
+	float CanvasHeight = 32.0f;
+	float KeyframeWidth = 24.0f;
 
 	// 1. Add Filmstrip Background (One segment per keyframe)
 	for (int32 i = 0; i < Props->NumAngles; ++i)
@@ -525,7 +546,10 @@ void SQuickSDFTimeline::RebuildTimeline()
 			.BorderBackgroundColor(FLinearColor(0.05f, 0.05f, 0.05f, 1.0f))
 			.Padding(1.0f)
 			[
-				SNew(SImage)
+				SNew(SScaleBox)
+				.Stretch(EStretch::ScaleToFill)
+				[
+					SNew(SImage)
 				.Image(TAttribute<const FSlateBrush*>::CreateLambda([this, i]() -> FSlateBrush* {
 					UQuickSDFPaintTool* Tool = this->GetActivePaintTool();
 					if (!Tool || !Tool->Properties) return nullptr;
@@ -548,6 +572,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 					}
 					return nullptr;
 				}))
+				]
 			]
 		];
 	}
