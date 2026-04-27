@@ -38,6 +38,8 @@
 
 #if WITH_EDITOR
 #include "Editor.h"
+#include "IMaterialBakingModule.h"
+#include "MaterialBakingStructures.h"
 #endif
 
 #define LOCTEXT_NAMESPACE "QuickSDFPaintTool"
@@ -163,6 +165,24 @@ void UQuickSDFToolProperties::ExportToTexture()
 	Asset->Modify(); // アセットを更新状態にする
 }
 
+void UQuickSDFToolProperties::FillOriginalShadingToCurrentAngle()
+{
+	UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());
+	if (Tool)
+	{
+		Tool->FillOriginalShading(EditAngleIndex);
+	}
+}
+
+void UQuickSDFToolProperties::FillOriginalShadingToAllAngles()
+{
+	UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());
+	if (Tool)
+	{
+		Tool->FillOriginalShadingAll();
+	}
+}
+
 void UQuickSDFToolProperties::GenerateSDFThresholdMap()
 {
 	UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());
@@ -208,35 +228,30 @@ void UQuickSDFPaintTool::GenerateSDF()
 
 	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
 
+	TArray<int32> ValidIndices;
+	for (int32 i = 0; i < Asset->AngleDataList.Num(); ++i)
+	{
+		if (Asset->AngleDataList[i].PaintRenderTarget) ValidIndices.Add(i);
+	}
+	if (ValidIndices.Num() == 0) return;
+
+	// --- プログレスバーの初期化 ---
+	// 工程：SDF生成(ValidIndices.Num()) + 合成(1) + 保存(1)
+	FScopedSlowTask SlowTask((float)ValidIndices.Num() + 2.0f, LOCTEXT("GenerateSDF", "Generating Multi-Channel SDF..."));
+	SlowTask.MakeDialog(true);
+
+	// --- 1. SDFデータの生成と収集 ---
 	TArray<FMaskData> ProcessedData;
 	int32 OrigW = Asset->Resolution.X;
 	int32 OrigH = Asset->Resolution.Y;
 	int32 Upscale = FMath::Clamp(Properties->UpscaleFactor, 1, 8);
 	int32 HighW = OrigW * Upscale;
 	int32 HighH = OrigH * Upscale;
-
-	TArray<int32> ValidIndices;
-	bool bSymmetry = Properties->bSymmetryMode;
-	float MaxAngle = bSymmetry ? 90.0f : 180.0f;
-
-	for (int32 i = 0; i < Asset->AngleDataList.Num(); ++i)
-	{
-		if (i < Properties->TargetAngles.Num() && Asset->AngleDataList[i].PaintRenderTarget) 
-		{
-			if (bSymmetry && Properties->TargetAngles[i] > MaxAngle) continue;
-			ValidIndices.Add(i);
-		}
-	}
-	
-	ValidIndices.Sort([this](int32 A, int32 B) {
-		return Properties->TargetAngles[A] < Properties->TargetAngles[B];
-	});
-
-	FScopedSlowTask SlowTask(ValidIndices.Num() + 2, LOCTEXT("GenerateSDF", "Generating Perfect SDF..."));
-	SlowTask.MakeDialog(true);
+	float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
 
 	for (int32 Index : ValidIndices)
 	{
+		// プログレスバー更新
 		SlowTask.EnterProgressFrame(1.f, FText::Format(LOCTEXT("ProcessMask", "Processing Mask {0}..."), Index));
 		if (SlowTask.ShouldCancel()) return;
 
@@ -248,27 +263,53 @@ void UQuickSDFPaintTool::GenerateSDF()
 		TArray<uint8> UpscaledPixels = FSDFProcessor::UpscaleImage(GrayPixels, OrigW, OrigH, Upscale);
 		TArray<double> SDF = FSDFProcessor::GenerateSDF(UpscaledPixels, HighW, HighH);
 
+		float RawAngle = Asset->AngleDataList[Index].Angle;
 		FMaskData Data;
 		Data.SDF = MoveTemp(SDF);
-		Data.TargetT = Properties->TargetAngles[Index] / MaxAngle;
+		Data.TargetT = FMath::Clamp(FMath::Abs(RawAngle) / MaxAngle, 0.0f, 1.0f);
+		Data.bIsOpposite = (RawAngle < -0.01f); 
 		ProcessedData.Add(MoveTemp(Data));
 	}
 
-	if (ProcessedData.Num() == 0) return;
+	// 向きと角度でソート
+	ProcessedData.Sort([](const FMaskData& A, const FMaskData& B) {
+		if (A.bIsOpposite != B.bIsOpposite) return !A.bIsOpposite;
+		return A.TargetT < B.TargetT;
+	});
 
-	SlowTask.EnterProgressFrame(1.f, LOCTEXT("CombineSDF", "Combining SDFs..."));
+	// --- 2. Bipolarの自動判定 ---
+	bool bNeedsBipolar = false;
+	for (int32 i = 0; i < ProcessedData.Num(); ++i)
+	{
+		if (ProcessedData[i].bIsOpposite) { bNeedsBipolar = true; break; }
+		
+		if (i < ProcessedData.Num() - 1)
+		{
+			const FMaskData& M1 = ProcessedData[i];
+			const FMaskData& M2 = ProcessedData[i + 1];
+			for (int32 p = 0; p < HighW * HighH; p += 500) // 高速サンプリング
+			{
+				if (M1.SDF[p] <= 0.0 && M2.SDF[p] > 0.0) { bNeedsBipolar = true; break; }
+			}
+			if (bNeedsBipolar) break;
+		}
+	}
+	ESDFOutputFormat EffectiveFormat = bNeedsBipolar ? ESDFOutputFormat::Bipolar : ESDFOutputFormat::Monopolar;
+	UE_LOG(LogTemp, Warning, TEXT("QuickSDF: Auto-Detected Format: %s"), bNeedsBipolar ? TEXT("BIPOLAR") : TEXT("MONOPOLAR"));
+
+	// --- 3. 合成処理 ---
+	SlowTask.EnterProgressFrame(1.f, LOCTEXT("CombineSDF", "Combining SDF Channels..."));
 	if (SlowTask.ShouldCancel()) return;
 
-	TArray<double> CombinedField;
-	FSDFProcessor::CombineSDFs(ProcessedData, CombinedField, HighW, HighH);
+	TArray<FVector4f> CombinedField; 
+	FSDFProcessor::CombineSDFs(ProcessedData, CombinedField, HighW, HighH, EffectiveFormat, Properties->bSymmetryMode);
 
-	SlowTask.EnterProgressFrame(1.f, LOCTEXT("DownscaleSDF", "Downscaling and Saving..."));
+	// --- 4. 保存処理 ---
+	SlowTask.EnterProgressFrame(1.f, LOCTEXT("SaveSDF", "Downscaling and Saving..."));
 	if (SlowTask.ShouldCancel()) return;
 
-	TArray<uint16> FinalPixels = FSDFProcessor::DownscaleAndConvert(CombinedField, HighW, HighH, Upscale);
-	FString PackageName = TEXT("/Game/QuickSDF_GENERATED");
-	FString TextureName = TEXT("T_QuickSDF_ThresholdMap");
-	Subsystem->Create16BitTexture(FinalPixels, OrigW, OrigH, PackageName, TextureName);
+	TArray<FFloat16Color> FinalPixels = FSDFProcessor::DownscaleAndConvert(CombinedField, HighW, HighH, Upscale);
+	Subsystem->CreateSDFTexture(FinalPixels, OrigW, OrigH, TEXT("/Game/QuickSDF_GENERATED"), TEXT("T_QuickSDF_ThresholdMap"), EffectiveFormat);
 }
 
 void UQuickSDFPaintTool::BuildBrushMaskTexture()
@@ -326,8 +367,6 @@ void UQuickSDFPaintTool::Setup()
 
 	if (UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>())
 	{
-		ChangeTargetComponent(Subsystem->GetTargetMeshComponent());
-
 		// サブシステムにアセットがない場合は仮で新規作成
 		if (!Subsystem->GetActiveSDFAsset())
 		{
@@ -360,6 +399,7 @@ void UQuickSDFPaintTool::Setup()
 			Properties->TargetAngles[i] = ActiveAsset->AngleDataList[i].Angle;
 			Properties->TargetTextures[i] = ActiveAsset->AngleDataList[i].TextureMask;
 		}
+		ChangeTargetComponent(Subsystem->GetTargetMeshComponent());
 	}
 
 	BuildBrushMaskTexture();
@@ -1444,6 +1484,127 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
 		FCanvasTextItem RadiusText(FVector2D(10.0f, 309.0f), FText::FromString(FString::Printf(TEXT("Brush Radius: %.1f"), BrushProperties ? BrushProperties->BrushRadius : 0.0f)), GEngine->GetSmallFont(), FLinearColor::Yellow);
 		RadiusText.EnableShadow(FLinearColor::Black);
 		Canvas->DrawItem(RadiusText);
+	}
+}
+
+void UQuickSDFPaintTool::FillOriginalShading(int32 AngleIndex)
+{
+	if (!Properties || !CurrentComponent.IsValid()) return;
+	
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return;
+
+	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
+	if (!Asset->AngleDataList.IsValidIndex(AngleIndex)) return;
+
+	UMaterialInterface* BaseMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/QuickSDFTool/Materials/M_OriginalShading.M_OriginalShading"));
+	if (!BaseMat) return;
+
+	UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(BaseMat, this);
+	MID->SetScalarParameterValue(TEXT("Angle"), Properties->TargetAngles[AngleIndex]);
+
+	FMaterialData MatData;
+	MatData.Material = MID;
+	MatData.PropertySizes.Add(MP_EmissiveColor, Properties->Resolution);
+	MatData.PropertySizes.Add(MP_BaseColor, Properties->Resolution);
+	MatData.BackgroundColor = FColor::Black;
+	
+	MatData.bPerformShrinking = false;
+	MatData.bPerformBorderSmear = false;
+
+	UE_LOG(LogTemp, Log, TEXT("Starting bake for angle %d at resolution %dx%d"), AngleIndex, Properties->Resolution.X, Properties->Resolution.Y);
+
+	FMeshData MeshData;
+	if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(CurrentComponent.Get()))
+	{
+		MeshData.Mesh = SMC->GetStaticMesh();
+		if (MeshData.Mesh)
+		{
+			MeshData.MeshDescription = MeshData.Mesh->GetMeshDescription(0);
+            
+			for (int32 i = 0; i < MeshData.Mesh->GetStaticMaterials().Num(); ++i)
+			{
+				MeshData.MaterialIndices.Add(i);
+			}
+			if (MeshData.MaterialIndices.Num() == 0)
+			{
+				MeshData.MaterialIndices.Add(0);
+			}
+		}
+		
+		MeshData.PrimitiveData = FPrimitiveData(SMC);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FillOriginalShading: Currently only supports StaticMeshComponents"));
+		return;
+	}
+	
+	MeshData.TextureCoordinateIndex = Properties->UVChannel;
+	MeshData.TextureCoordinateBox = FBox2D(FVector2D(0, 0), FVector2D(1, 1));
+
+	TArray<FBakeOutput> BakeOutputs;
+	IMaterialBakingModule& Module = FModuleManager::GetModuleChecked<IMaterialBakingModule>("MaterialBaking");
+	
+	FScopedSlowTask SlowTask(1.0f, LOCTEXT("BakingShading", "Baking Original Shading..."));
+	SlowTask.MakeDialog();
+
+	TArray<FMaterialData*> MaterialSettings;
+	MaterialSettings.Add(&MatData);
+	TArray<FMeshData*> MeshSettings;
+	MeshSettings.Add(&MeshData);
+
+	// ベイク実行
+	Module.BakeMaterials(MaterialSettings, MeshSettings, BakeOutputs);
+
+	if (BakeOutputs.Num() > 0)
+	{
+		TArray<FColor> FinalPixels;
+		bool bGotPixels = false;
+
+		// Emissive をチェック (LDR)
+		if (BakeOutputs[0].PropertyData.Contains(MP_EmissiveColor) && BakeOutputs[0].PropertyData[MP_EmissiveColor].Num() > 1)
+		{
+			FinalPixels = BakeOutputs[0].PropertyData[MP_EmissiveColor];
+			bGotPixels = true;
+		}
+		// BaseColor をチェック (LDR)
+		else if (BakeOutputs[0].PropertyData.Contains(MP_BaseColor) && BakeOutputs[0].PropertyData[MP_BaseColor].Num() > 1)
+		{
+			FinalPixels = BakeOutputs[0].PropertyData[MP_BaseColor];
+			bGotPixels = true;
+		}
+
+		if (bGotPixels)
+		{
+			UE_LOG(LogTemp, Log, TEXT("Bake successful for angle %d, pixels: %d"), AngleIndex, FinalPixels.Num());
+			BeginStrokeTransaction();
+			ApplyRenderTargetPixels(AngleIndex, FinalPixels);
+			EndStrokeTransaction();
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Bake produced no pixels (or 1x1) for angle %d"), AngleIndex);
+		}
+	}
+}
+
+void UQuickSDFPaintTool::FillOriginalShadingAll()
+{
+	if (!Properties) return;
+	
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return;
+
+	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
+	
+	FScopedSlowTask SlowTask(Asset->AngleDataList.Num(), LOCTEXT("BakingAllShading", "Baking All Original Shading..."));
+	SlowTask.MakeDialog();
+
+	for (int32 i = 0; i < Asset->AngleDataList.Num(); ++i)
+	{
+		SlowTask.EnterProgressFrame(1.0f);
+		FillOriginalShading(i);
 	}
 }
 

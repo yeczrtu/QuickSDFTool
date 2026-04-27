@@ -85,83 +85,120 @@ TArray<double> FSDFProcessor::GenerateSDF(const TArray<uint8>& BinaryImg, int32 
 	return SDF;
 }
 
-void FSDFProcessor::CombineSDFs(const TArray<FMaskData>& Masks, TArray<double>& OutCombined, int32 W, int32 H)
+void FSDFProcessor::CombineSDFs(const TArray<FMaskData>& Masks, TArray<FVector4f>& OutCombined, int32 W, int32 H, ESDFOutputFormat Format, bool bSymmetry)
 {
-	OutCombined.SetNumZeroed(W * H);
-	int32 NumMasks = Masks.Num();
-	if(NumMasks == 0) return;
+    OutCombined.SetNumZeroed(W * H);
+    int32 NumMasks = Masks.Num();
+    if (NumMasks == 0) return;
+	
+    for (int32 p = 0; p < W * H; ++p)
+    {
+        if (Format == ESDFOutputFormat::Bipolar)
+        {
+            OutCombined[p] = FVector4f(1.0f, 0.0f, 0.0f, 1.0f); 
+            OutCombined[p].Z = 0.0f; 
+        }
+        else
+        {
+            OutCombined[p] = FVector4f(1.0f, 1.0f, 1.0f, 1.0f);
+        }
+    }
 
-	double t_min = Masks[0].TargetT;
-	double t_max = Masks.Last().TargetT;
+    TArray<bool> HandledInc; HandledInc.SetNumZeroed(W * H); // R用
+    TArray<bool> HandledDec; HandledDec.SetNumZeroed(W * H); // B用
+	
+    for (int32 i = 0; i < NumMasks - 1; ++i)
+    {
+        const FMaskData& M1 = Masks[i];
+        const FMaskData& M2 = Masks[i + 1];
+        
+        // BipolarかつbIsOppositeが異なる場合は跨がない
+        if (Format == ESDFOutputFormat::Bipolar && M1.bIsOpposite != M2.bIsOpposite) continue;
 
-	TArray<bool> Handled;
-	Handled.SetNumZeroed(W * H);
+        for (int32 p = 0; p < W * H; ++p)
+        {
+            bool bIncreased = M1.SDF[p] > 0.0 && M2.SDF[p] <= 0.0;
+            bool bDecreased = M1.SDF[p] <= 0.0 && M2.SDF[p] > 0.0;
 
-	// 階調間の補間
-	for (int32 i = 0; i < NumMasks - 1; ++i)
-	{
-		const FMaskData& M1 = Masks[i];
-		const FMaskData& M2 = Masks[i + 1];
-		for (int32 p = 0; p < W * H; ++p)
-		{
-			if (M1.SDF[p] > 0.0 && M2.SDF[p] <= 0.0)
-			{
-				double d1 = M1.SDF[p];
-				double d2 = -M2.SDF[p];
-				double ratio = d1 / (d1 + d2 + 1e-10);
-				OutCombined[p] = M1.TargetT + (M2.TargetT - M1.TargetT) * ratio;
-				Handled[p] = true;
-			}
-		}
-	}
+            double d1 = FMath::Abs(M1.SDF[p]);
+            double d2 = FMath::Abs(M2.SDF[p]);
+            double ratio = d1 / (d1 + d2 + 1e-10);
+            float InterpT = (float)(M1.TargetT + (M2.TargetT - M1.TargetT) * ratio);
 
-	for (int32 p = 0; p < W * H; ++p)
-	{
-		if (Masks[0].SDF[p] <= 0.0)
-		{
-			OutCombined[p] = t_min + Masks[0].SDF[p] * 0.05;
-			Handled[p] = true;
-		}
-		else if (Masks.Last().SDF[p] > 0.0)
-		{
-			OutCombined[p] = t_max + Masks.Last().SDF[p] * 0.05;
-			Handled[p] = true;
-		}
+            // Rチャンネル (順方向/増加)
+            if (!HandledInc[p] && bIncreased)
+            {
+                OutCombined[p].X = InterpT;
+                HandledInc[p] = true;
+            }
 
-		// ペイントの包含関係が崩れていてどの条件にも入らなかったピクセルのフォールバック処理
-		if (!Handled[p])
-		{
-			double fallbackT = t_min;
-			for (int32 i = NumMasks - 1; i >= 0; --i)
-			{
-				if (Masks[i].SDF[p] > 0.0)
-				{
-					fallbackT = Masks[i].TargetT;
-					break;
-				}
-			}
-			OutCombined[p] = fallbackT;
-		}
+            // Bチャンネル (逆方向/減少) ※修正前のGのロジック
+            if (Format == ESDFOutputFormat::Bipolar)
+            {
+                if (!HandledDec[p] && bDecreased)
+                {
+                    OutCombined[p].Z = InterpT; // Bに入れる
+                    HandledDec[p] = true;
+                }
+            }
+        }
+    }
 
-		double val = OutCombined[p];
-		double k = 0.08; // 丸め幅（この範囲内でグラデーションが滑らかにフェードアウトする）
-    	
-		double h0 = FMath::Max(k - FMath::Abs(val - 0.0), 0.0) / k;
-		val = FMath::Max(val, 0.0) + h0 * h0 * k * 0.25;
-    	
-		double h1 = FMath::Max(k - FMath::Abs(val - 1.0), 0.0) / k;
-		val = FMath::Min(val, 1.0) - h1 * h1 * k * 0.25;
+    for (int32 p = 0; p < W * H; ++p)
+    {
+        if (Format == ESDFOutputFormat::Bipolar)
+        {
+            // 最初から最後までずっと白
+            if (!HandledInc[p] && !HandledDec[p] && Masks[0].SDF[p] <= 0.0)
+            {
+                OutCombined[p].X = 0.0f; // R=0 (即座に白くなる)
+                OutCombined[p].Z = 1.0f; // B=1 (最後まで黒くならない)
+            }
+            else if (HandledInc[p] && !HandledDec[p])
+            {
+                OutCombined[p].Z = 1.0f;
+            }
+            else if (!HandledInc[p] && HandledDec[p])
+            {
+                OutCombined[p].X = 0.0f;
+            }
+        }
+        else
+        {
+            // Monopolar
+            if (!HandledInc[p] && Masks[0].SDF[p] <= 0.0) 
+                OutCombined[p].X = 0.0f;
+            
+            // Symmetryなら全チャンネルにコピー
+            if (bSymmetry)
+            {
+                float V = OutCombined[p].X;
+                OutCombined[p] = FVector4f(V, V, V, 1.0f);
+            }
+        }
 
-		OutCombined[p] = val;
-	}
+        double k = 0.08;
+        for (int32 ch : {0, 2}) // 0:R, 2:B
+        {
+            bool bWasInterpolated = (ch == 0) ? HandledInc[p] : HandledDec[p];
+            if (!bWasInterpolated) continue;
+
+            float& valRef = (ch == 0) ? OutCombined[p].X : OutCombined[p].Z;
+            double val = (double)valRef;
+            double h0 = FMath::Max(k - FMath::Abs(val - 0.0), 0.0) / k;
+            val = FMath::Max(val, 0.0) + h0 * h0 * k * 0.25;
+            double h1 = FMath::Max(k - FMath::Abs(val - 1.0), 0.0) / k;
+            val = FMath::Min(val, 1.0) - h1 * h1 * k * 0.25;
+            valRef = (float)val;
+        }
+    }
 }
 
-TArray<uint16> FSDFProcessor::DownscaleAndConvert(const TArray<double>& CombinedField, int32 HighW, int32 HighH,
-	int32 Factor)
+TArray<FFloat16Color> FSDFProcessor::DownscaleAndConvert(const TArray<FVector4f>& CombinedField, int32 HighW, int32 HighH, int32 Factor)
 {
 	int32 OrigW = HighW / FMath::Max(1, Factor);
 	int32 OrigH = HighH / FMath::Max(1, Factor);
-	TArray<uint16> Out;
+	TArray<FFloat16Color> Out;
 	Out.SetNumUninitialized(OrigW * OrigH);
 	
 	int32 Radius = FMath::Max(1, FMath::CeilToInt(Factor * 1.5f)); 
@@ -170,36 +207,41 @@ TArray<uint16> FSDFProcessor::DownscaleAndConvert(const TArray<double>& Combined
 	{
 		for (int32 x = 0; x < OrigW; ++x)
 		{
-			double sum = 0.0;
-			double weightSum = 0.0;
+			FVector4f sum(0.0f, 0.0f, 0.0f, 0.0f);
+			float weightSum = 0.0f;
         	
-			double cx = (x + 0.5) * Factor;
-			double cy = (y + 0.5) * Factor;
+			float cx = (x + 0.5f) * Factor;
+			float cy = (y + 0.5f) * Factor;
 
 			for(int32 dy = -Radius; dy <= Radius; ++dy)
 			{
 				int32 hy = FMath::Clamp(FMath::RoundToInt(cy) + dy, 0, HighH - 1);
-				double distY = FMath::Abs(cy - (hy + 0.5));
-				double wy = FMath::Max(0.0, 1.0 - (distY / (Radius + 0.5)));
+				float distY = FMath::Abs(cy - (hy + 0.5f));
+				float wy = FMath::Max(0.0f, 1.0f - (distY / (Radius + 0.5f)));
 
 				for(int32 dx = -Radius; dx <= Radius; ++dx)
 				{
 					int32 hx = FMath::Clamp(FMath::RoundToInt(cx) + dx, 0, HighW - 1);
-					double distX = FMath::Abs(cx - (hx + 0.5));
-					double wx = FMath::Max(0.0, 1.0 - (distX / (Radius + 0.5)));
+					float distX = FMath::Abs(cx - (hx + 0.5f));
+					float wx = FMath::Max(0.0f, 1.0f - (distX / (Radius + 0.5f)));
                     
-					double w = wx * wy;
-					double val = CombinedField[hy * HighW + hx];
-					if (FMath::IsNaN(val)) val = 0.0;
-                    
+					float w = wx * wy;
+					FVector4f val = CombinedField[hy * HighW + hx];
+					
 					sum += val * w;
 					weightSum += w;
 				}
 			}
             
-			double avg = sum / FMath::Max(weightSum, 1e-6);
-			avg = FMath::Clamp(avg, 0.0, 1.0);
-			Out[y * OrigW + x] = (uint16)(avg * 65535.0);
+			sum /= FMath::Max(weightSum, 1e-6f);
+			
+			FFloat16Color Color;
+			Color.R = FMath::Clamp(sum.X, 0.0f, 1.0f);
+			Color.G = FMath::Clamp(sum.Y, 0.0f, 1.0f);
+			Color.B = FMath::Clamp(sum.Z, 0.0f, 1.0f);
+			Color.A = FMath::Clamp(sum.W, 0.0f, 1.0f);
+			
+			Out[y * OrigW + x] = Color;
 		}
 	}
 	return Out;

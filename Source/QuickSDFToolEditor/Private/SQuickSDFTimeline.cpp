@@ -434,11 +434,13 @@ float SQuickSDFTimeline::GetCurrentLightYaw() const
 	{
 		if (UWorld* World = Tool->GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld())
 		{
-			for (TActorIterator<ADirectionalLight> It(World); It; ++It)
+			// Get the mode's preview light specifically
+			UQuickSDFEditorMode* Mode = Cast<UQuickSDFEditorMode>(GLevelEditorModeTools().GetActiveScriptableMode("EM_QuickSDFEditorMode"));
+			ADirectionalLight* DirLight = Mode ? Mode->GetPreviewLight() : nullptr;
+
+			if (DirLight)
 			{
-				if (ADirectionalLight* DirLight = *It)
-				{
-					float RelativeAngle = 0.0f;
+				float RelativeAngle = 0.0f;
 
 					if (MeshComp)
 					{
@@ -489,7 +491,6 @@ float SQuickSDFTimeline::GetCurrentLightYaw() const
 					
 					return FMath::Clamp(RelativeAngle, 0.0f, 180.0f);
 				}
-			}
 		}
 	}
 	return 0.0f;
@@ -782,43 +783,13 @@ FReply SQuickSDFTimeline::OnSyncLightClicked()
 	UQuickSDFPaintTool* Tool = GetActivePaintTool();
 	if (!Tool || !Tool->Properties) return FReply::Handled();
 
-	UMeshComponent* MeshComp = Tool->CurrentComponent.Get();
-	if (!MeshComp) return FReply::Handled();
-
-	UWorld* World = Tool->GetToolManager() ? Tool->GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld() : nullptr;
-	if (!World) return FReply::Handled();
+	UQuickSDFEditorMode* Mode = Cast<UQuickSDFEditorMode>(GLevelEditorModeTools().GetActiveScriptableMode("EM_QuickSDFEditorMode"));
+	if (!Mode) return FReply::Handled();
 
 	int32 Index = Tool->Properties->EditAngleIndex;
-	if (!Tool->Properties->TargetAngles.IsValidIndex(Index)) return FReply::Handled();
-
-	float TargetAngle = Tool->Properties->TargetAngles[Index];
-
-	// Map TargetAngle (0-180) back to direction
-	// 0 = Left (ProjY=1), 90 = Front (ProjX=-1), 180 = Right (ProjY=-1)
-	float Alpha = FMath::DegreesToRadians(TargetAngle - 90.0f);
-	float ProjX = -FMath::Cos(Alpha);
-	float ProjY = -FMath::Sin(Alpha);
-
-	FVector MeshForward = MeshComp->GetForwardVector();
-	FVector MeshRight = MeshComp->GetRightVector();
-	FVector HorizontalDir = ProjX * MeshForward + ProjY * MeshRight;
-
-	for (TActorIterator<ADirectionalLight> It(World); It; ++It)
+	if (Tool->Properties->TargetAngles.IsValidIndex(Index))
 	{
-		if (ADirectionalLight* DirLight = *It)
-		{
-			// Preserve current pitch
-			FRotator CurrentRot = DirLight->GetActorRotation();
-			float PitchRad = FMath::DegreesToRadians(CurrentRot.Pitch);
-
-			FVector FinalDir = HorizontalDir * FMath::Cos(PitchRad);
-			FinalDir.Z = FMath::Sin(PitchRad);
-
-			FRotator NewRot = FinalDir.Rotation();
-			NewRot.Roll = 0.0f;
-			DirLight->SetActorRotation(NewRot);
-			break;
-		}
+		Mode->SetPreviewLightAngle(Tool->Properties->TargetAngles[Index]);
 	}
 
 	return FReply::Handled();

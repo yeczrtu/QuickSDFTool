@@ -42,7 +42,8 @@ public class QuickSDFToolEditor : ModuleRules
 				"LevelEditor",
 				"PropertyEditor",
 				"Projects",
-				"EditorStyle"
+				"EditorStyle",
+				"MaterialBaking"
 			}
 		);
 	}

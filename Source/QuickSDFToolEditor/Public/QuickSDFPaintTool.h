@@ -84,6 +84,12 @@ public:
 	UFUNCTION(CallInEditor, Category = "Actions")
 	void ExportToTexture();
 
+	UFUNCTION(CallInEditor, Category = "Actions", meta=(DisplayName="Fill Original Shading (Current)"))
+	void FillOriginalShadingToCurrentAngle();
+
+	UFUNCTION(CallInEditor, Category = "Actions", meta=(DisplayName="Fill Original Shading (All)"))
+	void FillOriginalShadingToAllAngles();
+
 	UFUNCTION(CallInEditor, Category = "Actions")
 	void GenerateSDFThresholdMap();
 };
@@ -172,6 +178,9 @@ public:
 	
 	void AddKeyframe();
 	void RemoveKeyframe(int32 Index);
+	
+	void FillOriginalShading(int32 AngleIndex);
+	void FillOriginalShadingAll();
 	
 	UPROPERTY(Transient)
 	TObjectPtr<UQuickSDFToolProperties> Properties;

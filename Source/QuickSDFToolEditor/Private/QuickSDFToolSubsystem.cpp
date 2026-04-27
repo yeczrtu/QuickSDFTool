@@ -1,4 +1,6 @@
 ﻿#include "QuickSDFToolSubsystem.h"
+#include "QuickSDFAsset.h"
+#include "QuickSDFPaintTool.h" 
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/Texture2D.h"
 #include "Engine/Canvas.h"
@@ -127,27 +129,37 @@ void UQuickSDFToolSubsystem::ExportToTexture(class UTextureRenderTarget2D* RT, c
 	}*/
 }
 
-void UQuickSDFToolSubsystem::Create16BitTexture(const TArray<uint16>& Pixels, int32 Width, int32 Height,
-	const FString& FolderPath, const FString& TextureName)
+void UQuickSDFToolSubsystem::CreateSDFTexture(const TArray<FFloat16Color>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName, ESDFOutputFormat Format)
 {
 	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
-	//TODO:ファイル名を決められるようにする。
 	UTexture2D* NewTex = Cast<UTexture2D>(AssetTools.CreateAsset(TextureName, FolderPath, UTexture2D::StaticClass(), nullptr));
 
 	if (!NewTex) return;
 
-	NewTex->Source.Init(Width, Height, 1, 1, TSF_G16);
-	uint16* MipData = (uint16*)NewTex->Source.LockMip(0);
-	FMemory::Memcpy(MipData, Pixels.GetData(), Pixels.Num() * sizeof(uint16));
-	NewTex->Source.UnlockMip(0);
+	// モノポーラ設定時は R チャンネルの値を抽出し 16bit グレースケール (G16) で作成
+	if (Format == ESDFOutputFormat::Monopolar)
+	{
+		NewTex->Source.Init(Width, Height, 1, 1, TSF_G16);
+		uint16* MipData = (uint16*)NewTex->Source.LockMip(0);
+		for(int32 i = 0; i < Pixels.Num(); ++i)
+		{
+			MipData[i] = (uint16)(FMath::Clamp(Pixels[i].R.GetFloat(), 0.0f, 1.0f) * 65535.0f);
+		}
+		NewTex->Source.UnlockMip(0);
+		NewTex->CompressionSettings = TC_Grayscale;
+	}
+	else // バイポーラ時はRGBA16F (HDR)
+	{
+		NewTex->Source.Init(Width, Height, 1, 1, TSF_RGBA16F);
+		FFloat16Color* MipData = (FFloat16Color*)NewTex->Source.LockMip(0);
+		FMemory::Memcpy(MipData, Pixels.GetData(), Pixels.Num() * sizeof(FFloat16Color));
+		NewTex->Source.UnlockMip(0);
+		NewTex->CompressionSettings = TC_HDR;
+	}
 
-	NewTex->CompressionSettings = TC_Grayscale;
 	NewTex->SRGB = false;
-	NewTex->MipGenSettings = TMGS_FromTextureGroup;
-	NewTex->Filter = TF_Default;
-	NewTex->AddressX = TA_Clamp;
-	NewTex->AddressY = TA_Clamp;
-	
+	NewTex->MipGenSettings = TMGS_NoMipmaps;
+	NewTex->Filter = TF_Bilinear;
 	NewTex->PostEditChange();
 	NewTex->GetPackage()->MarkPackageDirty();
 
@@ -155,7 +167,6 @@ void UQuickSDFToolSubsystem::Create16BitTexture(const TArray<uint16>& Pixels, in
 	Assets.Add(NewTex);
 	AssetTools.SyncBrowserToAssets(Assets);
 }
-
 void UQuickSDFToolSubsystem::DrawTextureToRenderTarget(UTexture2D* SourceTex, UTextureRenderTarget2D* TargetRT)
 {
 	if (!SourceTex || !TargetRT) return;
