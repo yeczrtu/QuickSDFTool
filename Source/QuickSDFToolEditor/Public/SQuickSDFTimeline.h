@@ -72,6 +72,7 @@ private:
 	FReply OnAddKeyframeClicked();
 	FReply OnDeleteKeyframeClicked();
 	void OnKeyframeClicked(int32 Index);
+	FReply OnSyncLightClicked();
 	void OnKeyframeAngleChanged(float NewAngle, int32 Index);
 	void OnKeyframeDragStarted();
 	void OnKeyframeDragEnded();

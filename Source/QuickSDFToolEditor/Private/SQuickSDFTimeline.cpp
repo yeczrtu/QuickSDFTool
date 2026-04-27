@@ -269,6 +269,19 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 								.Font(FAppStyle::GetFontStyle("BoldFont"))
 							]
 						]
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.Padding(2.0f, 0.0f)
+						[
+							SNew(SButton)
+							.OnClicked(this, &SQuickSDFTimeline::OnSyncLightClicked)
+							.ContentPadding(FMargin(4.0f, 0.0f))
+							.ToolTipText(LOCTEXT("SyncLightTooltip", "Sync Directional Light to selected keyframe angle"))
+							[
+								SNew(SImage)
+								.Image(FAppStyle::GetBrush("ClassIcon.DirectionalLight"))
+							]
+						]
 					]
 				]
 				.BodyContent()
@@ -757,6 +770,53 @@ void SQuickSDFTimeline::OnKeyframeClicked(int32 Index)
 			Tool->OnPropertyModified(Props, Prop);
 		}
 	}
+}
+
+FReply SQuickSDFTimeline::OnSyncLightClicked()
+{
+	UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	if (!Tool || !Tool->Properties) return FReply::Handled();
+
+	UMeshComponent* MeshComp = Tool->CurrentComponent.Get();
+	if (!MeshComp) return FReply::Handled();
+
+	UWorld* World = Tool->GetToolManager() ? Tool->GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld() : nullptr;
+	if (!World) return FReply::Handled();
+
+	int32 Index = Tool->Properties->EditAngleIndex;
+	if (!Tool->Properties->TargetAngles.IsValidIndex(Index)) return FReply::Handled();
+
+	float TargetAngle = Tool->Properties->TargetAngles[Index];
+
+	// Map TargetAngle (0-180) back to direction
+	// 0 = Left (ProjY=1), 90 = Front (ProjX=-1), 180 = Right (ProjY=-1)
+	float Alpha = FMath::DegreesToRadians(TargetAngle - 90.0f);
+	float ProjX = -FMath::Cos(Alpha);
+	float ProjY = -FMath::Sin(Alpha);
+
+	FVector MeshForward = MeshComp->GetForwardVector();
+	FVector MeshRight = MeshComp->GetRightVector();
+	FVector HorizontalDir = ProjX * MeshForward + ProjY * MeshRight;
+
+	for (TActorIterator<ADirectionalLight> It(World); It; ++It)
+	{
+		if (ADirectionalLight* DirLight = *It)
+		{
+			// Preserve current pitch
+			FRotator CurrentRot = DirLight->GetActorRotation();
+			float PitchRad = FMath::DegreesToRadians(CurrentRot.Pitch);
+
+			FVector FinalDir = HorizontalDir * FMath::Cos(PitchRad);
+			FinalDir.Z = FMath::Sin(PitchRad);
+
+			FRotator NewRot = FinalDir.Rotation();
+			NewRot.Roll = 0.0f;
+			DirLight->SetActorRotation(NewRot);
+			break;
+		}
+	}
+
+	return FReply::Handled();
 }
 
 void SQuickSDFTimeline::OnKeyframeAngleChanged(float NewAngle, int32 Index)
