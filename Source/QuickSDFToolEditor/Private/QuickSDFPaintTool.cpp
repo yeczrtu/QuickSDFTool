@@ -321,6 +321,7 @@ void UQuickSDFPaintTool::Setup()
 	Super::Setup();
 
 	Properties = NewObject<UQuickSDFToolProperties>(this);
+	Properties->SetFlags(RF_Transactional);
 	AddToolPropertySource(Properties);
 
 	if (UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>())
@@ -378,6 +379,24 @@ void UQuickSDFPaintTool::OnTick(float DeltaTime)
 		if (CurrentComponent.Get() != Subsystem->GetTargetMeshComponent())
 		{
 			ChangeTargetComponent(Subsystem->GetTargetMeshComponent());
+		}
+
+		// Ensure render targets are initialized (critical after Undo/Redo since RTs are Transient)
+		if (UQuickSDFAsset* ActiveAsset = Subsystem->GetActiveSDFAsset())
+		{
+			bool bAnyMissingRT = false;
+			for (const FQuickSDFAngleData& Data : ActiveAsset->AngleDataList)
+			{
+				if (!Data.PaintRenderTarget)
+				{
+					bAnyMissingRT = true;
+					break;
+				}
+			}
+			if (bAnyMissingRT)
+			{
+				ActiveAsset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+			}
 		}
 	}
 }
@@ -1238,6 +1257,10 @@ void UQuickSDFPaintTool::AddKeyframe()
 
 	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
 
+	GetToolManager()->BeginUndoTransaction(LOCTEXT("AddKeyframe", "Add Timeline Keyframe"));
+	Asset->Modify();
+	Properties->Modify();
+
 	// Insert after current EditAngleIndex
 	int32 InsertIndex = Properties->EditAngleIndex + 1;
 	
@@ -1271,6 +1294,8 @@ void UQuickSDFPaintTool::AddKeyframe()
 	Properties->EditAngleIndex = InsertIndex;
 	FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex));
 	OnPropertyModified(Properties, Prop);
+
+	GetToolManager()->EndUndoTransaction();
 }
 
 void UQuickSDFPaintTool::RemoveKeyframe(int32 Index)
@@ -1283,6 +1308,10 @@ void UQuickSDFPaintTool::RemoveKeyframe(int32 Index)
 	
 	if (Asset->AngleDataList.IsValidIndex(Index) && Asset->AngleDataList.Num() > 1)
 	{
+		GetToolManager()->BeginUndoTransaction(LOCTEXT("RemoveKeyframe", "Remove Timeline Keyframe"));
+		Asset->Modify();
+		Properties->Modify();
+
 		Asset->AngleDataList.RemoveAt(Index);
 		Properties->TargetAngles.RemoveAt(Index);
 		Properties->TargetTextures.RemoveAt(Index);
@@ -1294,6 +1323,8 @@ void UQuickSDFPaintTool::RemoveKeyframe(int32 Index)
 
 		FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex));
 		OnPropertyModified(Properties, Prop);
+
+		GetToolManager()->EndUndoTransaction();
 	}
 }
 

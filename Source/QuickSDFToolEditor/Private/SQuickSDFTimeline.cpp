@@ -184,7 +184,7 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 		.Padding(FMargin(10.0f, 0.0f, 10.0f, 0.0f))
 		[
 			SNew(SBox)
-			.WidthOverride(800.0f) // Wider for timeline
+			.WidthOverride(800.0f) // Wider for spatial timeline
 			[
 				SNew(SExpandableArea)
 				.InitiallyCollapsed(false)
@@ -197,7 +197,7 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 					.VAlign(VAlign_Center)
 					[
 						SNew(STextBlock)
-						.Text(LOCTEXT("TimelineAreaTitle", "Timeline"))
+						.Text(LOCTEXT("TimelineAreaTitle", "Spatial Timeline"))
 						.Font(FAppStyle::GetFontStyle("SmallFont"))
 					]
 
@@ -761,6 +761,11 @@ void SQuickSDFTimeline::OnKeyframeDragStarted()
 		if (Subsystem && Subsystem->GetActiveSDFAsset())
 		{
 			Subsystem->GetActiveSDFAsset()->Modify();
+		}
+
+		if (Tool->Properties)
+		{
+			Tool->Properties->Modify();
 		}
 	}
 }
