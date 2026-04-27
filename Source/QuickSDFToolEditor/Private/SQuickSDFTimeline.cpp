@@ -15,9 +15,11 @@
 #include "Editor.h"
 #include "QuickSDFToolSubsystem.h"
 #include "Engine/Texture2D.h"
+#include "Engine/TextureRenderTarget2D.h"
 #include "EngineUtils.h"
 #include "Engine/DirectionalLight.h"
 #include "QuickSDFAsset.h"
+#include "Brushes/SlateImageBrush.h"
 
 #define LOCTEXT_NAMESPACE "SQuickSDFTimeline"
 
@@ -27,62 +29,91 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 	Angle = InArgs._Angle;
 	bIsActive = InArgs._bIsActive;
 	bSnapEnabled = InArgs._bSnapEnabled;
+	TextureBrush = InArgs._TextureBrush;
 	OnAngleChanged = InArgs._OnAngleChanged;
 	OnClicked = InArgs._OnClicked;
 	OnDragStarted = InArgs._OnDragStarted;
 	OnDragEnded = InArgs._OnDragEnded;
 
 	auto ColorAttr = TAttribute<FSlateColor>::CreateLambda([this]() {
-		return bIsActive.Get() ? FSlateColor(FLinearColor(1.0f, 0.6f, 0.1f, 1.0f)) : FSlateColor(FLinearColor(0.2f, 0.2f, 0.2f, 1.0f));
+		return bIsActive.Get() ? FSlateColor(FLinearColor(1.0f, 0.6f, 0.1f, 1.0f)) : FSlateColor(FLinearColor(0.4f, 0.4f, 0.4f, 1.0f));
 	});
 
 	ChildSlot
 	[
-		SNew(SVerticalBox)
-
-		// The Angle Text
-		+ SVerticalBox::Slot()
-		.AutoHeight()
+		SNew(SOverlay)
+		
+		// 1. The Needle (Background)
+		+ SOverlay::Slot()
 		.HAlign(HAlign_Center)
-		.Padding(0, 0, 0, 2)
+		.VAlign(VAlign_Fill)
+		[
+			SNew(SBox)
+			.WidthOverride(2.0f)
+			[
+				SNew(SBorder)
+				.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+				.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this]() {
+					return bIsActive.Get() ? FLinearColor(1.0f, 0.6f, 0.1f, 0.5f) : FLinearColor(1.0f, 1.0f, 1.0f, 0.1f);
+				}))
+			]
+		]
+
+		// 2. The Thumbnail Frame
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Center)
+		[
+			SNew(SBorder)
+			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+			.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this]() {
+				return bIsActive.Get() ? FLinearColor(1.0f, 0.6f, 0.1f, 1.0f) : FLinearColor(0.05f, 0.05f, 0.05f, 1.0f);
+			}))
+			.Padding(2.0f)
+			[
+				SNew(SBox)
+				.WidthOverride(64.0f)
+				.HeightOverride(64.0f)
+				[
+					SNew(SOverlay)
+					
+					// Texture Preview
+					+ SOverlay::Slot()
+					[
+						SNew(SImage)
+						.Image(TAttribute<const FSlateBrush*>::CreateLambda([this]() {
+							return TextureBrush.Get() ? TextureBrush.Get() : FAppStyle::GetBrush("DefaultBrush");
+						}))
+					]
+
+					// Shadow overlay for inactive
+					+ SOverlay::Slot()
+					[
+						SNew(SBorder)
+						.Visibility(TAttribute<EVisibility>::CreateLambda([this]() {
+							return bIsActive.Get() ? EVisibility::Collapsed : EVisibility::Visible;
+						}))
+						.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+						.BorderBackgroundColor(FLinearColor(0, 0, 0, 0.4f))
+					]
+				]
+			]
+		]
+
+		// 3. The Angle Text (Bottom)
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Bottom)
+		.Padding(0, 0, 0, -18)
 		[
 			SNew(STextBlock)
 			.Text(TAttribute<FText>::CreateLambda([this]() {
 				return FText::FromString(FString::Printf(TEXT("%.0f\u00B0"), Angle.Get()));
 			}))
 			.ColorAndOpacity(ColorAttr)
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-		]
-		
-		// The Head of the needle (small square/diamond)
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.HAlign(HAlign_Center)
-		[
-			SNew(SBorder)
-			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-			.BorderBackgroundColor(ColorAttr)
-			.Padding(1.0f)
-			[
-				SNew(SBox)
-				.WidthOverride(8.0f)
-				.HeightOverride(8.0f)
-			]
-		]
-		
-		// The Body of the needle (thin line)
-		+ SVerticalBox::Slot()
-		.FillHeight(1.0f)
-		.HAlign(HAlign_Center)
-		[
-			SNew(SBorder)
-			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-			.BorderBackgroundColor(ColorAttr)
-			.Padding(0)
-			[
-				SNew(SBox)
-				.WidthOverride(2.0f)
-			]
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+			.ShadowOffset(FVector2D(1, 1))
+			.ShadowColorAndOpacity(FLinearColor::Black)
 		]
 	];
 }
@@ -192,7 +223,7 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 					.Padding(10.0f, 10.0f)
 					[
 						SNew(SBox)
-						.HeightOverride(40.0f)
+						.HeightOverride(100.0f)
 						[
 							SNew(SOverlay)
 							
@@ -202,8 +233,30 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 							[
 								SNew(SBorder)
 								.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-								.BorderBackgroundColor(FLinearColor(0.05f, 0.05f, 0.05f, 1.0f))
+								.BorderBackgroundColor(FLinearColor(0.01f, 0.01f, 0.01f, 1.0f))
 								.Padding(FMargin(0, 2))
+							]
+
+							// Filmstrip decorative holes (Top)
+							+ SOverlay::Slot()
+							.VAlign(VAlign_Top)
+							.Padding(0, 5)
+							[
+								SNew(SHorizontalBox)
+								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(10).HeightOverride(6).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.2f, 0.2f, 0.2f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
+								+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
+								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(10).HeightOverride(6).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.2f, 0.2f, 0.2f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
+							]
+
+							// Filmstrip decorative holes (Bottom)
+							+ SOverlay::Slot()
+							.VAlign(VAlign_Bottom)
+							.Padding(0, 5)
+							[
+								SNew(SHorizontalBox)
+								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(10).HeightOverride(6).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.2f, 0.2f, 0.2f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
+								+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
+								+ SHorizontalBox::Slot().AutoWidth() [ SNew(SBox).WidthOverride(10).HeightOverride(6).HAlign(HAlign_Center) [ SNew(SBorder).BorderBackgroundColor(FLinearColor(0.2f, 0.2f, 0.2f, 1.0f)).BorderImage(FAppStyle::GetBrush("WhiteBrush")) ] ]
 							]
 
 							// The actual canvas for keyframes
@@ -329,12 +382,36 @@ void SQuickSDFTimeline::RebuildTimeline()
 	if (!TimelineTrackCanvas.IsValid()) return;
 	
 	TimelineTrackCanvas->ClearChildren();
+	KeyframeBrushes.Empty();
 
 	UQuickSDFPaintTool* Tool = GetActivePaintTool();
 	if (!Tool) return;
 
 	UQuickSDFToolProperties* Props = Tool->Properties;
 	if (!Props) return;
+
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+
+	if (Asset)
+	{
+		for (int32 i = 0; i < Asset->AngleDataList.Num(); ++i)
+		{
+			UTexture* Tex = Asset->AngleDataList[i].PaintRenderTarget;
+			if (!Tex) Tex = Asset->AngleDataList[i].TextureMask;
+			
+			if (Tex)
+			{
+				KeyframeBrushes.Add(MakeShared<FSlateImageBrush>(Tex, FVector2D(64, 64)));
+			}
+			else
+			{
+				KeyframeBrushes.Add(nullptr);
+			}
+		}
+	}
+
+	float CanvasHeight = 100.0f;
 
 	// Add tick marks for 0, 90, 180
 	for (int32 i = 0; i <= 2; ++i)
@@ -345,14 +422,13 @@ void SQuickSDFTimeline::RebuildTimeline()
 		TimelineTrackCanvas->AddSlot()
 		.Position(TAttribute<FVector2D>::CreateLambda([this, Percent]() {
 			float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
-			// Center the 2px tick mark (20px offset + Percent * TrackWidth - 1px)
 			return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 19.0f, 0.0f);
 		}))
-		.Size(FVector2D(2.0f, 40.0f))
+		.Size(FVector2D(2.0f, CanvasHeight))
 		[
 			SNew(SBorder)
 			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-			.BorderBackgroundColor(FLinearColor(0.3f, 0.3f, 0.3f, 1.0f))
+			.BorderBackgroundColor(FLinearColor(0.2f, 0.2f, 0.2f, 0.5f))
 		];
 	}
 
@@ -364,11 +440,11 @@ void SQuickSDFTimeline::RebuildTimeline()
 		float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
 		return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 19.0f, 0.0f);
 	}))
-	.Size(FVector2D(2.0f, 40.0f))
+	.Size(FVector2D(2.0f, CanvasHeight))
 	[
 		SNew(SBorder)
 		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-		.BorderBackgroundColor(FLinearColor(1.0f, 1.0f, 0.0f, 0.8f)) // Yellow
+		.BorderBackgroundColor(FLinearColor(1.0f, 1.0f, 0.0f, 0.6f)) // Yellow
 	];
 
 	for (int32 i = 0; i < Props->NumAngles; ++i)
@@ -381,11 +457,12 @@ void SQuickSDFTimeline::RebuildTimeline()
 				float CurrentAngle = ActiveTool->Properties->TargetAngles[i];
 				float Percent = FMath::Clamp(CurrentAngle / 180.0f, 0.0f, 1.0f);
 				float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
-				return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent, 0.0f);
+				// Offset to center the 80px keyframe (64px image + padding)
+				return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 20.0f - 40.0f, 0.0f);
 			}
 			return FVector2D::ZeroVector;
 		}))
-		.Size(FVector2D(40.0f, 40.0f))
+		.Size(FVector2D(80.0f, CanvasHeight))
 		[
 			SNew(SQuickSDFTimelineKeyframe)
 			.Index(i)
@@ -400,6 +477,10 @@ void SQuickSDFTimeline::RebuildTimeline()
 				return ActiveTool && ActiveTool->Properties && ActiveTool->Properties->EditAngleIndex == i;
 			}))
 			.bSnapEnabled(TAttribute<bool>::CreateLambda([this]() { return bGridSnapEnabled; }))
+			.TextureBrush(TAttribute<FSlateBrush*>::CreateLambda([this, i]() -> FSlateBrush* {
+				if (KeyframeBrushes.IsValidIndex(i)) return KeyframeBrushes[i].Get();
+				return nullptr;
+			}))
 			.OnClicked(this, &SQuickSDFTimeline::OnKeyframeClicked, i)
 			.OnAngleChanged(this, &SQuickSDFTimeline::OnKeyframeAngleChanged, i)
 			.OnDragStarted(this, &SQuickSDFTimeline::OnKeyframeDragStarted)

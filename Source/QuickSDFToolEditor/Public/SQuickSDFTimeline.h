@@ -15,6 +15,7 @@ public:
 		SLATE_ATTRIBUTE(float, Angle)
 		SLATE_ATTRIBUTE(bool, bIsActive)
 		SLATE_ATTRIBUTE(bool, bSnapEnabled)
+		SLATE_ATTRIBUTE(FSlateBrush*, TextureBrush)
 		SLATE_EVENT(FOnKeyframeAngleChanged, OnAngleChanged)
 		SLATE_EVENT(FSimpleDelegate, OnClicked)
 		SLATE_EVENT(FSimpleDelegate, OnDragStarted)
@@ -33,6 +34,7 @@ private:
 	TAttribute<float> Angle;
 	TAttribute<bool> bIsActive;
 	TAttribute<bool> bSnapEnabled;
+	TAttribute<FSlateBrush*> TextureBrush;
 	bool bIsDragging = false;
 	FOnKeyframeAngleChanged OnAngleChanged;
 	FSimpleDelegate OnClicked;
@@ -76,6 +78,7 @@ private:
 	int32 CachedEditAngleIndex = -1;
 	TArray<float> CachedAngles;
 	TArray<UTexture2D*> CachedTextures;
+	TArray<TSharedPtr<FSlateBrush>> KeyframeBrushes;
 	bool bGridSnapEnabled = true;
 
 	// Widget refs
