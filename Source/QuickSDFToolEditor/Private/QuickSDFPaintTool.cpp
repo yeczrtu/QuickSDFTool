@@ -1332,97 +1332,100 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
 {
     Super::DrawHUD(Canvas, RenderAPI);
 
-    UTextureRenderTarget2D* RT = GetActiveRenderTarget();
-    if (RT)
+    if (Properties->bShowPreview)
     {
-        // 1. プレビューテクスチャの描画
-        PreviewCanvasOrigin = FVector2D(10.0f, 10.0f);
-        PreviewCanvasSize = FVector2D(256.0f, 256.0f);
-        const FVector2D PreviewOrigin = GetPreviewOrigin();
-        const FVector2D PreviewSize = GetPreviewSize();
-        
-        FCanvasTileItem TileItem(PreviewOrigin, RT->GetResource(), PreviewSize, FLinearColor::White);
-        TileItem.BlendMode = SE_BLEND_Opaque;
-        Canvas->DrawItem(TileItem);
-
-		if (Properties->bEnableOnionSkin)
-		{
-			UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
-			if (Subsystem && Subsystem->GetActiveSDFAsset())
-			{
-				UQuickSDFAsset* ActiveAsset = Subsystem->GetActiveSDFAsset();
-				
-				// Previous frame (Red)
-				if (Properties->EditAngleIndex > 0 && ActiveAsset->AngleDataList.IsValidIndex(Properties->EditAngleIndex - 1))
-				{
-					UTextureRenderTarget2D* PrevRT = ActiveAsset->AngleDataList[Properties->EditAngleIndex - 1].PaintRenderTarget;
-					if (PrevRT)
-					{
-						FCanvasTileItem PrevTile(PreviewOrigin, PrevRT->GetResource(), PreviewSize, FLinearColor(1.0f, 0.0f, 0.0f, 0.5f));
-						PrevTile.BlendMode = SE_BLEND_Additive;
-						Canvas->DrawItem(PrevTile);
-					}
-				}
-				
-				// Next frame (Green)
-				if (Properties->EditAngleIndex < ActiveAsset->AngleDataList.Num() - 1 && ActiveAsset->AngleDataList.IsValidIndex(Properties->EditAngleIndex + 1))
-				{
-					UTextureRenderTarget2D* NextRT = ActiveAsset->AngleDataList[Properties->EditAngleIndex + 1].PaintRenderTarget;
-					if (NextRT)
-					{
-						FCanvasTileItem NextTile(PreviewOrigin, NextRT->GetResource(), PreviewSize, FLinearColor(0.0f, 1.0f, 0.0f, 0.5f));
-						NextTile.BlendMode = SE_BLEND_Additive;
-						Canvas->DrawItem(NextTile);
-					}
-				}
-			}
-		}
-    	
-        if (TargetMesh.IsValid() && TargetMesh->HasAttributes() && Properties->bOverlayUV)
+        UTextureRenderTarget2D* RT = GetActiveRenderTarget();
+        if (RT)
         {
-            const UE::Geometry::FDynamicMeshUVOverlay* UVOverlay = TargetMesh->Attributes()->GetUVLayer(Properties->UVChannel);
-            if (UVOverlay)
+            // 1. プレビューテクスチャの描画
+            PreviewCanvasOrigin = FVector2D(10.0f, 10.0f);
+            PreviewCanvasSize = FVector2D(256.0f, 256.0f);
+            const FVector2D PreviewOrigin = GetPreviewOrigin();
+            const FVector2D PreviewSize = GetPreviewSize();
+            
+            FCanvasTileItem TileItem(PreviewOrigin, RT->GetResource(), PreviewSize, FLinearColor::White);
+            TileItem.BlendMode = SE_BLEND_Opaque;
+            Canvas->DrawItem(TileItem);
+
+            if (Properties->bEnableOnionSkin)
             {
-                // 線の色と不透明度を設定
-                FLinearColor UVLineColor(0.0f, 1.0f, 0.0f, 0.3f); // 半透明の緑色
-
-                for (int32 Tid : TargetMesh->TriangleIndicesItr())
+                UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+                if (Subsystem && Subsystem->GetActiveSDFAsset())
                 {
-                    if (UVOverlay->IsSetTriangle(Tid))
+                    UQuickSDFAsset* ActiveAsset = Subsystem->GetActiveSDFAsset();
+                    
+                    // Previous frame (Red)
+                    if (Properties->EditAngleIndex > 0 && ActiveAsset->AngleDataList.IsValidIndex(Properties->EditAngleIndex - 1))
                     {
-                        UE::Geometry::FIndex3i UVIndices = UVOverlay->GetTriangle(Tid);
-                        FVector2f UV0 = UVOverlay->GetElement(UVIndices.A);
-                        FVector2f UV1 = UVOverlay->GetElement(UVIndices.B);
-                        FVector2f UV2 = UVOverlay->GetElement(UVIndices.C);
-
-                        // UV(0-1) を プレビューのピクセル座標に変換するラムダ関数
-                        auto UVToScreen = [&](const FVector2f& UV) -> FVector2D {
-                            return FVector2D(
-                                PreviewOrigin.X + (double)UV.X * PreviewSize.X,
-                                PreviewOrigin.Y + (double)UV.Y * PreviewSize.Y
-                            );
-                        };
-
-                        FVector2D P0 = UVToScreen(UV0);
-                        FVector2D P1 = UVToScreen(UV1);
-                        FVector2D P2 = UVToScreen(UV2);
-
-                        // 三角形の3辺を描画
-                        FCanvasLineItem Line0(P0, P1); Line0.SetColor(UVLineColor);
-                        Canvas->DrawItem(Line0);
-                        FCanvasLineItem Line1(P1, P2); Line1.SetColor(UVLineColor);
-                        Canvas->DrawItem(Line1);
-                        FCanvasLineItem Line2(P2, P0); Line2.SetColor(UVLineColor);
-                        Canvas->DrawItem(Line2);
+                        UTextureRenderTarget2D* PrevRT = ActiveAsset->AngleDataList[Properties->EditAngleIndex - 1].PaintRenderTarget;
+                        if (PrevRT)
+                        {
+                            FCanvasTileItem PrevTile(PreviewOrigin, PrevRT->GetResource(), PreviewSize, FLinearColor(1.0f, 0.0f, 0.0f, 0.5f));
+                            PrevTile.BlendMode = SE_BLEND_Additive;
+                            Canvas->DrawItem(PrevTile);
+                        }
+                    }
+                    
+                    // Next frame (Green)
+                    if (Properties->EditAngleIndex < ActiveAsset->AngleDataList.Num() - 1 && ActiveAsset->AngleDataList.IsValidIndex(Properties->EditAngleIndex + 1))
+                    {
+                        UTextureRenderTarget2D* NextRT = ActiveAsset->AngleDataList[Properties->EditAngleIndex + 1].PaintRenderTarget;
+                        if (NextRT)
+                        {
+                            FCanvasTileItem NextTile(PreviewOrigin, NextRT->GetResource(), PreviewSize, FLinearColor(0.0f, 1.0f, 0.0f, 0.5f));
+                            NextTile.BlendMode = SE_BLEND_Additive;
+                            Canvas->DrawItem(NextTile);
+                        }
                     }
                 }
             }
-        }
+            
+            if (TargetMesh.IsValid() && TargetMesh->HasAttributes() && Properties->bOverlayUV)
+            {
+                const UE::Geometry::FDynamicMeshUVOverlay* UVOverlay = TargetMesh->Attributes()->GetUVLayer(Properties->UVChannel);
+                if (UVOverlay)
+                {
+                    // 線の色と不透明度を設定
+                    FLinearColor UVLineColor(0.0f, 1.0f, 0.0f, 0.3f); // 半透明の緑色
 
-        // 2. ボーダーの描画
-        FCanvasBoxItem BorderItem(PreviewOrigin, PreviewSize);
-        BorderItem.SetColor(IsInPreviewBounds(LastInputScreenPosition) ? FLinearColor::Yellow : FLinearColor::Gray);
-        Canvas->DrawItem(BorderItem);
+                    for (int32 Tid : TargetMesh->TriangleIndicesItr())
+                    {
+                        if (UVOverlay->IsSetTriangle(Tid))
+                        {
+                            UE::Geometry::FIndex3i UVIndices = UVOverlay->GetTriangle(Tid);
+                            FVector2f UV0 = UVOverlay->GetElement(UVIndices.A);
+                            FVector2f UV1 = UVOverlay->GetElement(UVIndices.B);
+                            FVector2f UV2 = UVOverlay->GetElement(UVIndices.C);
+
+                            // UV(0-1) を プレビューのピクセル座標に変換するラムダ関数
+                            auto UVToScreen = [&](const FVector2f& UV) -> FVector2D {
+                                return FVector2D(
+                                    PreviewOrigin.X + (double)UV.X * PreviewSize.X,
+                                    PreviewOrigin.Y + (double)UV.Y * PreviewSize.Y
+                                );
+                            };
+
+                            FVector2D P0 = UVToScreen(UV0);
+                            FVector2D P1 = UVToScreen(UV1);
+                            FVector2D P2 = UVToScreen(UV2);
+
+                            // 三角形の3辺を描画
+                            FCanvasLineItem Line0(P0, P1); Line0.SetColor(UVLineColor);
+                            Canvas->DrawItem(Line0);
+                            FCanvasLineItem Line1(P1, P2); Line1.SetColor(UVLineColor);
+                            Canvas->DrawItem(Line1);
+                            FCanvasLineItem Line2(P2, P0); Line2.SetColor(UVLineColor);
+                            Canvas->DrawItem(Line2);
+                        }
+                    }
+                }
+            }
+
+            // 2. ボーダーの描画
+            FCanvasBoxItem BorderItem(PreviewOrigin, PreviewSize);
+            BorderItem.SetColor(IsInPreviewBounds(LastInputScreenPosition) ? FLinearColor::Yellow : FLinearColor::Gray);
+            Canvas->DrawItem(BorderItem);
+        }
     }
 
 

@@ -5,13 +5,12 @@
 #include "InteractiveToolManager.h"
 #include "QuickSDFEditorModeCommands.h"
 #include "QuickSDFPaintToolBuilder.h"
-#include "QuickSDFSelectTool.h"
 #include "QuickSDFToolSubsystem.h"
 #include "Tools/EdModeInteractiveToolsContext.h"
+#include "QuickSDFSelectTool.h"
 #include "SQuickSDFTimeline.h"
 #include "LevelEditor.h"
 #include "SLevelViewport.h"
-
 
 const FEditorModeID UQuickSDFEditorMode::EM_QuickSDFEditorModeId = TEXT("EM_QuickSDFEditorMode");
 
@@ -35,7 +34,7 @@ void UQuickSDFEditorMode::Enter()
 	GetInteractiveToolsContext()->StartTool(TEXT("QuickSDFPaintTool"));
 	GetToolManager()->ConfigureChangeTrackingMode(EToolChangeTrackingMode::NoChangeTracking);
 	Toolkit->SetCurrentPalette(FName(TEXT("Default")));
-	
+
 	// Add Timeline UI to viewport overlay
 	if (FModuleManager::Get().IsModuleLoaded("LevelEditor"))
 	{
@@ -51,6 +50,9 @@ void UQuickSDFEditorMode::Enter()
 			}
 		}
 	}
+
+	// Auto-select target if something is already selected
+	ActorSelectionChangeNotify();
 }
 
 void UQuickSDFEditorMode::Exit()
@@ -72,7 +74,7 @@ void UQuickSDFEditorMode::Exit()
 		}
 		TimelineWidget.Reset();
 	}
-	
+
 	Super::Exit();
 	// Clean up tools
 }
@@ -114,6 +116,18 @@ void UQuickSDFEditorMode::ActorSelectionChangeNotify()
 			QuickSDFToolSubsystem->SetTargetComponent(TargetComp);
 		}
 	}
+}
+
+bool UQuickSDFEditorMode::IsSelectionAllowed(AActor* InActor, bool bInSelection) const
+{
+	if (UInteractiveTool* ActiveTool = GetToolManager()->GetActiveTool(EToolSide::Mouse))
+	{
+		if (ActiveTool->IsA<UQuickSDFSelectTool>())
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 void UQuickSDFEditorMode::CreateToolkit()

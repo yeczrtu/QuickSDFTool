@@ -52,6 +52,9 @@ public:
 	int32 UVChannel = 0;
 	
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
+	bool bShowPreview = true;
+	
+	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bOverlayOriginalShadow = false;
 	
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
