@@ -183,31 +183,69 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 				.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
 				.Padding(4.0f)
 				[
-					SNew(SHorizontalBox)
+					SNew(SVerticalBox)
 
-					// Snap Checkbox
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					.Padding(10.0f, 0.0f, 0.0f, 0.0f)
+					// Top Row: Controls
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(0.0f, 2.0f)
 					[
-						SNew(SCheckBox)
-						.IsChecked(this, &SQuickSDFTimeline::IsGridSnapEnabled)
-						.OnCheckStateChanged(this, &SQuickSDFTimeline::OnGridSnapStateChanged)
+						SNew(SHorizontalBox)
+
+						// Snap Checkbox
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(10.0f, 0.0f, 0.0f, 0.0f)
 						[
-							SNew(STextBlock)
-							.Text(LOCTEXT("SnapText", "Snap"))
+							SNew(SCheckBox)
+							.IsChecked(this, &SQuickSDFTimeline::IsGridSnapEnabled)
+							.OnCheckStateChanged(this, &SQuickSDFTimeline::OnGridSnapStateChanged)
+							[
+								SNew(STextBlock)
+								.Text(LOCTEXT("SnapText", "Snap"))
+							]
+						]
+
+						+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
+
+						// Controls (Add/Delete)
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(0.0f, 0.0f, 10.0f, 0.0f)
+						[
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot()
+							.AutoWidth()
+							.Padding(2.0f)
+							[
+								SNew(SButton)
+								.Text(LOCTEXT("AddFrameBtn", "+"))
+								.ToolTipText(LOCTEXT("AddFrameToolTip", "Add a new light angle keyframe"))
+								.OnClicked(this, &SQuickSDFTimeline::OnAddKeyframeClicked)
+								.ContentPadding(FMargin(8.0f, 2.0f))
+							]
+							+ SHorizontalBox::Slot()
+							.AutoWidth()
+							.Padding(2.0f)
+							[
+								SNew(SButton)
+								.Text(LOCTEXT("DelFrameBtn", "-"))
+								.ToolTipText(LOCTEXT("DelFrameToolTip", "Remove the selected keyframe"))
+								.OnClicked(this, &SQuickSDFTimeline::OnDeleteKeyframeClicked)
+								.ContentPadding(FMargin(8.0f, 2.0f))
+							]
 						]
 					]
 
-					// Timeline Track Canvas
-					+ SHorizontalBox::Slot()
-					.FillWidth(1.0f)
-					.VAlign(VAlign_Center)
-					.Padding(10.0f, 10.0f)
+					// Bottom Row: Timeline Track
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(0.0f, 5.0f)
 					[
 						SNew(SBox)
-						.HeightOverride(70.0f)
+						.HeightOverride(44.0f)
 						[
 							SNew(SOverlay)
 							
@@ -248,35 +286,6 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 							[
 								SAssignNew(TimelineTrackCanvas, SCanvas)
 							]
-						]
-					]
-
-					// Controls (Add/Delete)
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					.Padding(10.0f, 0.0f, 0.0f, 0.0f)
-					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.Padding(2.0f)
-						[
-							SNew(SButton)
-							.Text(LOCTEXT("AddFrameBtn", "+"))
-							.ToolTipText(LOCTEXT("AddFrameToolTip", "Add a new light angle keyframe"))
-							.OnClicked(this, &SQuickSDFTimeline::OnAddKeyframeClicked)
-							.ContentPadding(FMargin(8.0f, 2.0f))
-						]
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.Padding(2.0f)
-						[
-							SNew(SButton)
-							.Text(LOCTEXT("DelFrameBtn", "-"))
-							.ToolTipText(LOCTEXT("DelFrameToolTip", "Remove the selected keyframe"))
-							.OnClicked(this, &SQuickSDFTimeline::OnDeleteKeyframeClicked)
-							.ContentPadding(FMargin(8.0f, 2.0f))
 						]
 					]
 				]
@@ -395,7 +404,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 		}
 	}
 
-	float CanvasHeight = 70.0f;
+	float CanvasHeight = 44.0f;
 	float KeyframeWidth = 30.0f;
 
 	// 1. Add Filmstrip Background (One segment per keyframe)
@@ -421,7 +430,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 			
 			return FVector2D(FMath::Max(0.0f, TrackWidth) * (L / 180.0f) + 20.0f, 0.0f);
 		}))
-		.Size(TAttribute<FVector2D>::CreateLambda([this, i]() {
+		.Size(TAttribute<FVector2D>::CreateLambda([this, i, CanvasHeight]() {
 			UQuickSDFPaintTool* Tool = GetActivePaintTool();
 			if (!Tool || !Tool->Properties) return FVector2D::ZeroVector;
 			UQuickSDFToolProperties* P = Tool->Properties;
@@ -440,7 +449,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 			float L = (i == 0) ? 0.0f : (PrevAngle + CurrAngle) * 0.5f;
 			float R = (i == Indices.Num() - 1) ? 180.0f : (CurrAngle + NextAngle) * 0.5f;
 			
-			return FVector2D(FMath::Max(0.0f, TrackWidth) * ((R - L) / 180.0f), 70.0f);
+			return FVector2D(FMath::Max(0.0f, TrackWidth) * ((R - L) / 180.0f), CanvasHeight);
 		}))
 		[
 			SNew(SBorder)
