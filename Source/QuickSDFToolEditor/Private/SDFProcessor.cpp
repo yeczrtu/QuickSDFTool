@@ -90,100 +90,120 @@ void FSDFProcessor::CombineSDFs(const TArray<FMaskData>& Masks, TArray<FVector4f
     OutCombined.SetNumZeroed(W * H);
     int32 NumMasks = Masks.Num();
     if (NumMasks == 0) return;
-	
+
+    // --- 1. 初期値の設定 ---
     for (int32 p = 0; p < W * H; ++p)
     {
-        if (Format == ESDFOutputFormat::Bipolar)
-        {
-            OutCombined[p] = FVector4f(1.0f, 0.0f, 0.0f, 1.0f); 
-            OutCombined[p].Z = 0.0f; 
-        }
-        else
-        {
-            OutCombined[p] = FVector4f(1.0f, 1.0f, 1.0f, 1.0f);
-        }
+        // R, G は 1.0 (まだ影になっていない)
+        // B, A は 0.0 (まだ影が消える現象は起きていない)
+        OutCombined[p] = FVector4f(1.0f, 1.0f, 0.0f, 0.0f);
     }
 
-    TArray<bool> HandledInc; HandledInc.SetNumZeroed(W * H); // R用
-    TArray<bool> HandledDec; HandledDec.SetNumZeroed(W * H); // B用
-	
+    TArray<uint8> HandledFlags; 
+    HandledFlags.SetNumZeroed(W * H);
+    auto IsHandled = [&](int32 p, int32 ch) { return (HandledFlags[p] & (1 << ch)) != 0; };
+    auto SetHandled = [&](int32 p, int32 ch) { HandledFlags[p] |= (1 << ch); };
+
+    // 90度（TargetT = 0.5）付近のマスクのインデックスを探す（アシンメトリ用）
+    int32 MidIdx = 0;
+    for (int32 i = 0; i < NumMasks; ++i) {
+        if (Masks[i].TargetT >= 0.5f) { MidIdx = i; break; }
+    }
+
+    // --- 2. 補間処理（境界の検出） ---
     for (int32 i = 0; i < NumMasks - 1; ++i)
     {
         const FMaskData& M1 = Masks[i];
         const FMaskData& M2 = Masks[i + 1];
-        
-        // BipolarかつbIsOppositeが異なる場合は跨がない
+
         if (Format == ESDFOutputFormat::Bipolar && M1.bIsOpposite != M2.bIsOpposite) continue;
 
         for (int32 p = 0; p < W * H; ++p)
         {
-            bool bIncreased = M1.SDF[p] > 0.0 && M2.SDF[p] <= 0.0;
-            bool bDecreased = M1.SDF[p] <= 0.0 && M2.SDF[p] > 0.0;
+            bool bIncreased = M1.SDF[p] > 0.0 && M2.SDF[p] <= 0.0; // 白 -> 黒
+            bool bDecreased = M1.SDF[p] <= 0.0 && M2.SDF[p] > 0.0; // 黒 -> 白
+
+            if (!bIncreased && !bDecreased) continue;
 
             double d1 = FMath::Abs(M1.SDF[p]);
             double d2 = FMath::Abs(M2.SDF[p]);
             double ratio = d1 / (d1 + d2 + 1e-10);
             float InterpT = (float)(M1.TargetT + (M2.TargetT - M1.TargetT) * ratio);
 
-            // Rチャンネル (順方向/増加)
-            if (!HandledInc[p] && bIncreased)
+            int32 Ch_Inc = 0; // R
+            int32 Ch_Dec = 2; // B
+            float LocalT = InterpT;
+
+            if (!bSymmetry && InterpT > 0.5f)
             {
-                OutCombined[p].X = InterpT;
-                HandledInc[p] = true;
+                Ch_Inc = 1; Ch_Dec = 3; // G / A
+                LocalT = (InterpT - 0.5f) * 2.0f;
+            }
+            else if (!bSymmetry)
+            {
+                LocalT = InterpT * 2.0f;
             }
 
-            // Bチャンネル (逆方向/減少) ※修正前のGのロジック
-            if (Format == ESDFOutputFormat::Bipolar)
-            {
-                if (!HandledDec[p] && bDecreased)
-                {
-                    OutCombined[p].Z = InterpT; // Bに入れる
-                    HandledDec[p] = true;
-                }
+            if (bIncreased && !IsHandled(p, Ch_Inc)) {
+                OutCombined[p][Ch_Inc] = FMath::Clamp(LocalT, 0.0f, 1.0f);
+                SetHandled(p, Ch_Inc);
+            }
+            if (Format == ESDFOutputFormat::Bipolar && bDecreased && !IsHandled(p, Ch_Dec)) {
+                OutCombined[p][Ch_Dec] = FMath::Clamp(LocalT, 0.0f, 1.0f);
+                SetHandled(p, Ch_Dec);
             }
         }
     }
 
+    // --- 3. 塗りつぶし処理（開始状態と終了状態の確定） ---
     for (int32 p = 0; p < W * H; ++p)
     {
-        if (Format == ESDFOutputFormat::Bipolar)
+        if (bSymmetry)
         {
-            // 最初から最後までずっと白
-            if (!HandledInc[p] && !HandledDec[p] && Masks[0].SDF[p] <= 0.0)
-            {
-                OutCombined[p].X = 0.0f; // R=0 (即座に白くなる)
-                OutCombined[p].Z = 1.0f; // B=1 (最後まで黒くならない)
+            // シンメトリ：0~90度のみ
+            bool bStartsShadow = (Masks[0].SDF[p] <= 0.0);
+            if (!IsHandled(p, 0) && bStartsShadow) OutCombined[p].X = 0.0f; // R: ずっと影
+            if (Format == ESDFOutputFormat::Bipolar) {
+                // B: 最初から影で、かつ一度も「消える(bDecreased)」が起きなかったなら 1.0
+                if (bStartsShadow && !IsHandled(p, 2)) OutCombined[p].Z = 1.0f;
+                // あるいは、途中で影になった(bIncreased)が、消えなかった場合も 1.0
+                else if (IsHandled(p, 0) && !IsHandled(p, 2)) OutCombined[p].Z = 1.0f;
             }
-            else if (HandledInc[p] && !HandledDec[p])
-            {
-                OutCombined[p].Z = 1.0f;
-            }
-            else if (!HandledInc[p] && HandledDec[p])
-            {
-                OutCombined[p].X = 0.0f;
-            }
-        }
-        else
-        {
-            // Monopolar
-            if (!HandledInc[p] && Masks[0].SDF[p] <= 0.0) 
-                OutCombined[p].X = 0.0f;
-            
-            // Symmetryなら全チャンネルにコピー
-            if (bSymmetry)
-            {
+
+            if (Format == ESDFOutputFormat::Monopolar) {
                 float V = OutCombined[p].X;
                 OutCombined[p] = FVector4f(V, V, V, 1.0f);
             }
         }
-
-        double k = 0.08;
-        for (int32 ch : {0, 2}) // 0:R, 2:B
+        else
         {
-            bool bWasInterpolated = (ch == 0) ? HandledInc[p] : HandledDec[p];
-            if (!bWasInterpolated) continue;
+            // アシンメトリ：0~90度(R/B) と 90~180度(G/A)
+            
+            // --- R/B (0~90度区間) ---
+            bool bStartsShadow0 = (Masks[0].SDF[p] <= 0.0);
+            if (!IsHandled(p, 0) && bStartsShadow0) OutCombined[p].X = 0.0f;
+            if (Format == ESDFOutputFormat::Bipolar) {
+                if (bStartsShadow0 && !IsHandled(p, 2)) OutCombined[p].Z = 1.0f;
+                else if (IsHandled(p, 0) && !IsHandled(p, 2)) OutCombined[p].Z = 1.0f;
+            }
 
-            float& valRef = (ch == 0) ? OutCombined[p].X : OutCombined[p].Z;
+            // --- G/A (90~180度区間) ---
+            // 90度時点での影の状態をチェック
+            bool bStartsShadow90 = (Masks[MidIdx].SDF[p] <= 0.0);
+            if (!IsHandled(p, 1) && bStartsShadow90) OutCombined[p].Y = 0.0f;
+            if (Format == ESDFOutputFormat::Bipolar) {
+                if (bStartsShadow90 && !IsHandled(p, 3)) OutCombined[p].W = 1.0f;
+                else if (IsHandled(p, 1) && !IsHandled(p, 3)) OutCombined[p].W = 1.0f;
+            }
+        }
+
+        // アンチエイリアス処理
+        double k = 0.08;
+        for (int32 ch = 0; ch < 4; ++ch) {
+            if (!IsHandled(p, ch)) {
+                continue;
+            }
+            float& valRef = OutCombined[p][ch];
             double val = (double)valRef;
             double h0 = FMath::Max(k - FMath::Abs(val - 0.0), 0.0) / k;
             val = FMath::Max(val, 0.0) + h0 * h0 * k * 0.25;
