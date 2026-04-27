@@ -216,10 +216,14 @@ void UQuickSDFPaintTool::GenerateSDF()
 	int32 HighH = OrigH * Upscale;
 
 	TArray<int32> ValidIndices;
+	bool bSymmetry = Properties->bSymmetryMode;
+	float MaxAngle = bSymmetry ? 90.0f : 180.0f;
+
 	for (int32 i = 0; i < Asset->AngleDataList.Num(); ++i)
 	{
 		if (i < Properties->TargetAngles.Num() && Asset->AngleDataList[i].PaintRenderTarget) 
 		{
+			if (bSymmetry && Properties->TargetAngles[i] > MaxAngle) continue;
 			ValidIndices.Add(i);
 		}
 	}
@@ -246,7 +250,7 @@ void UQuickSDFPaintTool::GenerateSDF()
 
 		FMaskData Data;
 		Data.SDF = MoveTemp(SDF);
-		Data.TargetT = Properties->TargetAngles[Index] / 180.0f;
+		Data.TargetT = Properties->TargetAngles[Index] / MaxAngle;
 		ProcessedData.Add(MoveTemp(Data));
 	}
 
@@ -329,10 +333,11 @@ void UQuickSDFPaintTool::Setup()
 			UQuickSDFAsset* NewAsset = NewObject<UQuickSDFAsset>(Subsystem);
 			NewAsset->Resolution = FIntPoint(1024, 1024);
 			NewAsset->UVChannel = 0;
+			float InitialMaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
 			for (int32 i = 0; i < 8; ++i)
 			{
 				FQuickSDFAngleData Data;
-				Data.Angle = (i / 7.0f) * 180.0f;
+				Data.Angle = (i / 7.0f) * InitialMaxAngle;
 				NewAsset->AngleDataList.Add(Data);
 			}
 			Subsystem->SetActiveSDFAsset(NewAsset);
@@ -618,74 +623,6 @@ UTextureRenderTarget2D* UQuickSDFPaintTool::GetActiveRenderTarget() const
 
 	const int32 AngleIdx = FMath::Clamp(Properties->EditAngleIndex, 0, Asset->AngleDataList.Num() - 1);
 	return Asset->AngleDataList[AngleIdx].PaintRenderTarget;
-}
-
-
-void UQuickSDFPaintTool::AddKeyframe()
-{
-	if (!Properties) return;
-	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
-	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return;
-
-	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
-
-	// Insert after current EditAngleIndex
-	int32 InsertIndex = Properties->EditAngleIndex + 1;
-	
-	float NewAngle = 0.0f;
-	if (Asset->AngleDataList.Num() == 0)
-	{
-		NewAngle = 0.0f;
-		InsertIndex = 0;
-	}
-	else if (InsertIndex >= Asset->AngleDataList.Num())
-	{
-		NewAngle = FMath::Min(Asset->AngleDataList.Last().Angle + 10.0f, 180.0f);
-	}
-	else
-	{
-		float PrevAngle = Asset->AngleDataList[InsertIndex - 1].Angle;
-		float NextAngle = Asset->AngleDataList[InsertIndex].Angle;
-		NewAngle = (PrevAngle + NextAngle) * 0.5f;
-	}
-
-	FQuickSDFAngleData NewData;
-	NewData.Angle = NewAngle;
-	
-	Asset->AngleDataList.Insert(NewData, InsertIndex);
-	Properties->TargetAngles.Insert(NewAngle, InsertIndex);
-	Properties->TargetTextures.Insert(nullptr, InsertIndex);
-	Properties->NumAngles = Asset->AngleDataList.Num();
-
-	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
-	
-	Properties->EditAngleIndex = InsertIndex;
-	FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex));
-	OnPropertyModified(Properties, Prop);
-}
-
-void UQuickSDFPaintTool::RemoveKeyframe(int32 Index)
-{
-	if (!Properties) return;
-	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
-	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return;
-
-	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
-	
-	if (Asset->AngleDataList.IsValidIndex(Index) && Asset->AngleDataList.Num() > 1)
-	{
-		Asset->AngleDataList.RemoveAt(Index);
-		Properties->TargetAngles.RemoveAt(Index);
-		Properties->TargetTextures.RemoveAt(Index);
-		Properties->NumAngles = Asset->AngleDataList.Num();
-		
-		Properties->EditAngleIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Properties->NumAngles - 1);
-		
-		Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
-
-		FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex));
-		OnPropertyModified(Properties, Prop);
-	}
 }
 
 FVector2D UQuickSDFPaintTool::GetPreviewOrigin() const { return PreviewCanvasOrigin; }
@@ -1224,17 +1161,19 @@ Super::OnPropertyModified(PropertySet, Property);
 				}
 			}
 
-			// アングルの「数」が変わった場合、アセットの配列サイズを同期
+			// アングルの「数」が変わった場合、アセットの配列サイズを同期 (Linear reset has been disabled to support custom timeline editing)
 			if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, NumAngles))
 			{
-				// Properties->TargetAngles.SetNum(Properties->NumAngles);
-				// ActiveAsset->AngleDataList.SetNum(Properties->NumAngles);
-				// for (int32 i = 0; i < Properties->NumAngles; ++i)
-				// {
-				// 	Properties->TargetAngles[i] = ((float)i / (float)FMath::Max(1, Properties->NumAngles - 1)) * 180.0f;
-				// 	ActiveAsset->AngleDataList[i].Angle = Properties->TargetAngles[i];
-				// }
-				// ActiveAsset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+				/*
+				Properties->TargetAngles.SetNum(Properties->NumAngles);
+				ActiveAsset->AngleDataList.SetNum(Properties->NumAngles);
+				for (int32 i = 0; i < Properties->NumAngles; ++i)
+				{
+					Properties->TargetAngles[i] = ((float)i / (float)FMath::Max(1, Properties->NumAngles - 1)) * 180.0f;
+					ActiveAsset->AngleDataList[i].Angle = Properties->TargetAngles[i];
+				}
+				ActiveAsset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+				*/
 			}
 
 			// 手動でアングルの「角度」が変わった場合
@@ -1291,6 +1230,73 @@ Super::OnPropertyModified(PropertySet, Property);
 	}
 }
 
+void UQuickSDFPaintTool::AddKeyframe()
+{
+	if (!Properties) return;
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return;
+
+	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
+
+	// Insert after current EditAngleIndex
+	int32 InsertIndex = Properties->EditAngleIndex + 1;
+	
+	float NewAngle = 0.0f;
+	if (Asset->AngleDataList.Num() == 0)
+	{
+		NewAngle = 0.0f;
+		InsertIndex = 0;
+	}
+	else if (InsertIndex >= Asset->AngleDataList.Num())
+	{
+		NewAngle = FMath::Min(Asset->AngleDataList.Last().Angle + 10.0f, 180.0f);
+	}
+	else
+	{
+		float PrevAngle = Asset->AngleDataList[InsertIndex - 1].Angle;
+		float NextAngle = Asset->AngleDataList[InsertIndex].Angle;
+		NewAngle = (PrevAngle + NextAngle) * 0.5f;
+	}
+
+	FQuickSDFAngleData NewData;
+	NewData.Angle = NewAngle;
+	
+	Asset->AngleDataList.Insert(NewData, InsertIndex);
+	Properties->TargetAngles.Insert(NewAngle, InsertIndex);
+	Properties->TargetTextures.Insert(nullptr, InsertIndex);
+	Properties->NumAngles = Asset->AngleDataList.Num();
+
+	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+	
+	Properties->EditAngleIndex = InsertIndex;
+	FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex));
+	OnPropertyModified(Properties, Prop);
+}
+
+void UQuickSDFPaintTool::RemoveKeyframe(int32 Index)
+{
+	if (!Properties) return;
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return;
+
+	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
+	
+	if (Asset->AngleDataList.IsValidIndex(Index) && Asset->AngleDataList.Num() > 1)
+	{
+		Asset->AngleDataList.RemoveAt(Index);
+		Properties->TargetAngles.RemoveAt(Index);
+		Properties->TargetTextures.RemoveAt(Index);
+		Properties->NumAngles = Asset->AngleDataList.Num();
+		
+		Properties->EditAngleIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Properties->NumAngles - 1);
+		
+		Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+
+		FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex));
+		OnPropertyModified(Properties, Prop);
+	}
+}
+
 void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI)
 {
     Super::DrawHUD(Canvas, RenderAPI);
@@ -1307,39 +1313,40 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
         FCanvasTileItem TileItem(PreviewOrigin, RT->GetResource(), PreviewSize, FLinearColor::White);
         TileItem.BlendMode = SE_BLEND_Opaque;
         Canvas->DrawItem(TileItem);
+
+		if (Properties->bEnableOnionSkin)
+		{
+			UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+			if (Subsystem && Subsystem->GetActiveSDFAsset())
+			{
+				UQuickSDFAsset* ActiveAsset = Subsystem->GetActiveSDFAsset();
+				
+				// Previous frame (Red)
+				if (Properties->EditAngleIndex > 0 && ActiveAsset->AngleDataList.IsValidIndex(Properties->EditAngleIndex - 1))
+				{
+					UTextureRenderTarget2D* PrevRT = ActiveAsset->AngleDataList[Properties->EditAngleIndex - 1].PaintRenderTarget;
+					if (PrevRT)
+					{
+						FCanvasTileItem PrevTile(PreviewOrigin, PrevRT->GetResource(), PreviewSize, FLinearColor(1.0f, 0.0f, 0.0f, 0.5f));
+						PrevTile.BlendMode = SE_BLEND_Additive;
+						Canvas->DrawItem(PrevTile);
+					}
+				}
+				
+				// Next frame (Green)
+				if (Properties->EditAngleIndex < ActiveAsset->AngleDataList.Num() - 1 && ActiveAsset->AngleDataList.IsValidIndex(Properties->EditAngleIndex + 1))
+				{
+					UTextureRenderTarget2D* NextRT = ActiveAsset->AngleDataList[Properties->EditAngleIndex + 1].PaintRenderTarget;
+					if (NextRT)
+					{
+						FCanvasTileItem NextTile(PreviewOrigin, NextRT->GetResource(), PreviewSize, FLinearColor(0.0f, 1.0f, 0.0f, 0.5f));
+						NextTile.BlendMode = SE_BLEND_Additive;
+						Canvas->DrawItem(NextTile);
+					}
+				}
+			}
+		}
     	
-    	if (Properties->bEnableOnionSkin)
-    	{
-    		UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
-    		if (Subsystem && Subsystem->GetActiveSDFAsset())
-    		{
-    			UQuickSDFAsset* ActiveAsset = Subsystem->GetActiveSDFAsset();
-				
-    			// Previous frame (Red)
-    			if (Properties->EditAngleIndex > 0 && ActiveAsset->AngleDataList.IsValidIndex(Properties->EditAngleIndex - 1))
-    			{
-    				UTextureRenderTarget2D* PrevRT = ActiveAsset->AngleDataList[Properties->EditAngleIndex - 1].PaintRenderTarget;
-    				if (PrevRT)
-    				{
-    					FCanvasTileItem PrevTile(PreviewOrigin, PrevRT->GetResource(), PreviewSize, FLinearColor(1.0f, 0.0f, 0.0f, 0.5f));
-    					PrevTile.BlendMode = SE_BLEND_Additive;
-    					Canvas->DrawItem(PrevTile);
-    				}
-    			}
-				
-    			// Next frame (Green)
-    			if (Properties->EditAngleIndex < ActiveAsset->AngleDataList.Num() - 1 && ActiveAsset->AngleDataList.IsValidIndex(Properties->EditAngleIndex + 1))
-    			{
-    				UTextureRenderTarget2D* NextRT = ActiveAsset->AngleDataList[Properties->EditAngleIndex + 1].PaintRenderTarget;
-    				if (NextRT)
-    				{
-    					FCanvasTileItem NextTile(PreviewOrigin, NextRT->GetResource(), PreviewSize, FLinearColor(0.0f, 1.0f, 0.0f, 0.5f));
-    					NextTile.BlendMode = SE_BLEND_Additive;
-    					Canvas->DrawItem(NextTile);
-    				}
-    			}
-    		}
-    	}
         if (TargetMesh.IsValid() && TargetMesh->HasAttributes() && Properties->bOverlayUV)
         {
             const UE::Geometry::FDynamicMeshUVOverlay* UVOverlay = TargetMesh->Attributes()->GetUVLayer(Properties->UVChannel);

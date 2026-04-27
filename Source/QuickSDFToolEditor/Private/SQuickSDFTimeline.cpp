@@ -29,6 +29,7 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 	Angle = InArgs._Angle;
 	bIsActive = InArgs._bIsActive;
 	bSnapEnabled = InArgs._bSnapEnabled;
+	bSymmetryMode = InArgs._bSymmetryMode;
 	TextureBrush = InArgs._TextureBrush;
 	OnAngleChanged = InArgs._OnAngleChanged;
 	OnClicked = InArgs._OnClicked;
@@ -144,8 +145,11 @@ FReply SQuickSDFTimelineKeyframe::OnMouseMove(const FGeometry& MyGeometry, const
 			float TrackWidth = ParentGeometry.GetLocalSize().X - 40.0f; // Account for padding
 			if (TrackWidth > 0.0f)
 			{
+				bool bSymmetry = bSymmetryMode.Get();
+				float MaxAngle = bSymmetry ? 90.0f : 180.0f;
+				
 				float Percent = FMath::Clamp((LocalPos.X - 20.0f) / TrackWidth, 0.0f, 1.0f);
-				float NewAngle = Percent * 180.0f;
+				float NewAngle = Percent * MaxAngle;
 
 				if (bSnapEnabled.Get())
 				{
@@ -204,6 +208,21 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 							[
 								SNew(STextBlock)
 								.Text(LOCTEXT("SnapText", "Snap"))
+							]
+						]
+
+						// Symmetry Checkbox
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(10.0f, 0.0f, 0.0f, 0.0f)
+						[
+							SNew(SCheckBox)
+							.IsChecked(this, &SQuickSDFTimeline::IsSymmetryModeEnabled)
+							.OnCheckStateChanged(this, &SQuickSDFTimeline::OnSymmetryModeStateChanged)
+							[
+								SNew(STextBlock)
+								.Text(LOCTEXT("SymmetryText", "Symmetry"))
 							]
 						]
 
@@ -347,6 +366,28 @@ void SQuickSDFTimeline::OnGridSnapStateChanged(ECheckBoxState NewState)
 	bGridSnapEnabled = (NewState == ECheckBoxState::Checked);
 }
 
+ECheckBoxState SQuickSDFTimeline::IsSymmetryModeEnabled() const
+{
+	UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	if (Tool && Tool->Properties)
+	{
+		return Tool->Properties->bSymmetryMode ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+	}
+	return ECheckBoxState::Unchecked;
+}
+
+void SQuickSDFTimeline::OnSymmetryModeStateChanged(ECheckBoxState NewState)
+{
+	UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	if (Tool && Tool->Properties)
+	{
+		Tool->Properties->bSymmetryMode = (NewState == ECheckBoxState::Checked);
+		
+		// Rebuild the timeline to reflect the new range
+		RebuildTimeline();
+	}
+}
+
 float SQuickSDFTimeline::GetCurrentLightYaw() const
 {
 	UQuickSDFPaintTool* Tool = GetActivePaintTool();
@@ -362,6 +403,21 @@ float SQuickSDFTimeline::GetCurrentLightYaw() const
 					float Yaw = DirLight->GetActorRotation().Yaw;
 					while (Yaw < 0.0f) Yaw += 360.0f;
 					while (Yaw >= 360.0f) Yaw -= 360.0f;
+					
+					// If symmetry mode is on, we only care about 0-90
+					bool bSymmetry = Tool->Properties && Tool->Properties->bSymmetryMode;
+					if (bSymmetry)
+					{
+						// Map 0-360 to 0-90 in a symmetric way
+						// 0-90 -> 0-90
+						// 90-180 -> 90-0
+						// 180-270 -> 0-90
+						// 270-360 -> 90-0
+						if (Yaw > 180.0f) Yaw = 360.0f - Yaw;
+						if (Yaw > 90.0f) Yaw = 180.0f - Yaw;
+						return FMath::Clamp(Yaw, 0.0f, 90.0f);
+					}
+					
 					return FMath::Clamp(Yaw, 0.0f, 180.0f);
 				}
 			}
@@ -413,12 +469,18 @@ void SQuickSDFTimeline::RebuildTimeline()
 		// 'i' here is the visual order (0th smallest, 1st smallest...)
 		TimelineTrackCanvas->AddSlot()
 		.Position(TAttribute<FVector2D>::CreateLambda([this, i]() {
-			UQuickSDFPaintTool* Tool = GetActivePaintTool();
+			UQuickSDFPaintTool* Tool = this->GetActivePaintTool();
 			if (!Tool || !Tool->Properties) return FVector2D::ZeroVector;
 			UQuickSDFToolProperties* P = Tool->Properties;
 
+			bool bSymmetry = P->bSymmetryMode;
+			float MaxAngle = bSymmetry ? 90.0f : 180.0f;
+
 			TArray<int32> Indices;
-			for (int32 k = 0; k < P->TargetAngles.Num(); ++k) Indices.Add(k);
+			for (int32 k = 0; k < P->TargetAngles.Num(); ++k)
+			{
+				if (!bSymmetry || P->TargetAngles[k] <= MaxAngle) Indices.Add(k);
+			}
 			Indices.Sort([P](int32 A, int32 B) { return P->TargetAngles[A] < P->TargetAngles[B]; });
 
 			if (!Indices.IsValidIndex(i)) return FVector2D::ZeroVector;
@@ -428,15 +490,21 @@ void SQuickSDFTimeline::RebuildTimeline()
 			float CurrAngle = P->TargetAngles[Indices[i]];
 			float L = (i == 0) ? 0.0f : (PrevAngle + CurrAngle) * 0.5f;
 			
-			return FVector2D(FMath::Max(0.0f, TrackWidth) * (L / 180.0f) + 20.0f, 0.0f);
+			return FVector2D(FMath::Max(0.0f, TrackWidth) * (L / MaxAngle) + 20.0f, 0.0f);
 		}))
 		.Size(TAttribute<FVector2D>::CreateLambda([this, i, CanvasHeight]() {
-			UQuickSDFPaintTool* Tool = GetActivePaintTool();
+			UQuickSDFPaintTool* Tool = this->GetActivePaintTool();
 			if (!Tool || !Tool->Properties) return FVector2D::ZeroVector;
 			UQuickSDFToolProperties* P = Tool->Properties;
 
+			bool bSymmetry = P->bSymmetryMode;
+			float MaxAngle = bSymmetry ? 90.0f : 180.0f;
+
 			TArray<int32> Indices;
-			for (int32 k = 0; k < P->TargetAngles.Num(); ++k) Indices.Add(k);
+			for (int32 k = 0; k < P->TargetAngles.Num(); ++k)
+			{
+				if (!bSymmetry || P->TargetAngles[k] <= MaxAngle) Indices.Add(k);
+			}
 			Indices.Sort([P](int32 A, int32 B) { return P->TargetAngles[A] < P->TargetAngles[B]; });
 
 			if (!Indices.IsValidIndex(i)) return FVector2D::ZeroVector;
@@ -444,12 +512,12 @@ void SQuickSDFTimeline::RebuildTimeline()
 			float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
 			float PrevAngle = (i == 0) ? 0.0f : P->TargetAngles[Indices[i - 1]];
 			float CurrAngle = P->TargetAngles[Indices[i]];
-			float NextAngle = (i == Indices.Num() - 1) ? 180.0f : P->TargetAngles[Indices[i + 1]];
+			float NextAngle = (i == Indices.Num() - 1) ? MaxAngle : P->TargetAngles[Indices[i + 1]];
 			
 			float L = (i == 0) ? 0.0f : (PrevAngle + CurrAngle) * 0.5f;
-			float R = (i == Indices.Num() - 1) ? 180.0f : (CurrAngle + NextAngle) * 0.5f;
+			float R = (i == Indices.Num() - 1) ? MaxAngle : (CurrAngle + NextAngle) * 0.5f;
 			
-			return FVector2D(FMath::Max(0.0f, TrackWidth) * ((R - L) / 180.0f), CanvasHeight);
+			return FVector2D(FMath::Max(0.0f, TrackWidth) * ((R - L) / MaxAngle), CanvasHeight);
 		}))
 		[
 			SNew(SBorder)
@@ -459,12 +527,18 @@ void SQuickSDFTimeline::RebuildTimeline()
 			[
 				SNew(SImage)
 				.Image(TAttribute<const FSlateBrush*>::CreateLambda([this, i]() -> FSlateBrush* {
-					UQuickSDFPaintTool* Tool = GetActivePaintTool();
+					UQuickSDFPaintTool* Tool = this->GetActivePaintTool();
 					if (!Tool || !Tool->Properties) return nullptr;
 					UQuickSDFToolProperties* P = Tool->Properties;
 
+					bool bSymmetry = P->bSymmetryMode;
+					float MaxAngle = bSymmetry ? 90.0f : 180.0f;
+
 					TArray<int32> Indices;
-					for (int32 k = 0; k < P->TargetAngles.Num(); ++k) Indices.Add(k);
+					for (int32 k = 0; k < P->TargetAngles.Num(); ++k)
+					{
+						if (!bSymmetry || P->TargetAngles[k] <= MaxAngle) Indices.Add(k);
+					}
 					Indices.Sort([P](int32 A, int32 B) { return P->TargetAngles[A] < P->TargetAngles[B]; });
 
 					if (Indices.IsValidIndex(i))
@@ -479,10 +553,15 @@ void SQuickSDFTimeline::RebuildTimeline()
 	}
 
 	// 2. Add tick marks (Middle layer)
-	for (int32 i = 0; i <= 2; ++i)
+	bool bSymmetryModeActive = Props->bSymmetryMode;
+	int32 NumTicks = bSymmetryModeActive ? 1 : 2;
+	float TickStep = 90.0f;
+	float MaxTimelineAngle = bSymmetryModeActive ? 90.0f : 180.0f;
+
+	for (int32 i = 0; i <= NumTicks; ++i)
 	{
-		float TickAngle = i * 90.0f;
-		float Percent = TickAngle / 180.0f;
+		float TickAngle = i * TickStep;
+		float Percent = TickAngle / MaxTimelineAngle;
 		
 		TimelineTrackCanvas->AddSlot()
 		.Position(TAttribute<FVector2D>::CreateLambda([this, Percent]() {
@@ -502,11 +581,16 @@ void SQuickSDFTimeline::RebuildTimeline()
 	{
 		TimelineTrackCanvas->AddSlot()
 		.Position(TAttribute<FVector2D>::CreateLambda([this, i, KeyframeWidth]() {
-			UQuickSDFPaintTool* ActiveTool = GetActivePaintTool();
+			UQuickSDFPaintTool* ActiveTool = this->GetActivePaintTool();
 			if (ActiveTool && ActiveTool->Properties && ActiveTool->Properties->TargetAngles.IsValidIndex(i))
 			{
 				float CurrentAngle = ActiveTool->Properties->TargetAngles[i];
-				float Percent = FMath::Clamp(CurrentAngle / 180.0f, 0.0f, 1.0f);
+				bool bSymmetry = ActiveTool->Properties->bSymmetryMode;
+				float MaxAngle = bSymmetry ? 90.0f : 180.0f;
+
+				if (bSymmetry && CurrentAngle > MaxAngle) return FVector2D(-1000.0f, -1000.0f); // Hide
+
+				float Percent = FMath::Clamp(CurrentAngle / MaxAngle, 0.0f, 1.0f);
 				float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
 				return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 20.0f - (KeyframeWidth * 0.5f), 0.0f);
 			}
@@ -517,16 +601,20 @@ void SQuickSDFTimeline::RebuildTimeline()
 			SNew(SQuickSDFTimelineKeyframe)
 			.Index(i)
 			.Angle(TAttribute<float>::CreateLambda([this, i]() {
-				UQuickSDFPaintTool* ActiveTool = GetActivePaintTool();
+				UQuickSDFPaintTool* ActiveTool = this->GetActivePaintTool();
 				if (ActiveTool && ActiveTool->Properties && ActiveTool->Properties->TargetAngles.IsValidIndex(i))
 					return ActiveTool->Properties->TargetAngles[i];
 				return 0.0f;
 			}))
 			.bIsActive(TAttribute<bool>::CreateLambda([this, i]() {
-				UQuickSDFPaintTool* ActiveTool = GetActivePaintTool();
+				UQuickSDFPaintTool* ActiveTool = this->GetActivePaintTool();
 				return ActiveTool && ActiveTool->Properties && ActiveTool->Properties->EditAngleIndex == i;
 			}))
 			.bSnapEnabled(TAttribute<bool>::CreateLambda([this]() { return bGridSnapEnabled; }))
+			.bSymmetryMode(TAttribute<bool>::CreateLambda([this]() {
+				UQuickSDFPaintTool* ActiveTool = this->GetActivePaintTool();
+				return ActiveTool && ActiveTool->Properties && ActiveTool->Properties->bSymmetryMode;
+			}))
 			.TextureBrush(TAttribute<FSlateBrush*>::CreateLambda([this, i]() -> FSlateBrush* {
 				if (KeyframeBrushes.IsValidIndex(i)) return KeyframeBrushes[i].Get();
 				return nullptr;
@@ -553,11 +641,14 @@ void SQuickSDFTimeline::RebuildTimeline()
 		AddKeyframeToCanvas(Props->EditAngleIndex);
 	}
 
-	// 4. Add Current Light Indicator (Top layer)
 	TimelineTrackCanvas->AddSlot()
 	.Position(TAttribute<FVector2D>::CreateLambda([this]() {
+		UQuickSDFPaintTool* Tool = this->GetActivePaintTool();
+		bool bSymmetry = Tool && Tool->Properties && Tool->Properties->bSymmetryMode;
+		float MaxAngle = bSymmetry ? 90.0f : 180.0f;
+		
 		float LightYaw = GetCurrentLightYaw();
-		float Percent = FMath::Clamp(LightYaw / 180.0f, 0.0f, 1.0f);
+		float Percent = FMath::Clamp(LightYaw / MaxAngle, 0.0f, 1.0f);
 		float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
 		return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 19.0f, 0.0f);
 	}))

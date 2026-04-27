@@ -15,6 +15,7 @@ public:
 		SLATE_ATTRIBUTE(float, Angle)
 		SLATE_ATTRIBUTE(bool, bIsActive)
 		SLATE_ATTRIBUTE(bool, bSnapEnabled)
+		SLATE_ATTRIBUTE(bool, bSymmetryMode)
 		SLATE_ATTRIBUTE(FSlateBrush*, TextureBrush)
 		SLATE_EVENT(FOnKeyframeAngleChanged, OnAngleChanged)
 		SLATE_EVENT(FSimpleDelegate, OnClicked)
@@ -34,6 +35,7 @@ private:
 	TAttribute<float> Angle;
 	TAttribute<bool> bIsActive;
 	TAttribute<bool> bSnapEnabled;
+	TAttribute<bool> bSymmetryMode;
 	TAttribute<FSlateBrush*> TextureBrush;
 	bool bIsDragging = false;
 	FOnKeyframeAngleChanged OnAngleChanged;
@@ -56,6 +58,14 @@ public:
 
 	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
 
+public:
+	UQuickSDFPaintTool* GetActivePaintTool() const;
+	float GetCurrentLightYaw() const;
+	ECheckBoxState IsSymmetryModeEnabled() const;
+	void OnSymmetryModeStateChanged(ECheckBoxState NewState);
+	ECheckBoxState IsGridSnapEnabled() const;
+	void OnGridSnapStateChanged(ECheckBoxState NewState);
+
 private:
 	// UI Generation
 	void RebuildTimeline();
@@ -66,13 +76,6 @@ private:
 	void OnKeyframeDragStarted();
 	void OnKeyframeDragEnded();
 
-	ECheckBoxState IsGridSnapEnabled() const;
-	void OnGridSnapStateChanged(ECheckBoxState NewState);
-
-	// State
-	UQuickSDFPaintTool* GetActivePaintTool() const;
-	float GetCurrentLightYaw() const;
-	
 	// Caching
 	int32 CachedNumAngles = -1;
 	int32 CachedEditAngleIndex = -1;
