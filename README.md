@@ -154,17 +154,24 @@ QuickSDFTool/
 
 - [ ] **GPU-Accelerated SDF** — Migrate SDF generation from CPU (Felzenszwalb) to fully GPU-based using the existing JFA compute shader
 - [ ] **Skeletal Mesh Support** — Extend paint target support beyond Static Meshes
-- [ ] **Batch Processing** — Process multiple meshes / LODs in a single pass
 - [ ] **Custom Brush Shapes** — Support for importing custom brush alpha textures
 - [ ] **Pressure Sensitivity** — Tablet pressure support for brush opacity/size
 - [ ] **Auto-Save / Hot-Reload** — Periodic checkpoint saves for paint data
 - [ ] **Multi-UV Channel Preview** — Simultaneous visualization of different UV layouts
 - [ ] **Documentation & Tutorials** — Video walkthroughs and detailed wiki
-- [ ] **Marketplace / Fab Preparation** — Clean up for public distribution
-- [ ] **Unit & Integration Tests** — Automated testing for SDF generation pipeline
 - [ ] **Performance Profiling** — Benchmark and optimize for high-resolution textures (4K+)
-- [ ] **Localization** — Multi-language UI support
 - [ ] **Icon & Branding** — Custom editor mode icon and plugin branding assets
+- [ ] Frame duplication function
+- [ ] A feature that places images at equal intervals on the timeline.
+- [ ] Buttons and shortcuts to move to the next frame on the timeline
+- [ ] Function to import existing textures
+
+
+### Known defects
+
+- The UI disappears when autosave activates.
+- Depending on how the UV map is unwrapped, the brush size and the area being painted may be misaligned in the paint program.
+- Sometimes, when you click on an image in the timeline, it can become misaligned.
 
 ---
 
