@@ -225,3 +225,4 @@ Contributions are welcome! Please:
 - Felzenszwalb & Huttenlocher — *Distance Transforms of Sampled Functions* (2012) — SDF algorithm
 - Jump Flooding Algorithm (JFA) — GPU-accelerated distance field computation
 - [UE5 SDF Face Shadowマッピングでアニメ顔用の影を作ろう](https://unrealengine.hatenablog.com/entry/2024/02/28/222220)
+- [SDF TextureとLiltoonでセルルックの影を再現しよう！ - note](https://note.com/ca__mocha/n/n9289fbbc4c8b)
