@@ -169,8 +169,9 @@ QuickSDFTool/
 - [ ] **Icon & Branding** — Custom editor mode icon and plugin branding assets
 - [ ] Frame duplication function
 - [ ] A feature that places images at equal intervals on the timeline.
-- [ ] Buttons and shortcuts to move to the next frame on the timeline
-- [ ] Function to import existing textures
+- [ ] Buttons and shortcuts to move to the next frame on the timeline.
+- [ ] Function to import existing textures.
+- [ ] Creating social previews for GitHub.
 
 
 ### Known defects
