@@ -297,7 +297,7 @@ void UQuickSDFPaintTool::GenerateSDF()
 			const FMaskData& M2 = ProcessedData[i + 1];
 			for (int32 p = 0; p < HighW * HighH; p += 500) // 高速サンプリング
 			{
-				if (M1.SDF[p] <= 0.0 && M2.SDF[p] > 0.0) { bNeedsBipolar = true; break; }
+				if (M1.SDF[p] > 0.0 && M2.SDF[p] <= 0.0) { bNeedsBipolar = true; break; }
 			}
 			if (bNeedsBipolar) break;
 		}

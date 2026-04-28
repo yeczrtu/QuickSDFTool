@@ -78,9 +78,9 @@ TArray<double> FSDFProcessor::GenerateSDF(const TArray<uint8>& BinaryImg, int32 
 	SDF.SetNumUninitialized(W * H);
 	for(int32 i = 0; i < W * H; ++i)
 	{
-		if (!bHasBlack) SDF[i] = maxDistSq;
-		else if (!bHasWhite) SDF[i] = -maxDistSq;
-		else SDF[i] = GridIn[i] - GridOut[i];
+		if (!bHasBlack) SDF[i] = -maxDistSq;
+		else if (!bHasWhite) SDF[i] = maxDistSq;
+		else SDF[i] = GridOut[i] - GridIn[i]; 
 	}
 	return SDF;
 }
@@ -96,7 +96,7 @@ void FSDFProcessor::CombineSDFs(const TArray<FMaskData>& Masks, TArray<FVector4f
     {
         // R, G は 1.0 (まだ影になっていない)
         // B, A は 0.0 (まだ影が消える現象は起きていない)
-        OutCombined[p] = FVector4f(1.0f, 1.0f, 0.0f, 0.0f);
+        OutCombined[p] = FVector4f(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     TArray<uint8> HandledFlags; 
@@ -120,8 +120,8 @@ void FSDFProcessor::CombineSDFs(const TArray<FMaskData>& Masks, TArray<FVector4f
 
         for (int32 p = 0; p < W * H; ++p)
         {
-            bool bIncreased = M1.SDF[p] > 0.0 && M2.SDF[p] <= 0.0; // 白 -> 黒
-            bool bDecreased = M1.SDF[p] <= 0.0 && M2.SDF[p] > 0.0; // 黒 -> 白
+        	bool bIncreased = M1.SDF[p] > 0.0 && M2.SDF[p] <= 0.0; // 影 -> 光（影が減る方向）
+        	bool bDecreased = M1.SDF[p] <= 0.0 && M2.SDF[p] > 0.0; // 光 -> 影（影が増える方向）
 
             if (!bIncreased && !bDecreased) continue;
 
@@ -145,7 +145,7 @@ void FSDFProcessor::CombineSDFs(const TArray<FMaskData>& Masks, TArray<FVector4f
             }
 
             if (bIncreased && !IsHandled(p, Ch_Inc)) {
-                OutCombined[p][Ch_Inc] = FMath::Clamp(LocalT, 0.0f, 1.0f);
+            	OutCombined[p][Ch_Inc] = FMath::Clamp(1.0f - LocalT, 0.0f, 1.0f);
                 SetHandled(p, Ch_Inc);
             }
             if (Format == ESDFOutputFormat::Bipolar && bDecreased && !IsHandled(p, Ch_Dec)) {
@@ -161,13 +161,15 @@ void FSDFProcessor::CombineSDFs(const TArray<FMaskData>& Masks, TArray<FVector4f
         if (bSymmetry)
         {
             // シンメトリ：0~90度のみ
-            bool bStartsShadow = (Masks[0].SDF[p] <= 0.0);
-            if (!IsHandled(p, 0) && bStartsShadow) OutCombined[p].X = 0.0f; // R: ずっと影
+        	bool bStartsShadow = (Masks[0].SDF[p] > 0.0);
+        	bool bEndsShadow = (Masks[NumMasks - 1].SDF[p] > 0.0);
+        	// R: 影→光の遷移なしで影の中にいるなら 0.0
+        	if (!IsHandled(p, 0) && (bStartsShadow || bEndsShadow)) OutCombined[p].X = 0.0f;
             if (Format == ESDFOutputFormat::Bipolar) {
-                // B: 最初から影で、かつ一度も「消える(bDecreased)」が起きなかったなら 1.0
-                if (bStartsShadow && !IsHandled(p, 2)) OutCombined[p].Z = 1.0f;
-                // あるいは、途中で影になった(bIncreased)が、消えなかった場合も 1.0
-                else if (IsHandled(p, 0) && !IsHandled(p, 2)) OutCombined[p].Z = 1.0f;
+            	// B: 最初から影で、かつ一度も光→影の遷移が起きなかったなら 0.0
+            	if (bStartsShadow && !IsHandled(p, 2)) OutCombined[p].Z = 0.0f;
+            	// あるいは、途中で影→光になったが、光→影は起きなかった場合も 0.0
+            	else if (IsHandled(p, 0) && !IsHandled(p, 2)) OutCombined[p].Z = 0.0f;
             }
 
             if (Format == ESDFOutputFormat::Monopolar) {
@@ -180,20 +182,22 @@ void FSDFProcessor::CombineSDFs(const TArray<FMaskData>& Masks, TArray<FVector4f
             // アシンメトリ：0~90度(R/B) と 90~180度(G/A)
             
             // --- R/B (0~90度区間) ---
-            bool bStartsShadow0 = (Masks[0].SDF[p] <= 0.0);
-            if (!IsHandled(p, 0) && bStartsShadow0) OutCombined[p].X = 0.0f;
+        	bool bStartsShadow0 = (Masks[0].SDF[p] > 0.0);
+        	bool bEndsShadow0 = (Masks[FMath::Max(0, MidIdx)].SDF[p] > 0.0);
+        	if (!IsHandled(p, 0) && (bStartsShadow0 || bEndsShadow0)) OutCombined[p].X = 0.0f;
             if (Format == ESDFOutputFormat::Bipolar) {
-                if (bStartsShadow0 && !IsHandled(p, 2)) OutCombined[p].Z = 1.0f;
-                else if (IsHandled(p, 0) && !IsHandled(p, 2)) OutCombined[p].Z = 1.0f;
+            	if (bStartsShadow0 && !IsHandled(p, 2)) OutCombined[p].Z = 0.0f;
+            	else if (IsHandled(p, 0) && !IsHandled(p, 2)) OutCombined[p].Z = 0.0f;
             }
 
             // --- G/A (90~180度区間) ---
             // 90度時点での影の状態をチェック
-            bool bStartsShadow90 = (Masks[MidIdx].SDF[p] <= 0.0);
-            if (!IsHandled(p, 1) && bStartsShadow90) OutCombined[p].Y = 0.0f;
+        	bool bStartsShadow90 = (Masks[MidIdx].SDF[p] > 0.0);
+        	bool bEndsShadow90 = (Masks[NumMasks - 1].SDF[p] > 0.0);
+        	if (!IsHandled(p, 1) && (bStartsShadow90 || bEndsShadow90)) OutCombined[p].Y = 0.0f;
             if (Format == ESDFOutputFormat::Bipolar) {
-                if (bStartsShadow90 && !IsHandled(p, 3)) OutCombined[p].W = 1.0f;
-                else if (IsHandled(p, 1) && !IsHandled(p, 3)) OutCombined[p].W = 1.0f;
+            	if (bStartsShadow90 && !IsHandled(p, 3)) OutCombined[p].W = 0.0f;
+            	else if (IsHandled(p, 1) && !IsHandled(p, 3)) OutCombined[p].W = 0.0f;
             }
         }
 
