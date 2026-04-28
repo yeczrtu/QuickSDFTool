@@ -12,6 +12,12 @@
 
 ---
 
+
+
+https://github.com/user-attachments/assets/1eb770b6-b65d-44bb-b5a0-fbb78d998202
+
+
+
 ## Overview
 
 **QuickSDFTool** is an editor-only tool that lets artists paint binary shadow masks on 3D meshes at various light angles, then automatically composites them into a high-quality **SDF (Signed Distance Field) threshold map**. The generated texture encodes smooth light-to-shadow transitions in UV space, commonly used in anime/toon rendering to control shadow placement per light direction.
