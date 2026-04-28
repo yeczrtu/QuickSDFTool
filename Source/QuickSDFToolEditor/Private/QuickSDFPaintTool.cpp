@@ -1276,10 +1276,17 @@ Super::OnPropertyModified(PropertySet, Property);
 				}
 				RefreshPreviewMaterial();
 			}//TODO:後からテクスチャを追加する処理を実装する
-			// 解像度やUVチャンネルの同期
-			if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, Resolution))
+			// 解像度の同期 — FIntPoint のサブプロパティ (X, Y) 変更も検出するため、名前ではなく値の差分で判定
+			if (ActiveAsset->Resolution != Properties->Resolution)
 			{
 				ActiveAsset->Resolution = Properties->Resolution;
+				// Force re-creation of render targets at the new resolution
+				for (FQuickSDFAngleData& Data : ActiveAsset->AngleDataList)
+				{
+					Data.PaintRenderTarget = nullptr;
+				}
+				ActiveAsset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+				RefreshPreviewMaterial();
 			}
 
 			if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, UVChannel))
