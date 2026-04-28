@@ -224,3 +224,4 @@ Contributions are welcome! Please:
 - [Unreal Engine Interactive Tools Framework](https://docs.unrealengine.com/5.0/en-US/interactive-tools-framework-in-unreal-engine/) — Foundation for the paint tool
 - Felzenszwalb & Huttenlocher — *Distance Transforms of Sampled Functions* (2012) — SDF algorithm
 - Jump Flooding Algorithm (JFA) — GPU-accelerated distance field computation
+- [UE5 SDF Face Shadowマッピングでアニメ顔用の影を作ろう]https://unrealengine.hatenablog.com/entry/2024/02/28/222220
