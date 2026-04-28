@@ -172,6 +172,8 @@ QuickSDFTool/
 - The UI disappears when autosave activates.
 - Depending on how the UV map is unwrapped, the brush size and the area being painted may be misaligned in the paint program.
 - Sometimes, when you click on an image in the timeline, it can become misaligned.
+- Unable to specify a name when exporting an image / Unable to overwrite a file with the same name.
+- The direction of SDF is reversed.
 
 ---
 
