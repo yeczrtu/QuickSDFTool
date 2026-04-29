@@ -63,6 +63,9 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bAutoSyncLight = true;
 
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta=(DisplayName="Paint All Textures"))
+	bool bPaintAllAngles = false;
+
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bEnableOnionSkin = false;
 	
@@ -232,6 +235,7 @@ protected:
 	FVector2D GetBrushPixelSize(class UTextureRenderTarget2D* RenderTarget) const;
 	double GetCurrentStrokeSpacing(class UTextureRenderTarget2D* RenderTarget) const;
 	bool IsPaintingShadow() const;
+	TArray<int32> GetPaintTargetAngleIndices() const;
 	void BeginBrushResizeMode();
 	void UpdateBrushResizeFromCursor();
 	void EndBrushResizeMode();
@@ -275,8 +279,11 @@ protected:
 	float BrushResizeSensitivity = 0.1f;
 	bool bBrushResizeTransactionOpen = false;
 	bool bStrokeTransactionActive = false;
+	bool bStampingAllPaintTargets = false;
 	int32 StrokeTransactionAngleIndex = INDEX_NONE;
+	TArray<int32> StrokeTransactionAngleIndices;
 	TArray<FColor> StrokeBeforePixels;
+	TArray<TArray<FColor>> StrokeBeforePixelsByAngle;
 	
 	UPROPERTY(EditAnywhere, Category = "Brush Feel")
 	float StabilizerAmount = 0.2f;

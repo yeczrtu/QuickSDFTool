@@ -637,43 +637,62 @@ bool UQuickSDFPaintTool::ApplyRenderTargetPixels(int32 AngleIndex, const TArray<
 
 void UQuickSDFPaintTool::BeginStrokeTransaction()
 {
-	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
-	if (!RT || bStrokeTransactionActive) return;
+	if (bStrokeTransactionActive) return;
 	
 	StrokeBeforePixels.Reset();
-	if (CaptureRenderTargetPixels(RT, StrokeBeforePixels))
+	StrokeBeforePixelsByAngle.Reset();
+	const TArray<int32> CandidateAngleIndices = GetPaintTargetAngleIndices();
+	StrokeTransactionAngleIndices.Reset();
+
+	for (int32 AngleIndex : CandidateAngleIndices)
 	{
-		bStrokeTransactionActive = true;
-		
 		UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
-		if (Subsystem && Subsystem->GetActiveSDFAsset() && Subsystem->GetActiveSDFAsset()->AngleDataList.Num() > 0)
+		UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+		if (!Asset || !Asset->AngleDataList.IsValidIndex(AngleIndex))
 		{
-			StrokeTransactionAngleIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Subsystem->GetActiveSDFAsset()->AngleDataList.Num() - 1);
+			continue;
 		}
-		else
+
+		TArray<FColor> BeforePixels;
+		if (CaptureRenderTargetPixels(Asset->AngleDataList[AngleIndex].PaintRenderTarget, BeforePixels))
 		{
-			StrokeTransactionAngleIndex = 0;
+			StrokeTransactionAngleIndices.Add(AngleIndex);
+			StrokeBeforePixelsByAngle.Add(MoveTemp(BeforePixels));
+			if (StrokeBeforePixelsByAngle.Num() == 1)
+			{
+				StrokeBeforePixels = StrokeBeforePixelsByAngle[0];
+				StrokeTransactionAngleIndex = AngleIndex;
+			}
 		}
 	}
+
+	bStrokeTransactionActive = StrokeBeforePixelsByAngle.Num() > 0;
 }
 
 void UQuickSDFPaintTool::EndStrokeTransaction()
 {
 	if (!bStrokeTransactionActive) return;
-	TArray<FColor> AfterPixels;
 	
 	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
 	if (Properties && Subsystem && Subsystem->GetActiveSDFAsset())
 	{
 		UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
-		if (Asset->AngleDataList.IsValidIndex(StrokeTransactionAngleIndex))
+		for (int32 Index = 0; Index < StrokeTransactionAngleIndices.Num() && Index < StrokeBeforePixelsByAngle.Num(); ++Index)
 		{
-			if (CaptureRenderTargetPixels(Asset->AngleDataList[StrokeTransactionAngleIndex].PaintRenderTarget, AfterPixels) &&
-				AfterPixels.Num() == StrokeBeforePixels.Num() && AfterPixels != StrokeBeforePixels)
+			const int32 AngleIndex = StrokeTransactionAngleIndices[Index];
+			if (!Asset->AngleDataList.IsValidIndex(AngleIndex))
+			{
+				continue;
+			}
+
+			TArray<FColor> AfterPixels;
+			if (CaptureRenderTargetPixels(Asset->AngleDataList[AngleIndex].PaintRenderTarget, AfterPixels) &&
+				AfterPixels.Num() == StrokeBeforePixelsByAngle[Index].Num() &&
+				AfterPixels != StrokeBeforePixelsByAngle[Index])
 			{
 				TUniquePtr<FQuickSDFRenderTargetChange> Change = MakeUnique<FQuickSDFRenderTargetChange>();
-				Change->AngleIndex = StrokeTransactionAngleIndex;
-				Change->BeforePixels = MoveTemp(StrokeBeforePixels);
+				Change->AngleIndex = AngleIndex;
+				Change->BeforePixels = MoveTemp(StrokeBeforePixelsByAngle[Index]);
 				Change->AfterPixels = MoveTemp(AfterPixels);
 				GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("QuickSDFPaintStrokeChange", "Quick SDF Paint Stroke"));
 			}
@@ -682,7 +701,9 @@ void UQuickSDFPaintTool::EndStrokeTransaction()
 	
 	bStrokeTransactionActive = false;
 	StrokeTransactionAngleIndex = INDEX_NONE;
+	StrokeTransactionAngleIndices.Reset();
 	StrokeBeforePixels.Reset();
+	StrokeBeforePixelsByAngle.Reset();
 }
 
 UTextureRenderTarget2D* UQuickSDFPaintTool::GetActiveRenderTarget() const
@@ -697,6 +718,43 @@ UTextureRenderTarget2D* UQuickSDFPaintTool::GetActiveRenderTarget() const
 
 	const int32 AngleIdx = FMath::Clamp(Properties->EditAngleIndex, 0, Asset->AngleDataList.Num() - 1);
 	return Asset->AngleDataList[AngleIdx].PaintRenderTarget;
+}
+
+TArray<int32> UQuickSDFPaintTool::GetPaintTargetAngleIndices() const
+{
+	TArray<int32> TargetIndices;
+	if (!Properties)
+	{
+		return TargetIndices;
+	}
+
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	if (!Asset || Asset->AngleDataList.Num() == 0)
+	{
+		return TargetIndices;
+	}
+
+	if (Properties->bPaintAllAngles)
+	{
+		for (int32 Index = 0; Index < Asset->AngleDataList.Num(); ++Index)
+		{
+			if (Asset->AngleDataList[Index].PaintRenderTarget)
+			{
+				TargetIndices.Add(Index);
+			}
+		}
+	}
+	else
+	{
+		const int32 AngleIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Asset->AngleDataList.Num() - 1);
+		if (Asset->AngleDataList[AngleIndex].PaintRenderTarget)
+		{
+			TargetIndices.Add(AngleIndex);
+		}
+	}
+
+	return TargetIndices;
 }
 
 FVector2D UQuickSDFPaintTool::GetPreviewOrigin() const { return PreviewCanvasOrigin; }
@@ -995,20 +1053,30 @@ bool UQuickSDFPaintTool::TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSam
 	const FVector2f UV1 = UVOverlay->GetElement(TriUVs.B);
 	const FVector2f UV2 = UVOverlay->GetElement(TriUVs.C);
 
-	// ワールド空間での三角形の面積（の2倍）を計算
-	double AreaWorld = FVector3d::CrossProduct(V1 - V0, V2 - V0).Size();
-	// UV空間での三角形の面積（の2倍）を計算
-	double AreaUV = FMath::Abs((UV1.X - UV0.X) * (UV2.Y - UV0.Y) - (UV2.X - UV0.X) * (UV1.Y - UV0.Y));
-
-	// 1ワールド単位あたりのUV単位（スケール）を計算
-	// 面積比の平方根をとることで線形スケールを得る
-	if (AreaWorld > KINDA_SMALL_NUMBER)
+	double ScaleSum = 0.0;
+	int32 ScaleCount = 0;
+	auto AccumulateUVScale = [&ScaleSum, &ScaleCount](const FVector3d& WorldA, const FVector3d& WorldB, const FVector2f& UVA, const FVector2f& UVB)
 	{
-		OutSample.LocalUVScale = FMath::Sqrt(AreaUV / AreaWorld);
+		const double WorldLength = FVector3d::Distance(WorldA, WorldB);
+		const double UVLength = FVector2f::Distance(UVA, UVB);
+		if (WorldLength > KINDA_SMALL_NUMBER && UVLength > KINDA_SMALL_NUMBER)
+		{
+			ScaleSum += UVLength / WorldLength;
+			++ScaleCount;
+		}
+	};
+
+	AccumulateUVScale(V0, V1, UV0, UV1);
+	AccumulateUVScale(V1, V2, UV1, UV2);
+	AccumulateUVScale(V2, V0, UV2, UV0);
+
+	if (ScaleCount > 0)
+	{
+		OutSample.LocalUVScale = static_cast<float>(ScaleSum / static_cast<double>(ScaleCount));
 	}
 	else
 	{
-		OutSample.LocalUVScale = 0.001f;
+		OutSample.LocalUVScale = 1.0f / FMath::Max(static_cast<float>(TargetMesh->GetBounds().MaxDim()), KINDA_SMALL_NUMBER);
 	}
 	OutSample.UV = UV0 * static_cast<float>(BaryCoords.X) +
 		UV1 * static_cast<float>(BaryCoords.Y) +
@@ -1036,6 +1104,21 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 {
 	if (Samples.Num() == 0) return;
 
+	if (Properties && Properties->bPaintAllAngles && !bStampingAllPaintTargets)
+	{
+		const int32 PreviousEditAngleIndex = Properties->EditAngleIndex;
+		bStampingAllPaintTargets = true;
+		for (int32 AngleIndex : GetPaintTargetAngleIndices())
+		{
+			Properties->EditAngleIndex = AngleIndex;
+			StampSamples(Samples);
+		}
+		Properties->EditAngleIndex = PreviousEditAngleIndex;
+		bStampingAllPaintTargets = false;
+		RefreshPreviewMaterial();
+		return;
+	}
+
 	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
 	if (!RT || !BrushMaskTexture) return;
 
@@ -1049,7 +1132,6 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 
 	for (const FQuickSDFStrokeSample& Sample : Samples)
 	{
-		float BrushRadiusWorld = BrushProperties ? BrushProperties->BrushRadius : 10.0f;
 		FVector2D PixelSize;
 		
 		if (ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview)
@@ -1059,8 +1141,8 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 		}
 		else
 		{
-			// 3Dメッシュ上の場合は、計算したローカルスケールを使用
-			float UVRadius = BrushRadiusWorld * Sample.LocalUVScale;
+			const float BrushRadiusWorld = BrushProperties ? BrushProperties->BrushRadius : 10.0f;
+			const float UVRadius = BrushRadiusWorld * FMath::Max(Sample.LocalUVScale, KINDA_SMALL_NUMBER);
 			PixelSize = FVector2D(UVRadius * RTSize.X * 2.0f, UVRadius * RTSize.Y * 2.0f);
 		}
 		const FVector2D PixelPos(Sample.UV.X * RTSize.X, Sample.UV.Y * RTSize.Y);
