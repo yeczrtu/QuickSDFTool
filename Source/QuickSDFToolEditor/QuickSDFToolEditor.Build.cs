@@ -44,7 +44,10 @@ public class QuickSDFToolEditor : ModuleRules
 				"PropertyEditor",
 				"Projects",
 				"EditorStyle",
-				"MaterialBaking"
+				"MaterialBaking",
+				"DesktopPlatform",
+				"ImageWrapper",
+				"AssetRegistry"
 			}
 		);
 	}

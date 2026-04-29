@@ -10,13 +10,19 @@
 #include "IAssetTools.h"
 #include "TextureResource.h"
 #include "Editor.h"
+#include "IImageWrapper.h"
+#include "IImageWrapperModule.h"
+#include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
+#include "Misc/Paths.h"
 #include "ObjectTools.h"
 
 #define LOCTEXT_NAMESPACE "QuickSDFToolSubsystem"
 
 namespace
 {
+constexpr int32 QuickSDFSubsystemDefaultAngleCount = 8;
+
 bool ValidateTextureAssetPath(const FString& FolderPath, const FString& TextureName, FText* OutError)
 {
 	FString CleanFolder = FolderPath;
@@ -120,17 +126,132 @@ void FinalizeTextureAsset(UTexture2D* Texture)
 	Assets.Add(Texture);
 	AssetTools.SyncBrowserToAssets(Assets);
 }
+
+bool LoadImageFileAsBGRA8(const FString& SourceFilename, TArray<FColor>& OutPixels, int32& OutWidth, int32& OutHeight, FText* OutError)
+{
+	TArray<uint8> CompressedData;
+	if (!FFileHelper::LoadFileToArray(CompressedData, *SourceFilename))
+	{
+		if (OutError)
+		{
+			*OutError = FText::Format(LOCTEXT("ImportMaskReadFailed", "Failed to read image file: {0}"), FText::FromString(SourceFilename));
+		}
+		return false;
+	}
+
+	IImageWrapperModule& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>("ImageWrapper");
+	const EImageFormat ImageFormat = ImageWrapperModule.DetectImageFormat(CompressedData.GetData(), CompressedData.Num());
+	if (ImageFormat == EImageFormat::Invalid)
+	{
+		if (OutError)
+		{
+			*OutError = FText::Format(LOCTEXT("ImportMaskUnsupportedFormat", "Unsupported image format: {0}"), FText::FromString(SourceFilename));
+		}
+		return false;
+	}
+
+	TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(ImageFormat, *SourceFilename);
+	if (!ImageWrapper.IsValid() || !ImageWrapper->SetCompressed(CompressedData.GetData(), CompressedData.Num()))
+	{
+		if (OutError)
+		{
+			*OutError = FText::Format(LOCTEXT("ImportMaskDecodeSetupFailed", "Failed to prepare image decoder: {0}"), FText::FromString(SourceFilename));
+		}
+		return false;
+	}
+
+	TArray64<uint8> RawData;
+	if (!ImageWrapper->GetRaw(ERGBFormat::BGRA, 8, RawData))
+	{
+		if (OutError)
+		{
+			*OutError = FText::Format(LOCTEXT("ImportMaskDecodeFailed", "Failed to decode image file: {0}"), FText::FromString(SourceFilename));
+		}
+		return false;
+	}
+
+	OutWidth = static_cast<int32>(ImageWrapper->GetWidth());
+	OutHeight = static_cast<int32>(ImageWrapper->GetHeight());
+	if (OutWidth <= 0 || OutHeight <= 0 || RawData.Num() != static_cast<int64>(OutWidth) * OutHeight * 4)
+	{
+		if (OutError)
+		{
+			*OutError = FText::Format(LOCTEXT("ImportMaskInvalidImageSize", "Invalid image dimensions: {0}"), FText::FromString(SourceFilename));
+		}
+		return false;
+	}
+
+	OutPixels.SetNum(OutWidth * OutHeight);
+	FMemory::Memcpy(OutPixels.GetData(), RawData.GetData(), OutPixels.Num() * sizeof(FColor));
+	return true;
+}
+
+UQuickSDFAsset* CreateDefaultQuickSDFAsset(UObject* Outer)
+{
+	UQuickSDFAsset* NewAsset = NewObject<UQuickSDFAsset>(Outer);
+	if (!NewAsset)
+	{
+		return nullptr;
+	}
+
+	NewAsset->Resolution = FIntPoint(1024, 1024);
+	NewAsset->UVChannel = 0;
+	NewAsset->AngleDataList.SetNum(QuickSDFSubsystemDefaultAngleCount);
+
+	const float MaxAngle = 90.0f;
+	for (int32 Index = 0; Index < QuickSDFSubsystemDefaultAngleCount; ++Index)
+	{
+		NewAsset->AngleDataList[Index].Angle = QuickSDFSubsystemDefaultAngleCount > 1
+			? (static_cast<float>(Index) / static_cast<float>(QuickSDFSubsystemDefaultAngleCount - 1)) * MaxAngle
+			: 0.0f;
+	}
+
+	return NewAsset;
+}
 }
 
 void UQuickSDFToolSubsystem::SetTargetComponent(UMeshComponent* NewComponent)
 {
 	CurrentTargetComponent = NewComponent;
+	if (NewComponent)
+	{
+		ActiveSDFAsset = GetOrCreateSDFAssetForComponent(NewComponent);
+	}
 }
 
 UMeshComponent* UQuickSDFToolSubsystem::GetTargetMeshComponent() const
 {
 	if (!CurrentTargetComponent.IsValid()) return nullptr;
 	return CurrentTargetComponent.Get();
+}
+
+UQuickSDFAsset* UQuickSDFToolSubsystem::GetOrCreateSDFAssetForComponent(UMeshComponent* Component)
+{
+	if (!Component)
+	{
+		return nullptr;
+	}
+
+	if (TObjectPtr<UQuickSDFAsset>* ExistingAsset = ComponentSDFAssets.Find(Component))
+	{
+		if (ExistingAsset->Get())
+		{
+			return ExistingAsset->Get();
+		}
+	}
+
+	UQuickSDFAsset* NewAsset = CreateDefaultQuickSDFAsset(this);
+	ComponentSDFAssets.Add(Component, NewAsset);
+	return NewAsset;
+}
+
+void UQuickSDFToolSubsystem::SetActiveSDFAsset(UQuickSDFAsset* InAsset)
+{
+	ActiveSDFAsset = InAsset;
+	if (CurrentTargetComponent.IsValid() && InAsset)
+	{
+		ComponentSDFAssets.Add(CurrentTargetComponent.Get(), InAsset);
+	}
 }
 
 bool UQuickSDFToolSubsystem::CaptureRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget,
@@ -283,6 +404,55 @@ UTexture2D* UQuickSDFToolSubsystem::CreateSDFTexture(const TArray<FFloat16Color>
 	FinalizeTextureAsset(NewTex);
 	return NewTex;
 }
+
+UTexture2D* UQuickSDFToolSubsystem::ImportMaskFileAsTexture(const FString& SourceFilename, const FString& FolderPath, bool bOverwriteExisting, FText* OutError)
+{
+	TArray<FColor> Pixels;
+	int32 Width = 0;
+	int32 Height = 0;
+	if (!LoadImageFileAsBGRA8(SourceFilename, Pixels, Width, Height, OutError))
+	{
+		return nullptr;
+	}
+
+	const FString TextureName = ObjectTools::SanitizeObjectName(FPaths::GetBaseFilename(SourceFilename));
+	UTexture2D* Texture = FindOrCreateTextureAsset(FolderPath, TextureName, bOverwriteExisting, OutError);
+	if (!Texture)
+	{
+		return nullptr;
+	}
+
+	Texture->Source.Init(Width, Height, 1, 1, TSF_BGRA8);
+	void* MipData = Texture->Source.LockMip(0);
+	FMemory::Memcpy(MipData, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
+	Texture->Source.UnlockMip(0);
+
+	Texture->SRGB = false;
+	Texture->CompressionSettings = TC_Default;
+	Texture->MipGenSettings = TMGS_NoMipmaps;
+	Texture->Filter = TF_Nearest;
+
+	FinalizeTextureAsset(Texture);
+	return Texture;
+}
+
+bool UQuickSDFToolSubsystem::ImportMaskFilesAsTextures(const TArray<FString>& SourceFilenames, const FString& FolderPath, TArray<UTexture2D*>& OutTextures, FText* OutError)
+{
+	OutTextures.Reset();
+	for (const FString& SourceFilename : SourceFilenames)
+	{
+		if (UTexture2D* Texture = ImportMaskFileAsTexture(SourceFilename, FolderPath, false, OutError))
+		{
+			OutTextures.Add(Texture);
+		}
+		else
+		{
+			return false;
+		}
+	}
+	return OutTextures.Num() > 0;
+}
+
 void UQuickSDFToolSubsystem::DrawTextureToRenderTarget(UTexture2D* SourceTex, UTextureRenderTarget2D* TargetRT)
 {
 	if (!SourceTex || !TargetRT) return;

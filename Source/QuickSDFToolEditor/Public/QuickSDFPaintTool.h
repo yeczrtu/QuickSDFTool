@@ -115,8 +115,19 @@ public:
 	bool ApplyRenderTargetPixels(int32 AngleIndex, const TArray<FColor>& Pixels);
 	
 	void GenerateSDF();
+	void CreateQuickThresholdMap();
+	void ImportEditedMasks();
+	bool ImportEditedMasksFromTextures(const TArray<UTexture2D*>& InTextures);
 	bool CaptureRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const;
 	class UTextureRenderTarget2D* GetActiveRenderTarget() const;
+	void EnsureInitialMasksReady();
+	void RebakeCurrentMask();
+	void RebakeAllMasks();
+	void CompleteToEightMasks();
+	void RedistributeAnglesEvenly();
+	void FillMaskColor(bool bFillAllAngles, const FLinearColor& FillColor);
+	void MarkMasksChanged();
+	int32 GetMaskRevision() const { return MaskRevision; }
 	
 	void AddKeyframe();
 	void RemoveKeyframe(int32 Index);
@@ -159,6 +170,12 @@ protected:
 	bool RestoreRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, const TArray<FColor>& Pixels) const;
 	bool RestoreRenderTargetTexture(class UTextureRenderTarget2D* RenderTarget, class UTexture2D* Texture) const;
 	class UTexture2D* CreateTransientTextureFromPixels(const TArray<FColor>& Pixels, int32 Width, int32 Height) const;
+	bool ApplyPixelsWithUndo(int32 AngleIndex, const TArray<FColor>& Pixels, const FText& ChangeDescription);
+	bool CopyNearestMaskToAngle(int32 DestinationIndex);
+	void SyncPropertiesFromActiveAsset();
+	void InvalidateUVOverlayCache();
+	class UTextureRenderTarget2D* GetUVOverlayRenderTarget();
+	void RebuildUVOverlayRenderTarget(int32 Width, int32 Height);
 	bool RestoreStrokeStartPixels() const;
 	void BeginStrokeTransaction();
 	void EndStrokeTransaction();
@@ -176,6 +193,7 @@ protected:
 	TMap<int32, int32> TargetTriangleMaterialSlots;
 
 	TWeakObjectPtr<class UMeshComponent> CurrentComponent;
+	TSet<TWeakObjectPtr<class UMeshComponent>> InitialBakeComponents;
 
 	UPROPERTY()
 	TArray<UMaterialInterface*> OriginalMaterials;
@@ -191,6 +209,9 @@ protected:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UQuickSDFBrushResizeInputBehavior> BrushResizeBehavior;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextureRenderTarget2D> UVOverlayRenderTarget;
 
 	TArray<FQuickSDFStrokeSample> StrokeSamples;
 	FQuickSDFStrokeSample LastStampedSample;
@@ -210,9 +231,16 @@ protected:
 	bool bBrushResizeTransactionOpen = false;
 	bool bStrokeTransactionActive = false;
 	bool bStampingAllPaintTargets = false;
+	bool bUseImportedMasksForQuickCreate = false;
+	bool bUVOverlayDirty = true;
 	bool bQuickLineActive = false;
 	bool bHasQuickLineStartSample = false;
 	bool bHasQuickLineEndSample = false;
+	int32 MaskRevision = 0;
+	int32 CachedUVOverlayUVChannel = INDEX_NONE;
+	int32 CachedUVOverlayMaterialSlot = INDEX_NONE;
+	bool bCachedUVOverlayIsolateTargetMaterialSlot = false;
+	FIntPoint CachedUVOverlaySize = FIntPoint::ZeroValue;
 	int32 StrokeTransactionAngleIndex = INDEX_NONE;
 	TArray<int32> StrokeTransactionAngleIndices;
 	TArray<FColor> StrokeBeforePixels;

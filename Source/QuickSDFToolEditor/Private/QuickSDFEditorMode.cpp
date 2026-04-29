@@ -37,21 +37,7 @@ void UQuickSDFEditorMode::Enter()
 	GetToolManager()->ConfigureChangeTrackingMode(EToolChangeTrackingMode::NoChangeTracking);
 	Toolkit->SetCurrentPalette(FName(TEXT("Default")));
 
-	// Add Timeline UI to viewport overlay
-	if (FModuleManager::Get().IsModuleLoaded("LevelEditor"))
-	{
-		FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
-		TSharedPtr<ILevelEditor> LevelEditor = LevelEditorModule.GetFirstLevelEditor();
-		if (LevelEditor.IsValid())
-		{
-			TSharedPtr<SLevelViewport> ActiveViewport = LevelEditor->GetActiveViewportInterface();
-			if (ActiveViewport.IsValid())
-			{
-				TimelineWidget = SNew(SQuickSDFTimeline);
-				ActiveViewport->AddOverlayWidget(TimelineWidget.ToSharedRef());
-			}
-		}
-	}
+	AttachTimelineToActiveViewport();
 
 	MuteLights();
 
@@ -65,23 +51,8 @@ void UQuickSDFEditorMode::Enter()
 
 void UQuickSDFEditorMode::Exit()
 {
-	if (TimelineWidget.IsValid())
-	{
-		if (FModuleManager::Get().IsModuleLoaded("LevelEditor"))
-		{
-			FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
-			TSharedPtr<ILevelEditor> LevelEditor = LevelEditorModule.GetFirstLevelEditor();
-			if (LevelEditor.IsValid())
-			{
-				TSharedPtr<SLevelViewport> ActiveViewport = LevelEditor->GetActiveViewportInterface();
-				if (ActiveViewport.IsValid())
-				{
-					ActiveViewport->RemoveOverlayWidget(TimelineWidget.ToSharedRef());
-				}
-			}
-		}
-		TimelineWidget.Reset();
-	}
+	DetachTimelineFromViewport();
+	TimelineWidget.Reset();
 
 	RestoreLights();
 
@@ -98,6 +69,51 @@ void UQuickSDFEditorMode::Exit()
 
 	Super::Exit();
 	// Clean up tools
+}
+
+void UQuickSDFEditorMode::AttachTimelineToActiveViewport()
+{
+	if (!FModuleManager::Get().IsModuleLoaded("LevelEditor"))
+	{
+		return;
+	}
+
+	FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
+	TSharedPtr<ILevelEditor> LevelEditor = LevelEditorModule.GetFirstLevelEditor();
+	if (!LevelEditor.IsValid())
+	{
+		return;
+	}
+
+	TSharedPtr<SLevelViewport> ActiveViewport = LevelEditor->GetActiveViewportInterface();
+	if (!ActiveViewport.IsValid())
+	{
+		return;
+	}
+
+	if (!TimelineWidget.IsValid())
+	{
+		TimelineWidget = SNew(SQuickSDFTimeline);
+	}
+
+	if (TimelineViewport.Pin() == ActiveViewport)
+	{
+		return;
+	}
+
+	DetachTimelineFromViewport();
+	ActiveViewport->AddOverlayWidget(TimelineWidget.ToSharedRef());
+	TimelineViewport = ActiveViewport;
+}
+
+void UQuickSDFEditorMode::DetachTimelineFromViewport()
+{
+	TSharedPtr<SLevelViewport> AttachedViewport = TimelineViewport.Pin();
+	if (AttachedViewport.IsValid() && TimelineWidget.IsValid())
+	{
+		AttachedViewport->RemoveOverlayWidget(TimelineWidget.ToSharedRef());
+	}
+	TimelineViewport.Reset();
 }
 
 void UQuickSDFEditorMode::MuteLights()
@@ -164,12 +180,17 @@ void UQuickSDFEditorMode::OnPostSaveWorld(UWorld* InWorld, FObjectPostSaveContex
 	if (InWorld == GetWorld())
 	{
 		MuteLights();
+		DetachTimelineFromViewport();
+		AttachTimelineToActiveViewport();
 	}
 }
 
 void UQuickSDFEditorMode::Tick(FEditorViewportClient* ViewportClient, float DeltaTime)
 {
-
+	if (!TimelineViewport.IsValid())
+	{
+		AttachTimelineToActiveViewport();
+	}
 }
 
 TMap<FName, TArray<TSharedPtr<FUICommandInfo>>> UQuickSDFEditorMode::GetModeCommands() const

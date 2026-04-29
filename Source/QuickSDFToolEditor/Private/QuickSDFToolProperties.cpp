@@ -63,11 +63,75 @@ void UQuickSDFToolProperties::ExportToTexture()
 	}
 }
 
+void UQuickSDFToolProperties::CreateQuickThresholdMap()
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
+	{
+		Tool->CreateQuickThresholdMap();
+	}
+}
+
+void UQuickSDFToolProperties::ImportEditedMasks()
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
+	{
+		Tool->ImportEditedMasks();
+	}
+}
+
+void UQuickSDFToolProperties::FillCurrentMaskWhite()
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
+	{
+		Tool->FillMaskColor(false, FLinearColor::White);
+	}
+}
+
+void UQuickSDFToolProperties::FillCurrentMaskBlack()
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
+	{
+		Tool->FillMaskColor(false, FLinearColor::Black);
+	}
+}
+
+void UQuickSDFToolProperties::FillAllMasksWhite()
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
+	{
+		Tool->FillMaskColor(true, FLinearColor::White);
+	}
+}
+
+void UQuickSDFToolProperties::FillAllMasksBlack()
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
+	{
+		Tool->FillMaskColor(true, FLinearColor::Black);
+	}
+}
+
+void UQuickSDFToolProperties::CompleteToEightMasks()
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
+	{
+		Tool->CompleteToEightMasks();
+	}
+}
+
+void UQuickSDFToolProperties::RedistributeAnglesEvenly()
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
+	{
+		Tool->RedistributeAnglesEvenly();
+	}
+}
+
 void UQuickSDFToolProperties::FillOriginalShadingToCurrentAngle()
 {
 	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
 	{
-		Tool->FillOriginalShading(EditAngleIndex);
+		Tool->RebakeCurrentMask();
 	}
 }
 
@@ -75,7 +139,7 @@ void UQuickSDFToolProperties::FillOriginalShadingToAllAngles()
 {
 	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
 	{
-		Tool->FillOriginalShadingAll();
+		Tool->RebakeAllMasks();
 	}
 }
 

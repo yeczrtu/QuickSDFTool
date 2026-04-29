@@ -1,9 +1,12 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "Input/DragAndDrop.h"
+#include "UObject/StrongObjectPtr.h"
 #include "Widgets/SCompoundWidget.h"
 
 class UQuickSDFPaintTool;
+class UTexture2D;
 
 DECLARE_DELEGATE_OneParam(FOnKeyframeAngleChanged, float /*NewAngle*/);
 
@@ -28,6 +31,7 @@ public:
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	virtual void OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent) override;
 	virtual FCursorReply OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const override;
 
 private:
@@ -37,7 +41,9 @@ private:
 	TAttribute<bool> bSnapEnabled;
 	TAttribute<bool> bSymmetryMode;
 	TAttribute<FSlateBrush*> TextureBrush;
+	bool bIsMouseDown = false;
 	bool bIsDragging = false;
+	FVector2D MouseDownScreenPosition = FVector2D::ZeroVector;
 	FOnKeyframeAngleChanged OnAngleChanged;
 	FSimpleDelegate OnClicked;
 	FSimpleDelegate OnDragStarted;
@@ -57,6 +63,12 @@ public:
 	void Construct(const FArguments& InArgs);
 
 	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
+	virtual FReply OnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent) override;
+	virtual FReply OnDrop(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent) override;
+	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	virtual FReply OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	virtual void OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent) override;
 
 public:
 	UQuickSDFPaintTool* GetActivePaintTool() const;
@@ -71,11 +83,19 @@ private:
 	void RebuildTimeline();
 	FReply OnAddKeyframeClicked();
 	FReply OnDeleteKeyframeClicked();
+	FReply OnCompleteToEightClicked();
+	FReply OnRedistributeEvenlyClicked();
 	void OnKeyframeClicked(int32 Index);
 	FReply OnSyncLightClicked();
 	void OnKeyframeAngleChanged(float NewAngle, int32 Index);
 	void OnKeyframeDragStarted();
 	void OnKeyframeDragEnded();
+	bool IsTimelineTrackUnderCursor(const FVector2D& ScreenPosition) const;
+	bool IsNearKeyframeHandle(const FVector2D& ScreenPosition) const;
+	void SeekTimelineAtScreenPosition(const FVector2D& ScreenPosition);
+	EVisibility GetRefineVisibility() const;
+	EVisibility GetCompactVisibility() const;
+	FText GetCompactSummaryText() const;
 
 	// Caching
 	int32 CachedNumAngles = -1;
@@ -83,7 +103,11 @@ private:
 	TArray<float> CachedAngles;
 	TArray<UTexture2D*> CachedTextures;
 	TArray<TSharedPtr<FSlateBrush>> KeyframeBrushes;
+	TArray<TStrongObjectPtr<UTexture2D>> ThumbnailTextures;
+	int32 CachedMaskRevision = INDEX_NONE;
 	bool bGridSnapEnabled = true;
+	bool bSeekingTimeline = false;
+	bool bTimelineDragTransactionOpen = false;
 
 	// Widget refs
 	TSharedPtr<class SCanvas> TimelineTrackCanvas;

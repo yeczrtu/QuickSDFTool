@@ -30,12 +30,15 @@ protected:
 	virtual void CreateToolkit() override;
 
 private:
+	void AttachTimelineToActiveViewport();
+	void DetachTimelineFromViewport();
 	void MuteLights();
 	void RestoreLights();
 	void OnPreSaveWorld(UWorld* InWorld, FObjectPreSaveContext InContext);
 	void OnPostSaveWorld(UWorld* InWorld, FObjectPostSaveContext InContext);
 
 	TSharedPtr<class SQuickSDFTimeline> TimelineWidget;
+	TWeakPtr<class SLevelViewport> TimelineViewport;
 
 	UPROPERTY()
 	TObjectPtr<class ADirectionalLight> PreviewLight;

@@ -7,12 +7,29 @@
 class UQuickSDFAsset;
 class UTexture2D;
 
+UENUM(BlueprintType)
+enum class EQuickSDFQualityPreset : uint8
+{
+	Draft512 UMETA(DisplayName = "Draft 512"),
+	Standard1024 UMETA(DisplayName = "Standard 1024"),
+	High2048 UMETA(DisplayName = "High 2048")
+};
+
 UCLASS()
 class UQuickSDFToolProperties : public UInteractiveToolPropertySet
 {
 	GENERATED_BODY()
 
 public:
+	UPROPERTY(EditAnywhere, Category = "Quick Start", meta = (DisplayName = "Quality"))
+	EQuickSDFQualityPreset QualityPreset = EQuickSDFQualityPreset::Standard1024;
+
+	UPROPERTY(EditAnywhere, Category = "Quick Start", meta = (DisplayName = "Refine Masks", HideInDetailPanel))
+	bool bRefineMasks = false;
+
+	UPROPERTY(EditAnywhere, Category = "Quick Start", meta = (DisplayName = "Imported Mask Folder", ContentDir))
+	FString ImportedMaskFolder = TEXT("/Game/QuickSDF_Imports");
+
 	UPROPERTY(EditAnywhere, Category = "Asset Settings")
 	UQuickSDFAsset* TargetAsset = nullptr;
 
@@ -100,10 +117,34 @@ public:
 	UFUNCTION(CallInEditor, Category = "Actions")
 	void ExportToTexture();
 
-	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Fill Original Shading (Current)"))
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Create Threshold Map"))
+	void CreateQuickThresholdMap();
+
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Import Edited Masks"))
+	void ImportEditedMasks();
+
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Fill Current White"))
+	void FillCurrentMaskWhite();
+
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Fill Current Black"))
+	void FillCurrentMaskBlack();
+
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Fill All White"))
+	void FillAllMasksWhite();
+
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Fill All Black"))
+	void FillAllMasksBlack();
+
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Complete to 8 Masks"))
+	void CompleteToEightMasks();
+
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Redistribute Angles Evenly"))
+	void RedistributeAnglesEvenly();
+
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Rebake Current"))
 	void FillOriginalShadingToCurrentAngle();
 
-	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Fill Original Shading (All)"))
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Rebake All"))
 	void FillOriginalShadingToAllAngles();
 
 	UFUNCTION(CallInEditor, Category = "Actions")
