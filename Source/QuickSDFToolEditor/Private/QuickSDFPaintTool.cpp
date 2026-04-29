@@ -44,6 +44,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "IDesktopPlatform.h"
 #include "Misc/DefaultValueHelper.h"
+#include "Containers/Ticker.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
 #include "IAssetTools.h"
@@ -70,8 +71,7 @@ constexpr double QuickSDFStrokeSmoothingMinAlpha = 0.15;
 constexpr double QuickSDFStrokeSmoothingMaxAlpha = 0.85;
 constexpr int32 QuickSDFBipolarDetectionStride = 500;
 constexpr int32 QuickSDFDefaultAngleCount = 8;
-constexpr int32 QuickSDFMaxUVOverlayLines = 12000;
-constexpr int32 QuickSDFUVOverlaySupersample = 2;
+constexpr int32 QuickSDFUVOverlaySupersample = 4;
 
 struct FQuickSDFUVEdgeKey
 {
@@ -155,6 +155,21 @@ public:
 	virtual void Apply(UObject* Object) override;
 	virtual void Revert(UObject* Object) override;
 	virtual FString ToString() const override { return TEXT("FQuickSDFTextureSlotChange"); }
+};
+
+class FQuickSDFMaskStateChange : public FToolCommandChange
+{
+public:
+	TArray<FGuid> BeforeGuids;
+	TArray<UTexture2D*> BeforeTextures;
+	TArray<TArray<FColor>> BeforePixelsByMask;
+	TArray<FGuid> AfterGuids;
+	TArray<UTexture2D*> AfterTextures;
+	TArray<TArray<FColor>> AfterPixelsByMask;
+
+	virtual void Apply(UObject* Object) override;
+	virtual void Revert(UObject* Object) override;
+	virtual FString ToString() const override { return TEXT("FQuickSDFMaskStateChange"); }
 };
 
 bool ShouldProcessMaskAngle(float RawAngle, bool bSymmetryMode)
@@ -423,6 +438,63 @@ int32 FindAngleIndexByGuid(const UQuickSDFAsset* Asset, const FGuid& MaskGuid)
 		}
 	}
 	return INDEX_NONE;
+}
+
+void CaptureMaskState(
+	UQuickSDFPaintTool& Tool,
+	UQuickSDFAsset* Asset,
+	TArray<FGuid>& OutGuids,
+	TArray<UTexture2D*>& OutTextures,
+	TArray<TArray<FColor>>& OutPixelsByMask)
+{
+	OutGuids.Reset();
+	OutTextures.Reset();
+	OutPixelsByMask.Reset();
+	if (!Asset)
+	{
+		return;
+	}
+
+	EnsureMaskGuids(Asset);
+	for (const FQuickSDFAngleData& AngleData : Asset->AngleDataList)
+	{
+		OutGuids.Add(AngleData.MaskGuid);
+		OutTextures.Add(AngleData.TextureMask);
+
+		TArray<FColor>& Pixels = OutPixelsByMask.AddDefaulted_GetRef();
+		if (AngleData.PaintRenderTarget)
+		{
+			Tool.CaptureRenderTargetPixels(AngleData.PaintRenderTarget, Pixels);
+		}
+	}
+}
+
+void RestoreMaskStateOnNextTick(
+	UQuickSDFPaintTool* Tool,
+	const TArray<FGuid>& MaskGuids,
+	const TArray<UTexture2D*>& Textures,
+	const TArray<TArray<FColor>>& PixelsByMask)
+{
+	if (!Tool)
+	{
+		return;
+	}
+
+	Tool->RestoreMaskStateByGuid(MaskGuids, Textures, PixelsByMask);
+
+	TWeakObjectPtr<UQuickSDFPaintTool> WeakTool(Tool);
+	TArray<FGuid> DeferredGuids = MaskGuids;
+	TArray<UTexture2D*> DeferredTextures = Textures;
+	TArray<TArray<FColor>> DeferredPixelsByMask = PixelsByMask;
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+		[WeakTool, DeferredGuids = MoveTemp(DeferredGuids), DeferredTextures = MoveTemp(DeferredTextures), DeferredPixelsByMask = MoveTemp(DeferredPixelsByMask)](float)
+		{
+			if (WeakTool.IsValid())
+			{
+				WeakTool->RestoreMaskStateByGuid(DeferredGuids, DeferredTextures, DeferredPixelsByMask);
+			}
+			return false;
+		}));
 }
 
 }
@@ -1080,10 +1152,16 @@ void UQuickSDFPaintTool::CompleteToEightMasks()
 			: 0.0f);
 	}
 
+	EnsureMaskGuids(Asset);
+	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+	TArray<FGuid> BeforeGuids;
+	TArray<UTexture2D*> BeforeTextures;
+	TArray<TArray<FColor>> BeforePixelsByMask;
+	CaptureMaskState(*this, Asset, BeforeGuids, BeforeTextures, BeforePixelsByMask);
+
 	GetToolManager()->BeginUndoTransaction(LOCTEXT("CompleteToEightMasks", "Complete Quick SDF Masks to 8"));
 	Asset->Modify();
 	Properties->Modify();
-	EnsureMaskGuids(Asset);
 
 	for (float CandidateAngle : StandardAngles)
 	{
@@ -1147,6 +1225,8 @@ void UQuickSDFPaintTool::CompleteToEightMasks()
 			continue;
 		}
 
+		const bool bWasSuppressingMaskPixelUndo = bSuppressMaskPixelUndo;
+		bSuppressMaskPixelUndo = true;
 		if (CurrentComponent.IsValid())
 		{
 			FillOriginalShading(AddedIndex);
@@ -1155,10 +1235,19 @@ void UQuickSDFPaintTool::CompleteToEightMasks()
 		{
 			CopyNearestMaskToAngle(AddedIndex);
 		}
+		bSuppressMaskPixelUndo = bWasSuppressingMaskPixelUndo;
 	}
 
 	SyncPropertiesFromActiveAsset();
 	MarkMasksChanged();
+
+	TUniquePtr<FQuickSDFMaskStateChange> Change = MakeUnique<FQuickSDFMaskStateChange>();
+	Change->BeforeGuids = MoveTemp(BeforeGuids);
+	Change->BeforeTextures = MoveTemp(BeforeTextures);
+	Change->BeforePixelsByMask = MoveTemp(BeforePixelsByMask);
+	CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterTextures, Change->AfterPixelsByMask);
+	GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("CompleteToEightMaskState", "Restore Quick SDF Complete to 8 Mask State"));
+
 	GetToolManager()->EndUndoTransaction();
 }
 
@@ -1751,6 +1840,49 @@ bool UQuickSDFPaintTool::ApplyTextureSlotChange(const FGuid& AngleGuid, int32 Fa
 	return bRestored;
 }
 
+void UQuickSDFPaintTool::RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, const TArray<UTexture2D*>& Textures, const TArray<TArray<FColor>>& PixelsByMask)
+{
+	if (!Properties)
+	{
+		return;
+	}
+
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	if (!Asset)
+	{
+		return;
+	}
+
+	EnsureMaskGuids(Asset);
+	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+
+	for (int32 SnapshotIndex = 0; SnapshotIndex < MaskGuids.Num(); ++SnapshotIndex)
+	{
+		const FGuid& MaskGuid = MaskGuids[SnapshotIndex];
+		const int32 AngleIndex = FindAngleIndexByGuid(Asset, MaskGuid);
+		if (!Asset->AngleDataList.IsValidIndex(AngleIndex))
+		{
+			continue;
+		}
+
+		FQuickSDFAngleData& AngleData = Asset->AngleDataList[AngleIndex];
+		AngleData.TextureMask = Textures.IsValidIndex(SnapshotIndex) ? Textures[SnapshotIndex] : nullptr;
+		if (PixelsByMask.IsValidIndex(SnapshotIndex) && PixelsByMask[SnapshotIndex].Num() > 0 && AngleData.PaintRenderTarget)
+		{
+			RestoreRenderTargetPixels(AngleData.PaintRenderTarget, PixelsByMask[SnapshotIndex]);
+		}
+		else if (AngleData.TextureMask && AngleData.PaintRenderTarget && Subsystem)
+		{
+			Subsystem->DrawTextureToRenderTarget(AngleData.TextureMask, AngleData.PaintRenderTarget);
+		}
+	}
+
+	SyncPropertiesFromActiveAsset();
+	RefreshPreviewMaterial();
+	MarkMasksChanged();
+}
+
 bool UQuickSDFPaintTool::ApplyPixelsWithUndo(int32 AngleIndex, const TArray<FColor>& Pixels, const FText& ChangeDescription)
 {
 	if (!Properties)
@@ -1783,12 +1915,15 @@ bool UQuickSDFPaintTool::ApplyPixelsWithUndo(int32 AngleIndex, const TArray<FCol
 		return false;
 	}
 
-	TUniquePtr<FQuickSDFRenderTargetsChange> Change = MakeUnique<FQuickSDFRenderTargetsChange>();
-	Change->AngleIndices.Add(AngleIndex);
-	Change->AngleGuids.Add(Asset->AngleDataList[AngleIndex].MaskGuid);
-	Change->BeforePixelsByAngle.Add(MoveTemp(BeforePixels));
-	Change->AfterPixelsByAngle.Add(Pixels);
-	GetToolManager()->EmitObjectChange(this, MoveTemp(Change), ChangeDescription);
+	if (!bSuppressMaskPixelUndo)
+	{
+		TUniquePtr<FQuickSDFRenderTargetsChange> Change = MakeUnique<FQuickSDFRenderTargetsChange>();
+		Change->AngleIndices.Add(AngleIndex);
+		Change->AngleGuids.Add(Asset->AngleDataList[AngleIndex].MaskGuid);
+		Change->BeforePixelsByAngle.Add(MoveTemp(BeforePixels));
+		Change->AfterPixelsByAngle.Add(Pixels);
+		GetToolManager()->EmitObjectChange(this, MoveTemp(Change), ChangeDescription);
+	}
 	RefreshPreviewMaterial();
 	MarkMasksChanged();
 	return true;
@@ -2314,6 +2449,22 @@ void FQuickSDFTextureSlotChange::Revert(UObject* Object)
 	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
 	{
 		Tool->ApplyTextureSlotChange(AngleGuid, AngleIndex, BeforeTexture, BeforePixels);
+	}
+}
+
+void FQuickSDFMaskStateChange::Apply(UObject* Object)
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
+	{
+		RestoreMaskStateOnNextTick(Tool, AfterGuids, AfterTextures, AfterPixelsByMask);
+	}
+}
+
+void FQuickSDFMaskStateChange::Revert(UObject* Object)
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
+	{
+		RestoreMaskStateOnNextTick(Tool, BeforeGuids, BeforeTextures, BeforePixelsByMask);
 	}
 }
 
@@ -3103,13 +3254,18 @@ void UQuickSDFPaintTool::AddKeyframe()
 	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return;
 
 	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
+	EnsureMaskGuids(Asset);
+	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+	TArray<FGuid> BeforeGuids;
+	TArray<UTexture2D*> BeforeTextures;
+	TArray<TArray<FColor>> BeforePixelsByMask;
+	CaptureMaskState(*this, Asset, BeforeGuids, BeforeTextures, BeforePixelsByMask);
 
 	GetToolManager()->BeginUndoTransaction(LOCTEXT("AddKeyframe", "Add Timeline Keyframe"));
 	Asset->Modify();
 	Properties->Modify();
 
 	// Insert after current EditAngleIndex
-	EnsureMaskGuids(Asset);
 	int32 InsertIndex = Properties->EditAngleIndex + 1;
 	
 	float NewAngle = 0.0f;
@@ -3146,13 +3302,27 @@ void UQuickSDFPaintTool::AddKeyframe()
 
 	if (CurrentComponent.IsValid())
 	{
+		const bool bWasSuppressingMaskPixelUndo = bSuppressMaskPixelUndo;
+		bSuppressMaskPixelUndo = true;
 		FillOriginalShading(InsertIndex);
+		bSuppressMaskPixelUndo = bWasSuppressingMaskPixelUndo;
 	}
 	else
 	{
+		const bool bWasSuppressingMaskPixelUndo = bSuppressMaskPixelUndo;
+		bSuppressMaskPixelUndo = true;
 		CopyNearestMaskToAngle(InsertIndex);
+		bSuppressMaskPixelUndo = bWasSuppressingMaskPixelUndo;
 	}
 	MarkMasksChanged();
+
+	TUniquePtr<FQuickSDFMaskStateChange> Change = MakeUnique<FQuickSDFMaskStateChange>();
+	Change->BeforeGuids = MoveTemp(BeforeGuids);
+	Change->BeforeTextures = MoveTemp(BeforeTextures);
+	Change->BeforePixelsByMask = MoveTemp(BeforePixelsByMask);
+	CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterTextures, Change->AfterPixelsByMask);
+	GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("AddKeyframeMaskState", "Restore Quick SDF Added Keyframe Mask State"));
+
 	GetToolManager()->EndUndoTransaction();
 }
 
@@ -3166,6 +3336,13 @@ void UQuickSDFPaintTool::RemoveKeyframe(int32 Index)
 	
 	if (Asset->AngleDataList.IsValidIndex(Index) && Asset->AngleDataList.Num() > 1)
 	{
+		EnsureMaskGuids(Asset);
+		Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+		TArray<FGuid> BeforeGuids;
+		TArray<UTexture2D*> BeforeTextures;
+		TArray<TArray<FColor>> BeforePixelsByMask;
+		CaptureMaskState(*this, Asset, BeforeGuids, BeforeTextures, BeforePixelsByMask);
+
 		GetToolManager()->BeginUndoTransaction(LOCTEXT("RemoveKeyframe", "Remove Timeline Keyframe"));
 		Asset->Modify();
 		Properties->Modify();
@@ -3181,6 +3358,13 @@ void UQuickSDFPaintTool::RemoveKeyframe(int32 Index)
 
 		FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex));
 		OnPropertyModified(Properties, Prop);
+
+		TUniquePtr<FQuickSDFMaskStateChange> Change = MakeUnique<FQuickSDFMaskStateChange>();
+		Change->BeforeGuids = MoveTemp(BeforeGuids);
+		Change->BeforeTextures = MoveTemp(BeforeTextures);
+		Change->BeforePixelsByMask = MoveTemp(BeforePixelsByMask);
+		CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterTextures, Change->AfterPixelsByMask);
+		GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("RemoveKeyframeMaskState", "Restore Quick SDF Removed Keyframe Mask State"));
 
 		GetToolManager()->EndUndoTransaction();
 		MarkMasksChanged();
@@ -3285,14 +3469,13 @@ void UQuickSDFPaintTool::RebuildUVOverlayRenderTarget(int32 Width, int32 Height)
 		AddUniqueEdge(UV2, UV0);
 	}
 
-	const int32 DrawStep = FMath::Max(FMath::CeilToInt(static_cast<float>(UniqueEdges.Num()) / static_cast<float>(QuickSDFMaxUVOverlayLines)), 1);
-	const float LineAlpha = UniqueEdges.Num() > QuickSDFMaxUVOverlayLines ? 0.08f : 0.12f;
-	const FLinearColor UVLineColor(0.0f, 0.65f, 0.28f, LineAlpha);
-	for (int32 EdgeIndex = 0; EdgeIndex < UniqueEdges.Num(); EdgeIndex += DrawStep)
+	const FLinearColor UVLineColor(0.0f, 0.42f, 0.18f, 0.045f);
+	for (int32 EdgeIndex = 0; EdgeIndex < UniqueEdges.Num(); ++EdgeIndex)
 	{
 		const FQuickSDFUVOverlayEdge& Edge = UniqueEdges[EdgeIndex];
 		FCanvasLineItem Line(UVToOverlay(Edge.A), UVToOverlay(Edge.B));
 		Line.SetColor(UVLineColor);
+		Line.BlendMode = SE_BLEND_Translucent;
 		Line.LineThickness = 1.0f;
 		Canvas.DrawItem(Line);
 	}

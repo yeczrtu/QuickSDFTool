@@ -115,6 +115,7 @@ public:
 	bool ApplyRenderTargetPixels(int32 AngleIndex, const TArray<FColor>& Pixels);
 	bool ApplyRenderTargetPixelsByGuid(const FGuid& AngleGuid, const TArray<FColor>& Pixels);
 	bool ApplyTextureSlotChange(const FGuid& AngleGuid, int32 FallbackIndex, class UTexture2D* Texture, const TArray<FColor>& Pixels);
+	void RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, const TArray<class UTexture2D*>& Textures, const TArray<TArray<FColor>>& PixelsByMask);
 	
 	void GenerateSDF();
 	void CreateQuickThresholdMap();
@@ -239,6 +240,7 @@ protected:
 	bool bQuickLineActive = false;
 	bool bHasQuickLineStartSample = false;
 	bool bHasQuickLineEndSample = false;
+	bool bSuppressMaskPixelUndo = false;
 	int32 MaskRevision = 0;
 	int32 CachedUVOverlayUVChannel = INDEX_NONE;
 	int32 CachedUVOverlayMaterialSlot = INDEX_NONE;
