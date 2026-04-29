@@ -65,6 +65,18 @@ public:
 	virtual void Revert(UObject* Object) override;
 	virtual FString ToString() const override { return TEXT("FQuickSDFRenderTargetChange"); }
 };
+
+class FQuickSDFRenderTargetsChange : public FToolCommandChange
+{
+public:
+	TArray<int32> AngleIndices;
+	TArray<TArray<FColor>> BeforePixelsByAngle;
+	TArray<TArray<FColor>> AfterPixelsByAngle;
+
+	virtual void Apply(UObject* Object) override;
+	virtual void Revert(UObject* Object) override;
+	virtual FString ToString() const override { return TEXT("FQuickSDFRenderTargetsChange"); }
+};
 }
 
 void UQuickSDFBrushResizeInputBehavior::Initialize(UQuickSDFPaintTool* InTool)
@@ -677,6 +689,8 @@ void UQuickSDFPaintTool::EndStrokeTransaction()
 	if (Properties && Subsystem && Subsystem->GetActiveSDFAsset())
 	{
 		UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
+		TUniquePtr<FQuickSDFRenderTargetsChange> Change = MakeUnique<FQuickSDFRenderTargetsChange>();
+
 		for (int32 Index = 0; Index < StrokeTransactionAngleIndices.Num() && Index < StrokeBeforePixelsByAngle.Num(); ++Index)
 		{
 			const int32 AngleIndex = StrokeTransactionAngleIndices[Index];
@@ -690,12 +704,15 @@ void UQuickSDFPaintTool::EndStrokeTransaction()
 				AfterPixels.Num() == StrokeBeforePixelsByAngle[Index].Num() &&
 				AfterPixels != StrokeBeforePixelsByAngle[Index])
 			{
-				TUniquePtr<FQuickSDFRenderTargetChange> Change = MakeUnique<FQuickSDFRenderTargetChange>();
-				Change->AngleIndex = AngleIndex;
-				Change->BeforePixels = MoveTemp(StrokeBeforePixelsByAngle[Index]);
-				Change->AfterPixels = MoveTemp(AfterPixels);
-				GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("QuickSDFPaintStrokeChange", "Quick SDF Paint Stroke"));
+				Change->AngleIndices.Add(AngleIndex);
+				Change->BeforePixelsByAngle.Add(MoveTemp(StrokeBeforePixelsByAngle[Index]));
+				Change->AfterPixelsByAngle.Add(MoveTemp(AfterPixels));
 			}
+		}
+
+		if (Change->AngleIndices.Num() > 0)
+		{
+			GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("QuickSDFPaintStrokeChange", "Quick SDF Paint Stroke"));
 		}
 	}
 	
@@ -828,6 +845,28 @@ void FQuickSDFRenderTargetChange::Apply(UObject* Object)
 void FQuickSDFRenderTargetChange::Revert(UObject* Object)
 {
 	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object)) Tool->ApplyRenderTargetPixels(AngleIndex, BeforePixels);
+}
+
+void FQuickSDFRenderTargetsChange::Apply(UObject* Object)
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
+	{
+		for (int32 Index = 0; Index < AngleIndices.Num() && Index < AfterPixelsByAngle.Num(); ++Index)
+		{
+			Tool->ApplyRenderTargetPixels(AngleIndices[Index], AfterPixelsByAngle[Index]);
+		}
+	}
+}
+
+void FQuickSDFRenderTargetsChange::Revert(UObject* Object)
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
+	{
+		for (int32 Index = 0; Index < AngleIndices.Num() && Index < BeforePixelsByAngle.Num(); ++Index)
+		{
+			Tool->ApplyRenderTargetPixels(AngleIndices[Index], BeforePixelsByAngle[Index]);
+		}
+	}
 }
 
 void UQuickSDFPaintTool::BeginBrushResizeMode()
