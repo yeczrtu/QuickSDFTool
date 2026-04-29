@@ -115,7 +115,7 @@ public:
 	bool ApplyRenderTargetPixels(int32 AngleIndex, const TArray<FColor>& Pixels);
 	bool ApplyRenderTargetPixelsByGuid(const FGuid& AngleGuid, const TArray<FColor>& Pixels);
 	bool ApplyTextureSlotChange(const FGuid& AngleGuid, int32 FallbackIndex, class UTexture2D* Texture, const TArray<FColor>& Pixels);
-	void RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, const TArray<class UTexture2D*>& Textures, const TArray<TArray<FColor>>& PixelsByMask);
+	void RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, const TArray<float>& Angles, const TArray<class UTexture2D*>& Textures, const TArray<TArray<FColor>>& PixelsByMask);
 	
 	void GenerateSDF();
 	void CreateQuickThresholdMap();

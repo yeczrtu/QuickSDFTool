@@ -194,6 +194,7 @@ UQuickSDFAsset* CreateDefaultQuickSDFAsset(UObject* Outer)
 		return nullptr;
 	}
 
+	NewAsset->SetFlags(RF_Transactional);
 	NewAsset->Resolution = FIntPoint(1024, 1024);
 	NewAsset->UVChannel = 0;
 	NewAsset->AngleDataList.SetNum(QuickSDFSubsystemDefaultAngleCount);
@@ -249,6 +250,10 @@ UQuickSDFAsset* UQuickSDFToolSubsystem::GetOrCreateSDFAssetForComponent(UMeshCom
 void UQuickSDFToolSubsystem::SetActiveSDFAsset(UQuickSDFAsset* InAsset)
 {
 	ActiveSDFAsset = InAsset;
+	if (InAsset)
+	{
+		InAsset->SetFlags(RF_Transactional);
+	}
 	if (CurrentTargetComponent.IsValid() && InAsset)
 	{
 		ComponentSDFAssets.Add(CurrentTargetComponent.Get(), InAsset);
