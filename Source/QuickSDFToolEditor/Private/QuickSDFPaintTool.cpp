@@ -21,6 +21,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/SkinnedMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
@@ -526,6 +527,15 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 	// 以前のコンポーネントのマテリアルを復元
 	if (CurrentComponent.IsValid())
 	{
+		if (UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(CurrentComponent.Get()))
+		{
+			StaticMeshComponent->SetMaterialPreview(INDEX_NONE);
+		}
+		else if (USkinnedMeshComponent* SkinnedMeshComponent = Cast<USkinnedMeshComponent>(CurrentComponent.Get()))
+		{
+			SkinnedMeshComponent->SetMaterialPreview(INDEX_NONE);
+		}
+
 		for (int32 i = 0; i < OriginalMaterials.Num(); ++i)
 		{
 			if (CurrentComponent->GetNumMaterials() > i)
@@ -577,6 +587,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 		CurrentComponent->SetMaterial(i, PreviewMaterial);
 	}
 
+	ApplyTargetMaterialSlotIsolation();
 	RefreshPreviewMaterial();
 }
 
@@ -602,6 +613,29 @@ bool UQuickSDFPaintTool::IsTriangleInTargetMaterialSlot(int32 TriangleID) const
 
 	const int32* TriangleMaterialSlot = TargetTriangleMaterialSlots.Find(TriangleID);
 	return TriangleMaterialSlot && *TriangleMaterialSlot == Properties->TargetMaterialSlot;
+}
+
+void UQuickSDFPaintTool::ApplyTargetMaterialSlotIsolation()
+{
+	if (!CurrentComponent.IsValid())
+	{
+		return;
+	}
+
+	const int32 MaterialPreviewIndex =
+		(Properties && Properties->bIsolateTargetMaterialSlot &&
+			Properties->TargetMaterialSlot >= 0 && CurrentComponent->GetNumMaterials() > Properties->TargetMaterialSlot)
+			? Properties->TargetMaterialSlot
+			: INDEX_NONE;
+
+	if (UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(CurrentComponent.Get()))
+	{
+		StaticMeshComponent->SetMaterialPreview(MaterialPreviewIndex);
+	}
+	else if (USkinnedMeshComponent* SkinnedMeshComponent = Cast<USkinnedMeshComponent>(CurrentComponent.Get()))
+	{
+		SkinnedMeshComponent->SetMaterialPreview(MaterialPreviewIndex);
+	}
 }
 
 bool UQuickSDFPaintTool::CaptureRenderTargetPixels(UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const
@@ -1699,7 +1733,7 @@ void UQuickSDFPaintTool::ResetStrokeState()
 
 void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Property)
 {
-Super::OnPropertyModified(PropertySet, Property);
+	Super::OnPropertyModified(PropertySet, Property);
 
 	if (PropertySet == Properties)
 	{
@@ -1802,6 +1836,12 @@ Super::OnPropertyModified(PropertySet, Property);
 				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bOverlayOriginalShadow)))
 		{
 			RefreshPreviewMaterial();
+		}
+
+		if (Property && (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetMaterialSlot) ||
+				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bIsolateTargetMaterialSlot)))
+		{
+			ApplyTargetMaterialSlotIsolation();
 		}
 	}
 }

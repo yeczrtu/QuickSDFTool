@@ -92,6 +92,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Target Settings", meta=(DisplayName="Target Material Slot", ClampMin="-1", UIMin="-1"))
 	int32 TargetMaterialSlot = -1;
+
+	UPROPERTY(EditAnywhere, Category = "Target Settings", meta=(DisplayName="Isolate Target Material Slot", EditCondition="TargetMaterialSlot >= 0"))
+	bool bIsolateTargetMaterialSlot = false;
 	
 	UPROPERTY(EditAnywhere, Category = "Export Settings", meta=(ClampMin="1", UIMin="1", ClampMax="8", UIMax="8"))
 	int32 UpscaleFactor = 1;
@@ -231,6 +234,7 @@ protected:
 	void RefreshPreviewMaterial();
 	FQuickSDFStrokeSample SmoothStrokeSample(const FQuickSDFStrokeSample& RawSample);
 	void ChangeTargetComponent(class UMeshComponent* NewComponent);
+	void ApplyTargetMaterialSlotIsolation();
 	bool IsTriangleInTargetMaterialSlot(int32 TriangleID) const;
 	bool TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample);
 	bool TryMakePreviewStrokeSample(const FVector2D& ScreenPosition, FQuickSDFStrokeSample& OutSample) const;
