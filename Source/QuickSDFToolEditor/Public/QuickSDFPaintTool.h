@@ -93,6 +93,12 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Export Settings", meta=(DisplayName="Mask Export Folder", ContentDir))
 	FString MaskExportFolder = TEXT("/Game/QuickSDF_Exports");
 
+	UPROPERTY(EditAnywhere, Category = "Export Settings", meta=(DisplayName="Create Mask Folder Per Export"))
+	bool bCreateMaskFolderPerExport = true;
+
+	UPROPERTY(EditAnywhere, Category = "Export Settings", meta=(DisplayName="Mask Export Folder Prefix"))
+	FString MaskExportFolderPrefix = TEXT("Masks");
+
 	UPROPERTY(EditAnywhere, Category = "Export Settings", meta=(DisplayName="Mask Texture Prefix"))
 	FString MaskTextureNamePrefix = TEXT("T_QuickSDF_Angle");
 

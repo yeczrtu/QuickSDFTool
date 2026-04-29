@@ -128,6 +128,14 @@ void UQuickSDFToolProperties::ExportToTexture()
 	int32 ExportedCount = 0;
 	Asset->Modify();
 
+	FString EffectiveMaskExportFolder = MaskExportFolder;
+	if (bCreateMaskFolderPerExport && !MaskExportFolderPrefix.IsEmpty())
+	{
+		const FDateTime Now = FDateTime::Now();
+		const FString ExportFolderName = FString::Printf(TEXT("%s_%s_%03d"), *MaskExportFolderPrefix, *Now.ToString(TEXT("%Y%m%d_%H%M%S")), Now.GetMillisecond());
+		EffectiveMaskExportFolder /= ExportFolderName;
+	}
+
 	for (int32 i = 0; i < Asset->AngleDataList.Num(); ++i)
 	{
 		UTextureRenderTarget2D* RT = Asset->AngleDataList[i].PaintRenderTarget;
@@ -135,10 +143,9 @@ void UQuickSDFToolProperties::ExportToTexture()
 
 		const FString AssetName = FString::Printf(TEXT("%s%d"), *MaskTextureNamePrefix, i);
 		FText Error;
-		UTexture2D* NewTex = Subsystem->CreateMaskTexture(RT, MaskExportFolder, AssetName, bOverwriteExistingMasks, &Error);
+		UTexture2D* NewTex = Subsystem->CreateMaskTexture(RT, EffectiveMaskExportFolder, AssetName, bOverwriteExistingMasks, &Error);
 		if (NewTex)
 		{
-			// エクスポートしたテクスチャをアセットに紐づけておくことで、次回ロード時に復元されます
 			Asset->AngleDataList[i].TextureMask = NewTex;
 			++ExportedCount;
 		}
