@@ -11,8 +11,6 @@
 #include "CollisionQueryParams.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/Texture2D.h"
-#include "AssetRegistry/AssetRegistryModule.h"
-#include "UObject/SavePackage.h"
 #include "BaseBehaviors/ClickDragBehavior.h"
 #include "TargetInterfaces/PrimitiveComponentBackedTarget.h"
 #include "TargetInterfaces/MeshDescriptionProvider.h"
@@ -60,6 +58,7 @@ constexpr float QuickSDFMinResizeSensitivity = 0.01f;
 constexpr double QuickSDFSubPixelSpacing = 0.35;
 constexpr double QuickSDFStrokeSmoothingMinAlpha = 0.15;
 constexpr double QuickSDFStrokeSmoothingMaxAlpha = 0.85;
+constexpr int32 QuickSDFBipolarDetectionStride = 500;
 
 class FQuickSDFRenderTargetChange : public FToolCommandChange
 {
@@ -84,6 +83,92 @@ public:
 	virtual void Revert(UObject* Object) override;
 	virtual FString ToString() const override { return TEXT("FQuickSDFRenderTargetsChange"); }
 };
+
+bool ShouldProcessMaskAngle(float RawAngle, bool bSymmetryMode)
+{
+	return !bSymmetryMode || (RawAngle >= -0.01f && RawAngle <= 90.01f);
+}
+
+TArray<int32> CollectProcessableMaskIndices(const UQuickSDFAsset& Asset, bool bSymmetryMode)
+{
+	TArray<int32> Indices;
+	for (int32 Index = 0; Index < Asset.AngleDataList.Num(); ++Index)
+	{
+		const FQuickSDFAngleData& AngleData = Asset.AngleDataList[Index];
+		if (AngleData.PaintRenderTarget && ShouldProcessMaskAngle(AngleData.Angle, bSymmetryMode))
+		{
+			Indices.Add(Index);
+		}
+	}
+	return Indices;
+}
+
+bool TryBuildMaskData(
+	const UQuickSDFPaintTool& Tool,
+	UTextureRenderTarget2D* RenderTarget,
+	float RawAngle,
+	float MaxAngle,
+	int32 OrigW,
+	int32 OrigH,
+	int32 Upscale,
+	FMaskData& OutData)
+{
+	TArray<FColor> Pixels;
+	if (!RenderTarget || !Tool.CaptureRenderTargetPixels(RenderTarget, Pixels))
+	{
+		return false;
+	}
+
+	const int32 HighW = OrigW * Upscale;
+	const int32 HighH = OrigH * Upscale;
+	TArray<uint8> GrayPixels = FSDFProcessor::ConvertToGrayscale(Pixels);
+	TArray<uint8> UpscaledPixels = FSDFProcessor::UpscaleImage(GrayPixels, OrigW, OrigH, Upscale);
+
+	OutData.SDF = FSDFProcessor::GenerateSDF(UpscaledPixels, HighW, HighH);
+	OutData.TargetT = FMath::Clamp(FMath::Abs(RawAngle) / FMath::Max(MaxAngle, KINDA_SMALL_NUMBER), 0.0f, 1.0f);
+	OutData.bIsOpposite = RawAngle < -0.01f;
+	return true;
+}
+
+void SortMaskData(TArray<FMaskData>& MaskData)
+{
+	MaskData.Sort([](const FMaskData& A, const FMaskData& B)
+	{
+		if (A.bIsOpposite != B.bIsOpposite)
+		{
+			return !A.bIsOpposite;
+		}
+		return A.TargetT < B.TargetT;
+	});
+}
+
+bool NeedsBipolarOutput(const TArray<FMaskData>& MaskData, int32 PixelCount)
+{
+	for (int32 Index = 0; Index < MaskData.Num(); ++Index)
+	{
+		if (MaskData[Index].bIsOpposite)
+		{
+			return true;
+		}
+
+		if (Index >= MaskData.Num() - 1)
+		{
+			continue;
+		}
+
+		const FMaskData& Current = MaskData[Index];
+		const FMaskData& Next = MaskData[Index + 1];
+		const int32 NumComparablePixels = FMath::Min(PixelCount, FMath::Min(Current.SDF.Num(), Next.SDF.Num()));
+		for (int32 PixelIndex = 0; PixelIndex < NumComparablePixels; PixelIndex += QuickSDFBipolarDetectionStride)
+		{
+			if (Current.SDF[PixelIndex] > 0.0 && Next.SDF[PixelIndex] <= 0.0)
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
 
 }
 
@@ -136,78 +221,6 @@ void UQuickSDFBrushResizeInputBehavior::ForceEndCapture(const FInputCaptureData&
 {
 }
 
-void UQuickSDFToolProperties::ExportToTexture()
-{
-	UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());
-	if (!Tool) return;
-	
-	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
-	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return;
-
-	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
-	int32 ExportedCount = 0;
-	Asset->Modify();
-
-	FString EffectiveMaskExportFolder = MaskExportFolder;
-	if (bCreateMaskFolderPerExport && !MaskExportFolderPrefix.IsEmpty())
-	{
-		const FDateTime Now = FDateTime::Now();
-		const FString ExportFolderName = FString::Printf(TEXT("%s_%s_%03d"), *MaskExportFolderPrefix, *Now.ToString(TEXT("%Y%m%d_%H%M%S")), Now.GetMillisecond());
-		EffectiveMaskExportFolder /= ExportFolderName;
-	}
-
-	for (int32 i = 0; i < Asset->AngleDataList.Num(); ++i)
-	{
-		UTextureRenderTarget2D* RT = Asset->AngleDataList[i].PaintRenderTarget;
-		if (!RT) continue;
-
-		const FString AssetName = FString::Printf(TEXT("%s%d"), *MaskTextureNamePrefix, i);
-		FText Error;
-		UTexture2D* NewTex = Subsystem->CreateMaskTexture(RT, EffectiveMaskExportFolder, AssetName, bOverwriteExistingMasks, &Error);
-		if (NewTex)
-		{
-			Asset->AngleDataList[i].TextureMask = NewTex;
-			++ExportedCount;
-		}
-		else if (!Error.IsEmpty())
-		{
-			FMessageDialog::Open(EAppMsgType::Ok, Error);
-			break;
-		}
-	}
-	if (ExportedCount > 0)
-	{
-		Asset->MarkPackageDirty();
-	}
-}
-
-void UQuickSDFToolProperties::FillOriginalShadingToCurrentAngle()
-{
-	UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());
-	if (Tool)
-	{
-		Tool->FillOriginalShading(EditAngleIndex);
-	}
-}
-
-void UQuickSDFToolProperties::FillOriginalShadingToAllAngles()
-{
-	UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());
-	if (Tool)
-	{
-		Tool->FillOriginalShadingAll();
-	}
-}
-
-void UQuickSDFToolProperties::GenerateSDFThresholdMap()
-{
-	UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());
-	if (Tool)
-	{
-		Tool->GenerateSDF();
-	}
-}
-
 UQuickSDFPaintTool::UQuickSDFPaintTool()
 {
 }
@@ -237,100 +250,88 @@ void UQuickSDFPaintTool::InitializeRenderTargets()
 
 void UQuickSDFPaintTool::GenerateSDF()
 {
-	if (!Properties) return;
+	if (!Properties)
+	{
+		return;
+	}
 	
 	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
-	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return;
+	if (!Subsystem || !Subsystem->GetActiveSDFAsset())
+	{
+		return;
+	}
 
 	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
-
-	TArray<int32> ValidIndices;
-	for (int32 i = 0; i < Asset->AngleDataList.Num(); ++i)
+	const int32 OrigW = Asset->Resolution.X;
+	const int32 OrigH = Asset->Resolution.Y;
+	if (OrigW <= 0 || OrigH <= 0)
 	{
-		if (Asset->AngleDataList[i].PaintRenderTarget) ValidIndices.Add(i);
+		return;
 	}
-	if (ValidIndices.Num() == 0) return;
+
+	const TArray<int32> ProcessableIndices = CollectProcessableMaskIndices(*Asset, Properties->bSymmetryMode);
+	if (ProcessableIndices.Num() == 0)
+	{
+		return;
+	}
 
 	// --- プログレスバーの初期化 ---
 	// 工程：SDF生成(ValidIndices.Num()) + 合成(1) + 保存(1)
-	FScopedSlowTask SlowTask((float)ValidIndices.Num() + 2.0f, LOCTEXT("GenerateSDF", "Generating Multi-Channel SDF..."));
+	FScopedSlowTask SlowTask(static_cast<float>(ProcessableIndices.Num()) + 2.0f, LOCTEXT("GenerateSDF", "Generating Multi-Channel SDF..."));
 	SlowTask.MakeDialog(true);
 
 	// --- 1. SDFデータの生成と収集 ---
 	TArray<FMaskData> ProcessedData;
-	int32 OrigW = Asset->Resolution.X;
-	int32 OrigH = Asset->Resolution.Y;
-	int32 Upscale = FMath::Clamp(Properties->UpscaleFactor, 1, 8);
-	int32 HighW = OrigW * Upscale;
-	int32 HighH = OrigH * Upscale;
-	float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
+	const int32 Upscale = FMath::Clamp(Properties->UpscaleFactor, 1, 8);
+	const int32 HighW = OrigW * Upscale;
+	const int32 HighH = OrigH * Upscale;
+	const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
 
-	for (int32 Index : ValidIndices)
+	for (int32 Index : ProcessableIndices)
 	{
-		float RawAngle = Asset->AngleDataList[Index].Angle;
-		
-		if (Properties->bSymmetryMode)
-		{
-			if (RawAngle < -0.01f || RawAngle > 90.01f) 
-			{
-				continue; 
-			}
-		}
+		const float RawAngle = Asset->AngleDataList[Index].Angle;
 		// プログレスバー更新
 		SlowTask.EnterProgressFrame(1.f, FText::Format(LOCTEXT("ProcessMask", "Processing Mask {0}..."), Index));
-		if (SlowTask.ShouldCancel()) return;
-
-		UTextureRenderTarget2D* RT = Asset->AngleDataList[Index].PaintRenderTarget;
-		TArray<FColor> Pixels;
-		if (!CaptureRenderTargetPixels(RT, Pixels)) continue;
-
-		TArray<uint8> GrayPixels = FSDFProcessor::ConvertToGrayscale(Pixels);
-		TArray<uint8> UpscaledPixels = FSDFProcessor::UpscaleImage(GrayPixels, OrigW, OrigH, Upscale);
-		TArray<double> SDF = FSDFProcessor::GenerateSDF(UpscaledPixels, HighW, HighH);
-		
-		FMaskData Data;
-		Data.SDF = MoveTemp(SDF);
-		Data.TargetT = FMath::Clamp(FMath::Abs(RawAngle) / MaxAngle, 0.0f, 1.0f);
-		Data.bIsOpposite = (RawAngle < -0.01f); 
-		ProcessedData.Add(MoveTemp(Data));
-	}
-
-	// 向きと角度でソート
-	ProcessedData.Sort([](const FMaskData& A, const FMaskData& B) {
-		if (A.bIsOpposite != B.bIsOpposite) return !A.bIsOpposite;
-		return A.TargetT < B.TargetT;
-	});
-
-	// --- 2. Bipolarの自動判定 ---
-	bool bNeedsBipolar = false;
-	for (int32 i = 0; i < ProcessedData.Num(); ++i)
-	{
-		if (ProcessedData[i].bIsOpposite) { bNeedsBipolar = true; break; }
-		
-		if (i < ProcessedData.Num() - 1)
+		if (SlowTask.ShouldCancel())
 		{
-			const FMaskData& M1 = ProcessedData[i];
-			const FMaskData& M2 = ProcessedData[i + 1];
-			for (int32 p = 0; p < HighW * HighH; p += 500) // 高速サンプリング
-			{
-				if (M1.SDF[p] > 0.0 && M2.SDF[p] <= 0.0) { bNeedsBipolar = true; break; }
-			}
-			if (bNeedsBipolar) break;
+			return;
+		}
+
+		FMaskData Data;
+		if (TryBuildMaskData(*this, Asset->AngleDataList[Index].PaintRenderTarget, RawAngle, MaxAngle, OrigW, OrigH, Upscale, Data))
+		{
+			ProcessedData.Add(MoveTemp(Data));
 		}
 	}
-	ESDFOutputFormat EffectiveFormat = bNeedsBipolar ? ESDFOutputFormat::Bipolar : ESDFOutputFormat::Monopolar;
+
+	if (ProcessedData.Num() == 0)
+	{
+		return;
+	}
+
+	SortMaskData(ProcessedData);
+
+	// --- 2. Bipolarの自動判定 ---
+	const bool bNeedsBipolar = NeedsBipolarOutput(ProcessedData, HighW * HighH);
+	const ESDFOutputFormat EffectiveFormat = bNeedsBipolar ? ESDFOutputFormat::Bipolar : ESDFOutputFormat::Monopolar;
 	UE_LOG(LogTemp, Warning, TEXT("QuickSDF: Auto-Detected Format: %s"), bNeedsBipolar ? TEXT("BIPOLAR") : TEXT("MONOPOLAR"));
 
 	// --- 3. 合成処理 ---
 	SlowTask.EnterProgressFrame(1.f, LOCTEXT("CombineSDF", "Combining SDF Channels..."));
-	if (SlowTask.ShouldCancel()) return;
+	if (SlowTask.ShouldCancel())
+	{
+		return;
+	}
 
 	TArray<FVector4f> CombinedField; 
 	FSDFProcessor::CombineSDFs(ProcessedData, CombinedField, HighW, HighH, EffectiveFormat, Properties->bSymmetryMode);
 
 	// --- 4. 保存処理 ---
 	SlowTask.EnterProgressFrame(1.f, LOCTEXT("SaveSDF", "Downscaling and Saving..."));
-	if (SlowTask.ShouldCancel()) return;
+	if (SlowTask.ShouldCancel())
+	{
+		return;
+	}
 
 	TArray<FFloat16Color> FinalPixels = FSDFProcessor::DownscaleAndConvert(CombinedField, HighW, HighH, Upscale);
 	FText SaveError;

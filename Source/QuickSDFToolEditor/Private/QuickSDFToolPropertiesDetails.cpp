@@ -2,7 +2,7 @@
 #include "DetailLayoutBuilder.h"
 #include "DetailCategoryBuilder.h"
 #include "DetailWidgetRow.h"
-#include "QuickSDFPaintTool.h"
+#include "QuickSDFToolProperties.h"
 TSharedRef<IDetailCustomization> FQuickSDFToolPropertiesDetails::MakeInstance()
 {
 	return MakeShareable(new FQuickSDFToolPropertiesDetails);

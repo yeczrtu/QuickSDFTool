@@ -1,7 +1,7 @@
 #include "QuickSDFToolEditorModule.h"
 #include "QuickSDFEditorModeCommands.h"
 #include "PropertyEditorModule.h"
-#include "QuickSDFPaintTool.h"
+#include "QuickSDFToolProperties.h"
 #include "QuickSDFToolPropertiesDetails.h"
 
 #define LOCTEXT_NAMESPACE "FQuickSDFToolEditorModule"
