@@ -31,6 +31,7 @@
 #include "Math/UnrealMathUtility.h"
 #include "InputCoreTypes.h"
 #include "HAL/PlatformApplicationMisc.h"
+#include "HAL/PlatformTime.h"
 #include "InteractiveToolChange.h"
 #include "Misc/ScopedSlowTask.h"
 #include "Misc/MessageDialog.h"
@@ -466,6 +467,8 @@ void UQuickSDFPaintTool::OnTick(float DeltaTime)
 			}
 		}
 	}
+
+	TryActivateQuickLine();
 }
 
 void UQuickSDFPaintTool::RefreshPreviewMaterial()
@@ -608,8 +611,15 @@ bool UQuickSDFPaintTool::CaptureRenderTargetPixels(UTextureRenderTarget2D* Rende
 bool UQuickSDFPaintTool::RestoreRenderTargetPixels(UTextureRenderTarget2D* RenderTarget, const TArray<FColor>& Pixels) const
 {
 	if (!RenderTarget || Pixels.Num() != RenderTarget->SizeX * RenderTarget->SizeY) return false;
-	UTexture2D* TempTexture = UTexture2D::CreateTransient(RenderTarget->SizeX, RenderTarget->SizeY, PF_B8G8R8A8);
-	if (!TempTexture || !TempTexture->GetPlatformData() || TempTexture->GetPlatformData()->Mips.Num() == 0) return false;
+	UTexture2D* TempTexture = CreateTransientTextureFromPixels(Pixels, RenderTarget->SizeX, RenderTarget->SizeY);
+	return RestoreRenderTargetTexture(RenderTarget, TempTexture);
+}
+
+UTexture2D* UQuickSDFPaintTool::CreateTransientTextureFromPixels(const TArray<FColor>& Pixels, int32 Width, int32 Height) const
+{
+	if (Pixels.Num() != Width * Height) return nullptr;
+	UTexture2D* TempTexture = UTexture2D::CreateTransient(Width, Height, PF_B8G8R8A8);
+	if (!TempTexture || !TempTexture->GetPlatformData() || TempTexture->GetPlatformData()->Mips.Num() == 0) return nullptr;
 	TempTexture->MipGenSettings = TMGS_NoMipmaps;
 	TempTexture->Filter = TF_Nearest;
 	TempTexture->SRGB = false;
@@ -618,10 +628,16 @@ bool UQuickSDFPaintTool::RestoreRenderTargetPixels(UTextureRenderTarget2D* Rende
 	FMemory::Memcpy(Data, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
 	Mip.BulkData.Unlock();
 	TempTexture->UpdateResource();
+	return TempTexture;
+}
+
+bool UQuickSDFPaintTool::RestoreRenderTargetTexture(UTextureRenderTarget2D* RenderTarget, UTexture2D* Texture) const
+{
+	if (!RenderTarget || !Texture) return false;
 	FTextureRenderTargetResource* RTResource = RenderTarget->GameThread_GetRenderTargetResource();
 	if (!RTResource) return false;
 	FCanvas Canvas(RTResource, nullptr, GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(), GMaxRHIFeatureLevel);
-	FCanvasTileItem TileItem(FVector2D::ZeroVector, TempTexture->GetResource(), FVector2D(RenderTarget->SizeX, RenderTarget->SizeY), FLinearColor::White);
+	FCanvasTileItem TileItem(FVector2D::ZeroVector, Texture->GetResource(), FVector2D(RenderTarget->SizeX, RenderTarget->SizeY), FLinearColor::White);
 	TileItem.BlendMode = SE_BLEND_Opaque;
 	Canvas.DrawItem(TileItem);
 	Canvas.Flush_GameThread(true);
@@ -630,6 +646,33 @@ bool UQuickSDFPaintTool::RestoreRenderTargetPixels(UTextureRenderTarget2D* Rende
 			TransitionAndCopyTexture(RHICmdList, RTResource->GetRenderTargetTexture(), RTResource->TextureRHI, {});
 		});
 	return true;
+}
+
+bool UQuickSDFPaintTool::RestoreStrokeStartPixels() const
+{
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	if (!Asset)
+	{
+		return false;
+	}
+
+	bool bRestoredAny = false;
+	for (int32 Index = 0; Index < StrokeTransactionAngleIndices.Num() && Index < StrokeBeforeTexturesByAngle.Num(); ++Index)
+	{
+		const int32 AngleIndex = StrokeTransactionAngleIndices[Index];
+		if (Asset->AngleDataList.IsValidIndex(AngleIndex) &&
+			RestoreRenderTargetTexture(Asset->AngleDataList[AngleIndex].PaintRenderTarget, StrokeBeforeTexturesByAngle[Index]))
+		{
+			bRestoredAny = true;
+		}
+	}
+
+	if (bRestoredAny)
+	{
+		const_cast<UQuickSDFPaintTool*>(this)->RefreshPreviewMaterial();
+	}
+	return bRestoredAny;
 }
 
 bool UQuickSDFPaintTool::ApplyRenderTargetPixels(int32 AngleIndex, const TArray<FColor>& Pixels)
@@ -653,6 +696,7 @@ void UQuickSDFPaintTool::BeginStrokeTransaction()
 	
 	StrokeBeforePixels.Reset();
 	StrokeBeforePixelsByAngle.Reset();
+	StrokeBeforeTexturesByAngle.Reset();
 	const TArray<int32> CandidateAngleIndices = GetPaintTargetAngleIndices();
 	StrokeTransactionAngleIndices.Reset();
 
@@ -669,6 +713,7 @@ void UQuickSDFPaintTool::BeginStrokeTransaction()
 		if (CaptureRenderTargetPixels(Asset->AngleDataList[AngleIndex].PaintRenderTarget, BeforePixels))
 		{
 			StrokeTransactionAngleIndices.Add(AngleIndex);
+			StrokeBeforeTexturesByAngle.Add(CreateTransientTextureFromPixels(BeforePixels, Asset->AngleDataList[AngleIndex].PaintRenderTarget->SizeX, Asset->AngleDataList[AngleIndex].PaintRenderTarget->SizeY));
 			StrokeBeforePixelsByAngle.Add(MoveTemp(BeforePixels));
 			if (StrokeBeforePixelsByAngle.Num() == 1)
 			{
@@ -721,6 +766,7 @@ void UQuickSDFPaintTool::EndStrokeTransaction()
 	StrokeTransactionAngleIndices.Reset();
 	StrokeBeforePixels.Reset();
 	StrokeBeforePixelsByAngle.Reset();
+	StrokeBeforeTexturesByAngle.Reset();
 }
 
 UTextureRenderTarget2D* UQuickSDFPaintTool::GetActiveRenderTarget() const
@@ -836,6 +882,170 @@ double UQuickSDFPaintTool::GetCurrentStrokeSpacing(UTextureRenderTarget2D* Rende
 }
 
 bool UQuickSDFPaintTool::IsPaintingShadow() const { return GetShiftToggle(); }
+
+double UQuickSDFPaintTool::GetToolCurrentTime() const
+{
+	if (const UWorld* World = GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld())
+	{
+		return World->GetTimeSeconds();
+	}
+	return FPlatformTime::Seconds();
+}
+
+void UQuickSDFPaintTool::UpdateQuickLineHoldState(const FVector2D& ScreenPosition)
+{
+	if (!Properties || !Properties->bEnableQuickLine || bQuickLineActive)
+	{
+		return;
+	}
+
+	const double MoveTolerance = FMath::Max(static_cast<double>(Properties->QuickLineMoveTolerance), 1.0);
+	if (FVector2D::Distance(ScreenPosition, QuickLineHoldScreenPosition) > MoveTolerance)
+	{
+		QuickLineHoldScreenPosition = ScreenPosition;
+		QuickLineLastMoveTime = GetToolCurrentTime();
+	}
+}
+
+void UQuickSDFPaintTool::TryActivateQuickLine()
+{
+	if (!Properties || !Properties->bEnableQuickLine || bQuickLineActive || !bStrokeTransactionActive ||
+		!bHasQuickLineStartSample || !bHasQuickLineEndSample ||
+		ActiveStrokeInputMode == EQuickSDFStrokeInputMode::None ||
+		QuickLineSourceSamples.Num() < 2)
+	{
+		return;
+	}
+
+	if (GetToolCurrentTime() - QuickLineLastMoveTime < static_cast<double>(Properties->QuickLineHoldTime))
+	{
+		return;
+	}
+
+	bQuickLineActive = true;
+	PointBuffer.Reset();
+	AccumulatedDistance = 0.0;
+	RedrawQuickLinePreview();
+}
+
+void UQuickSDFPaintTool::RedrawQuickLinePreview()
+{
+	if (!bQuickLineActive || !bHasQuickLineStartSample || !bHasQuickLineEndSample)
+	{
+		return;
+	}
+
+	if (RestoreStrokeStartPixels())
+	{
+		StampQuickLineSegment(QuickLineStartSample, QuickLineEndSample);
+	}
+}
+
+void UQuickSDFPaintTool::StampQuickLineSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample)
+{
+	if (QuickLineSourceSamples.Num() >= 2)
+	{
+		TArray<FQuickSDFStrokeSample> CurveSamples;
+		CurveSamples.Reserve(QuickLineSourceSamples.Num());
+		for (const FQuickSDFStrokeSample& SourceSample : QuickLineSourceSamples)
+		{
+			CurveSamples.Add(TransformQuickLineSample(SourceSample));
+		}
+
+		UTextureRenderTarget2D* RT = GetActiveRenderTarget();
+		if (!RT)
+		{
+			return;
+		}
+
+		const FVector2D RTSize(RT->SizeX, RT->SizeY);
+		const FVector2D BrushPixelSize = GetBrushPixelSize(RT);
+		const double SpacingPixels = FMath::Max(static_cast<double>(FMath::Min(BrushPixelSize.X, BrushPixelSize.Y) * QuickSDFStrokeSpacingFactor), 1.0);
+		TArray<FQuickSDFStrokeSample> ResampledSamples;
+		ResampledSamples.Reserve(CurveSamples.Num() * 4);
+		ResampledSamples.Add(CurveSamples[0]);
+
+		for (int32 Index = 1; Index < CurveSamples.Num(); ++Index)
+		{
+			const FQuickSDFStrokeSample& Prev = CurveSamples[Index - 1];
+			const FQuickSDFStrokeSample& Curr = CurveSamples[Index];
+			const FVector2D PrevPixel(Prev.UV.X * RTSize.X, Prev.UV.Y * RTSize.Y);
+			const FVector2D CurrPixel(Curr.UV.X * RTSize.X, Curr.UV.Y * RTSize.Y);
+			const double SegmentPixels = FVector2D::Distance(PrevPixel, CurrPixel);
+			const int32 StepCount = FMath::Max(FMath::CeilToInt(SegmentPixels / SpacingPixels), 1);
+			for (int32 Step = 1; Step <= StepCount; ++Step)
+			{
+				const float Alpha = static_cast<float>(Step) / static_cast<float>(StepCount);
+				FQuickSDFStrokeSample Sample;
+				Sample.WorldPos = FMath::Lerp(Prev.WorldPos, Curr.WorldPos, static_cast<double>(Alpha));
+				Sample.UV = FMath::Lerp(Prev.UV, Curr.UV, Alpha);
+				Sample.LocalUVScale = FMath::Lerp(Prev.LocalUVScale, Curr.LocalUVScale, Alpha);
+				ResampledSamples.Add(Sample);
+			}
+		}
+
+		StampSamples(ResampledSamples);
+		return;
+	}
+
+	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
+	if (!RT) return;
+
+	const double Spacing = FMath::Max(GetCurrentStrokeSpacing(RT), 1.0);
+	const double SegmentLength = FVector3d::Distance(StartSample.WorldPos, EndSample.WorldPos);
+	const int32 StepCount = FMath::Max(FMath::CeilToInt(SegmentLength / Spacing), 1);
+
+	TArray<FQuickSDFStrokeSample> LineSamples;
+	LineSamples.Reserve(StepCount + 1);
+	for (int32 Index = 0; Index <= StepCount; ++Index)
+	{
+		const float Alpha = static_cast<float>(Index) / static_cast<float>(StepCount);
+		FQuickSDFStrokeSample Sample;
+		Sample.WorldPos = FMath::Lerp(StartSample.WorldPos, EndSample.WorldPos, static_cast<double>(Alpha));
+		Sample.UV = FMath::Lerp(StartSample.UV, EndSample.UV, Alpha);
+		Sample.LocalUVScale = FMath::Lerp(StartSample.LocalUVScale, EndSample.LocalUVScale, Alpha);
+		LineSamples.Add(Sample);
+	}
+
+	StampSamples(LineSamples);
+}
+
+FQuickSDFStrokeSample UQuickSDFPaintTool::TransformQuickLineSample(const FQuickSDFStrokeSample& SourceSample) const
+{
+	if (QuickLineSourceSamples.Num() < 2)
+	{
+		return SourceSample;
+	}
+
+	const FQuickSDFStrokeSample& SourceStart = QuickLineSourceSamples[0];
+	const FQuickSDFStrokeSample& SourceEnd = QuickLineSourceSamples.Last();
+	const FVector2f SourceAxis = SourceEnd.UV - SourceStart.UV;
+	const FVector2f TargetAxis = QuickLineEndSample.UV - QuickLineStartSample.UV;
+	const float SourceLength = SourceAxis.Size();
+	const float TargetLength = TargetAxis.Size();
+
+	FQuickSDFStrokeSample OutSample = SourceSample;
+	if (SourceLength <= KINDA_SMALL_NUMBER || TargetLength <= KINDA_SMALL_NUMBER)
+	{
+		const FVector2f UVOffset = QuickLineEndSample.UV - SourceEnd.UV;
+		OutSample.UV = SourceSample.UV + UVOffset;
+		OutSample.WorldPos = SourceSample.WorldPos + (QuickLineEndSample.WorldPos - SourceEnd.WorldPos);
+		return OutSample;
+	}
+
+	const FVector2f SourceUnit = SourceAxis / SourceLength;
+	const FVector2f SourcePerp(-SourceUnit.Y, SourceUnit.X);
+	const FVector2f TargetUnit = TargetAxis / TargetLength;
+	const FVector2f TargetPerp(-TargetUnit.Y, TargetUnit.X);
+	const FVector2f SourceOffset = SourceSample.UV - SourceStart.UV;
+	const float Along = FVector2f::DotProduct(SourceOffset, SourceUnit);
+	const float Across = FVector2f::DotProduct(SourceOffset, SourcePerp);
+	const float Scale = TargetLength / SourceLength;
+
+	OutSample.UV = QuickLineStartSample.UV + TargetUnit * (Along * Scale) + TargetPerp * (Across * Scale);
+	OutSample.WorldPos = FVector3d(OutSample.UV.X, OutSample.UV.Y, 0.0);
+	return OutSample;
+}
 
 void FQuickSDFRenderTargetChange::Apply(UObject* Object)
 {
@@ -1016,6 +1226,14 @@ void UQuickSDFPaintTool::OnBeginDrag(const FRay& Ray)
 	if (bHasSample) {
 		BeginStrokeTransaction(); 
 		PointBuffer.Add(StartSample);
+		QuickLineSourceSamples.Reset();
+		QuickLineSourceSamples.Add(StartSample);
+		QuickLineStartSample = StartSample;
+		QuickLineEndSample = StartSample;
+		bHasQuickLineStartSample = true;
+		bHasQuickLineEndSample = true;
+		QuickLineHoldScreenPosition = LastInputScreenPosition;
+		QuickLineLastMoveTime = GetToolCurrentTime();
 		//StampSample(StartSample); 
 	}
 }
@@ -1040,12 +1258,34 @@ void UQuickSDFPaintTool::OnUpdateDrag(const FRay& Ray)
 	if (bHasSample)
 	{
 		Sample = SmoothStrokeSample(Sample);
+		QuickLineEndSample = Sample;
+		bHasQuickLineEndSample = true;
+		UpdateQuickLineHoldState(LastInputScreenPosition);
+		if (bQuickLineActive)
+		{
+			RedrawQuickLinePreview();
+			return;
+		}
+		if (QuickLineSourceSamples.Num() == 0 ||
+			FVector3d::DistSquared(QuickLineSourceSamples.Last().WorldPos, Sample.WorldPos) > 1e-8)
+		{
+			QuickLineSourceSamples.Add(Sample);
+		}
 		AppendStrokeSample(Sample);
 	}
 }
 
 void UQuickSDFPaintTool::OnEndDrag(const FRay& Ray)
 {
+	if (bQuickLineActive)
+	{
+		RedrawQuickLinePreview();
+		EndStrokeTransaction();
+		PointBuffer.Empty();
+		ResetStrokeState();
+		return;
+	}
+
 	if (PointBuffer.Num() >= 2) {
 		FQuickSDFStrokeSample Last = PointBuffer.Last();
 		
@@ -1321,6 +1561,14 @@ void UQuickSDFPaintTool::ResetStrokeState()
 	DistanceSinceLastStamp = 0.0;
 	ActiveStrokeInputMode = EQuickSDFStrokeInputMode::None;
 	PendingStrokeInputMode = EQuickSDFStrokeInputMode::None;
+	bQuickLineActive = false;
+	bHasQuickLineStartSample = false;
+	bHasQuickLineEndSample = false;
+	QuickLineStartSample = FQuickSDFStrokeSample();
+	QuickLineEndSample = FQuickSDFStrokeSample();
+	QuickLineSourceSamples.Reset();
+	QuickLineHoldScreenPosition = FVector2D::ZeroVector;
+	QuickLineLastMoveTime = 0.0;
 }
 
 void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Property)

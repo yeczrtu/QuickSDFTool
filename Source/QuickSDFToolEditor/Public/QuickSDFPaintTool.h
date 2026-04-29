@@ -66,6 +66,15 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta=(DisplayName="Paint All Textures"))
 	bool bPaintAllAngles = false;
 
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta=(DisplayName="Enable Quick Stroke"))
+	bool bEnableQuickLine = true;
+
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta=(DisplayName="Quick Stroke Hold Time", ClampMin="0.1", UIMin="0.1", UIMax="2.0"))
+	float QuickLineHoldTime = 0.45f;
+
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta=(DisplayName="Quick Stroke Move Tolerance", ClampMin="1.0", UIMin="1.0", UIMax="32.0"))
+	float QuickLineMoveTolerance = 6.0f;
+
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bEnableOnionSkin = false;
 	
@@ -240,10 +249,19 @@ protected:
 	void UpdateBrushResizeFromCursor();
 	void EndBrushResizeMode();
 	bool RestoreRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, const TArray<FColor>& Pixels) const;
+	bool RestoreRenderTargetTexture(class UTextureRenderTarget2D* RenderTarget, class UTexture2D* Texture) const;
+	class UTexture2D* CreateTransientTextureFromPixels(const TArray<FColor>& Pixels, int32 Width, int32 Height) const;
+	bool RestoreStrokeStartPixels() const;
 	void BeginStrokeTransaction();
 	void EndStrokeTransaction();
 	void ResetStrokeState();
 	void InitializeRenderTargets();
+	double GetToolCurrentTime() const;
+	void UpdateQuickLineHoldState(const FVector2D& ScreenPosition);
+	void TryActivateQuickLine();
+	void RedrawQuickLinePreview();
+	void StampQuickLineSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample);
+	FQuickSDFStrokeSample TransformQuickLineSample(const FQuickSDFStrokeSample& SourceSample) const;
 
 	TSharedPtr<UE::Geometry::FDynamicMesh3> TargetMesh;
 	TSharedPtr<UE::Geometry::FDynamicMeshAABBTree3> TargetMeshSpatial;
@@ -280,10 +298,21 @@ protected:
 	bool bBrushResizeTransactionOpen = false;
 	bool bStrokeTransactionActive = false;
 	bool bStampingAllPaintTargets = false;
+	bool bQuickLineActive = false;
+	bool bHasQuickLineStartSample = false;
+	bool bHasQuickLineEndSample = false;
 	int32 StrokeTransactionAngleIndex = INDEX_NONE;
 	TArray<int32> StrokeTransactionAngleIndices;
 	TArray<FColor> StrokeBeforePixels;
 	TArray<TArray<FColor>> StrokeBeforePixelsByAngle;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTexture2D>> StrokeBeforeTexturesByAngle;
+
+	TArray<FQuickSDFStrokeSample> QuickLineSourceSamples;
+	FQuickSDFStrokeSample QuickLineStartSample;
+	FQuickSDFStrokeSample QuickLineEndSample;
+	FVector2D QuickLineHoldScreenPosition = FVector2D::ZeroVector;
+	double QuickLineLastMoveTime = 0.0;
 	
 	UPROPERTY(EditAnywhere, Category = "Brush Feel")
 	float StabilizerAmount = 0.2f;
