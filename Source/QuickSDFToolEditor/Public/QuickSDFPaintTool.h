@@ -282,8 +282,11 @@ protected:
 	UPROPERTY()
 	TArray<UMaterialInterface*> OriginalMaterials;
 
-	UPROPERTY()
-	UMaterialInstanceDynamic* PreviewMaterial;
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> PreviewBaseMaterial;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> PreviewMaterial;
 
 	UPROPERTY(Transient)
 	class UTexture2D* BrushMaskTexture;

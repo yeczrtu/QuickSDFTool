@@ -491,6 +491,11 @@ void UQuickSDFPaintTool::RefreshPreviewMaterial()
 		PreviewMaterial->SetScalarParameterValue(TEXT("UVChannel"), (float)Properties->UVChannel);
 		PreviewMaterial->SetScalarParameterValue(TEXT("OverlayOriginalShadow"), Properties->bOverlayOriginalShadow);
 	}
+
+	if (PreviewBaseMaterial)
+	{
+		PreviewBaseMaterial->GetOutermost()->SetDirtyFlag(false);
+	}
 }
 
 FQuickSDFStrokeSample UQuickSDFPaintTool::SmoothStrokeSample(const FQuickSDFStrokeSample& RawSample)
@@ -545,6 +550,12 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 		}
 	}
 
+	if (PreviewBaseMaterial)
+	{
+		PreviewBaseMaterial->GetOutermost()->SetDirtyFlag(false);
+	}
+	PreviewMaterial = nullptr;
+	PreviewBaseMaterial = nullptr;
 	OriginalMaterials.Empty();
 	CurrentComponent = NewComponent;
 	TargetMeshSpatial.Reset();
@@ -571,13 +582,19 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 	TargetMeshSpatial = MakeShared<UE::Geometry::FDynamicMeshAABBTree3>();
 	TargetMeshSpatial->SetMesh(TargetMesh.Get(), true);
 
-	PreviewMaterial = UMaterialInstanceDynamic::Create(
-		LoadObject<UMaterialInterface>(nullptr, TEXT("/QuickSDFTool/Materials/M_PreviewMat.M_PreviewMat")),
-		this);
+	PreviewBaseMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/QuickSDFTool/Materials/M_PreviewMat.M_PreviewMat"));
+	PreviewMaterial = PreviewBaseMaterial
+		? UMaterialInstanceDynamic::Create(PreviewBaseMaterial, GetTransientPackage())
+		: nullptr;
 
 	if (!PreviewMaterial)
 	{
 		return;
+	}
+	PreviewMaterial->SetFlags(RF_Transient);
+	if (PreviewBaseMaterial)
+	{
+		PreviewBaseMaterial->GetOutermost()->SetDirtyFlag(false);
 	}
 
 	// 新しいコンポーネントのマテリアルをプレビュー用に差し替え
