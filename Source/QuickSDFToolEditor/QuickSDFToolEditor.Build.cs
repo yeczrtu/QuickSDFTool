@@ -18,6 +18,7 @@ public class QuickSDFToolEditor : ModuleRules
 				"EditorInteractiveToolsFramework",
 				"GeometryCore",
 				"DynamicMesh",
+				"MeshDescription",
 				"ModelingComponents",
 				"MeshConversion",
 				"EditorSubsystem",

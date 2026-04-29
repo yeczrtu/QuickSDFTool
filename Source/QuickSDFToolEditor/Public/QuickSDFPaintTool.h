@@ -89,6 +89,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Target Settings")
 	FIntPoint Resolution = FIntPoint(1024, 1024);
+
+	UPROPERTY(EditAnywhere, Category = "Target Settings", meta=(DisplayName="Target Material Slot", ClampMin="-1", UIMin="-1"))
+	int32 TargetMaterialSlot = -1;
 	
 	UPROPERTY(EditAnywhere, Category = "Export Settings", meta=(ClampMin="1", UIMin="1", ClampMax="8", UIMax="8"))
 	int32 UpscaleFactor = 1;
@@ -202,7 +205,9 @@ public:
 	virtual void OnEndDrag(const FRay& Ray) override;
 
 	virtual bool HitTest(const FRay& Ray, FHitResult& OutHit) override;
+	virtual FInputRayHit BeginHoverSequenceHitTest(const FInputDeviceRay& PressPos) override;
 	virtual bool OnUpdateHover(const FInputDeviceRay& DevicePos) override;
+	virtual void OnEndHover() override;
 	
 	virtual void OnPropertyModified(UObject* PropertySet, FProperty* Property) override;
 	virtual void DrawHUD( FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI ) override;
@@ -226,6 +231,7 @@ protected:
 	void RefreshPreviewMaterial();
 	FQuickSDFStrokeSample SmoothStrokeSample(const FQuickSDFStrokeSample& RawSample);
 	void ChangeTargetComponent(class UMeshComponent* NewComponent);
+	bool IsTriangleInTargetMaterialSlot(int32 TriangleID) const;
 	bool TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample);
 	bool TryMakePreviewStrokeSample(const FVector2D& ScreenPosition, FQuickSDFStrokeSample& OutSample) const;
 	void StampSample(const FQuickSDFStrokeSample& Sample);
@@ -265,6 +271,7 @@ protected:
 
 	TSharedPtr<UE::Geometry::FDynamicMesh3> TargetMesh;
 	TSharedPtr<UE::Geometry::FDynamicMeshAABBTree3> TargetMeshSpatial;
+	TMap<int32, int32> TargetTriangleMaterialSlots;
 
 	TWeakObjectPtr<class UMeshComponent> CurrentComponent;
 

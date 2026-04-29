@@ -1,7 +1,9 @@
 #include "QuickSDFPaintTool.h"
+#include "QuickSDFMeshComponentAdapter.h"
 #include "QuickSDFToolSubsystem.h"
 #include "QuickSDFAsset.h"
 #include "SDFProcessor.h"
+#include "BaseGizmos/BrushStampIndicator.h"
 #include "InteractiveToolManager.h"
 #include "ToolBuilderUtil.h"
 #include "EngineUtils.h"
@@ -15,10 +17,13 @@
 #include "TargetInterfaces/PrimitiveComponentBackedTarget.h"
 #include "TargetInterfaces/MeshDescriptionProvider.h"
 #include "DynamicMesh/MeshTransforms.h"
-#include "MeshDescriptionToDynamicMesh.h"
 #include "DynamicMesh/DynamicMeshAttributeSet.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
+#include "Engine/StaticMesh.h"
 #include "Kismet/KismetRenderingLibrary.h"
 #include "Intersection/IntrRay3Triangle3.h"
 #include "Spatial/SpatialInterfaces.h"
@@ -78,6 +83,7 @@ public:
 	virtual void Revert(UObject* Object) override;
 	virtual FString ToString() const override { return TEXT("FQuickSDFRenderTargetsChange"); }
 };
+
 }
 
 void UQuickSDFBrushResizeInputBehavior::Initialize(UQuickSDFPaintTool* InTool)
@@ -522,7 +528,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 	{
 		for (int32 i = 0; i < OriginalMaterials.Num(); ++i)
 		{
-			if (OriginalMaterials[i] && CurrentComponent->GetNumMaterials() > i)
+			if (CurrentComponent->GetNumMaterials() > i)
 			{
 				CurrentComponent->SetMaterial(i, OriginalMaterials[i]);
 			}
@@ -533,6 +539,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 	CurrentComponent = NewComponent;
 	TargetMeshSpatial.Reset();
 	TargetMesh.Reset();
+	TargetTriangleMaterialSlots.Reset();
 	ResetStrokeState();
 
 	if (!CurrentComponent.IsValid())
@@ -540,21 +547,9 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 		return;
 	}
 
-	bool bValidMeshLoaded = false;
 	TSharedPtr<UE::Geometry::FDynamicMesh3> TempMesh = MakeShared<UE::Geometry::FDynamicMesh3>();
-
-	if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(CurrentComponent.Get()))
-	{
-		if (UStaticMesh* StaticMesh = SMC->GetStaticMesh())
-		{
-			if (const FMeshDescription* MeshDesc = StaticMesh->GetMeshDescription(0))
-			{
-				FMeshDescriptionToDynamicMesh Converter;
-				Converter.Convert(MeshDesc, *TempMesh);
-				bValidMeshLoaded = true;
-			}
-		}
-	}
+	TUniquePtr<FQuickSDFMeshComponentAdapter> MeshAdapter = FQuickSDFMeshComponentAdapter::Make(CurrentComponent.Get());
+	const bool bValidMeshLoaded = MeshAdapter.IsValid() && MeshAdapter->BuildDynamicMesh(*TempMesh, TargetTriangleMaterialSlots);
 
 	if (!bValidMeshLoaded || TempMesh->TriangleCount() <= 0)
 	{
@@ -596,6 +591,17 @@ void UQuickSDFPaintTool::Shutdown(EToolShutdownType ShutdownType)
 	ChangeTargetComponent(nullptr);
 	
 	Super::Shutdown(ShutdownType); // ツール終了処理
+}
+
+bool UQuickSDFPaintTool::IsTriangleInTargetMaterialSlot(int32 TriangleID) const
+{
+	if (!Properties || Properties->TargetMaterialSlot < 0)
+	{
+		return true;
+	}
+
+	const int32* TriangleMaterialSlot = TargetTriangleMaterialSlots.Find(TriangleID);
+	return TriangleMaterialSlot && *TriangleMaterialSlot == Properties->TargetMaterialSlot;
 }
 
 bool UQuickSDFPaintTool::CaptureRenderTargetPixels(UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const
@@ -1185,13 +1191,94 @@ bool UQuickSDFPaintTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 		Params.bReturnFaceIndex = true;
 		Params.bTraceComplex = true;
 
-		if (CurrentComponent->LineTraceComponent(OutHit, Ray.Origin, Ray.Origin + Ray.Direction * 100000.0f, Params))
+		FHitResult ComponentHit;
+		const bool bComponentHit = CurrentComponent->LineTraceComponent(
+			ComponentHit,
+			Ray.Origin,
+			Ray.Origin + Ray.Direction * 100000.0f,
+			Params);
+
+		if ((!Properties || Properties->TargetMaterialSlot < 0) && bComponentHit)
 		{
+			OutHit = ComponentHit;
 			return true;
+		}
+
+		if (TargetMeshSpatial.IsValid() && TargetMesh.IsValid())
+		{
+			const FTransform Transform = CurrentComponent->GetComponentTransform();
+			const FRay LocalRay(Transform.InverseTransformPosition(Ray.Origin), Transform.InverseTransformVector(Ray.Direction));
+
+			double HitDistance = 100000.0;
+			int32 HitTID = INDEX_NONE;
+			FVector3d BaryCoords(0.0, 0.0, 0.0);
+			if (TargetMeshSpatial->FindNearestHitTriangle(LocalRay, HitDistance, HitTID, BaryCoords) &&
+				HitTID != INDEX_NONE &&
+				IsTriangleInTargetMaterialSlot(HitTID))
+			{
+				const FVector LocalHitPosition = (FVector)LocalRay.PointAt(HitDistance);
+				const FVector LocalNormal = (FVector)TargetMesh->GetTriNormal(HitTID);
+				FVector WorldNormal = Transform.TransformVectorNoScale(LocalNormal).GetSafeNormal();
+				if (FVector::DotProduct(WorldNormal, Ray.Direction) > 0.0)
+				{
+					WorldNormal *= -1.0;
+				}
+
+				if (bComponentHit)
+				{
+					OutHit = ComponentHit;
+					OutHit.FaceIndex = HitTID;
+					OutHit.Distance = FVector::Distance(Ray.Origin, OutHit.ImpactPoint);
+				}
+				else
+				{
+					OutHit.Component = CurrentComponent.Get();
+					OutHit.Location = Transform.TransformPosition(LocalHitPosition);
+					OutHit.ImpactPoint = OutHit.Location;
+					OutHit.Normal = WorldNormal;
+					OutHit.ImpactNormal = WorldNormal;
+					OutHit.FaceIndex = HitTID;
+					OutHit.Distance = FVector::Distance(Ray.Origin, OutHit.Location);
+					OutHit.bBlockingHit = true;
+				}
+
+				LastBrushStamp.HitResult = OutHit;
+				LastBrushStamp.WorldPosition = OutHit.ImpactPoint;
+				LastBrushStamp.WorldNormal = OutHit.Normal;
+				UpdateBrushStampIndicator();
+				return true;
+			}
 		}
 	}
 
 	return false;
+}
+
+FInputRayHit UQuickSDFPaintTool::BeginHoverSequenceHitTest(const FInputDeviceRay& PressPos)
+{
+	LastInputScreenPosition = PressPos.ScreenPosition;
+
+	FHitResult OutHit;
+	if (HitTest(PressPos.WorldRay, OutHit))
+	{
+		LastBrushStamp.Radius = BrushProperties ? BrushProperties->BrushRadius : LastBrushStamp.Radius;
+		LastBrushStamp.WorldPosition = OutHit.ImpactPoint;
+		LastBrushStamp.WorldNormal = OutHit.Normal;
+		LastBrushStamp.HitResult = OutHit;
+		LastBrushStamp.Falloff = BrushProperties ? BrushProperties->BrushFalloffAmount : LastBrushStamp.Falloff;
+		if (BrushStampIndicator)
+		{
+			BrushStampIndicator->bVisible = true;
+		}
+		UpdateBrushStampIndicator();
+		return FInputRayHit(OutHit.Distance);
+	}
+
+	if (BrushStampIndicator)
+	{
+		BrushStampIndicator->bVisible = false;
+	}
+	return FInputRayHit();
 }
 
 bool UQuickSDFPaintTool::OnUpdateHover(const FInputDeviceRay& DevicePos)
@@ -1202,7 +1289,35 @@ bool UQuickSDFPaintTool::OnUpdateHover(const FInputDeviceRay& DevicePos)
 		UpdateBrushResizeFromCursor();
 		return true;
 	}
-	return Super::OnUpdateHover(DevicePos);
+	FHitResult OutHit;
+	if (HitTest(DevicePos.WorldRay, OutHit))
+	{
+		LastBrushStamp.Radius = BrushProperties ? BrushProperties->BrushRadius : LastBrushStamp.Radius;
+		LastBrushStamp.WorldPosition = OutHit.ImpactPoint;
+		LastBrushStamp.WorldNormal = OutHit.Normal;
+		LastBrushStamp.HitResult = OutHit;
+		LastBrushStamp.Falloff = BrushProperties ? BrushProperties->BrushFalloffAmount : LastBrushStamp.Falloff;
+		if (BrushStampIndicator)
+		{
+			BrushStampIndicator->bVisible = true;
+		}
+		UpdateBrushStampIndicator();
+		return true;
+	}
+
+	if (BrushStampIndicator)
+	{
+		BrushStampIndicator->bVisible = false;
+	}
+	return true;
+}
+
+void UQuickSDFPaintTool::OnEndHover()
+{
+	if (BrushStampIndicator)
+	{
+		BrushStampIndicator->bVisible = false;
+	}
 }
 
 void UQuickSDFPaintTool::OnBeginDrag(const FRay& Ray)
@@ -1224,6 +1339,11 @@ void UQuickSDFPaintTool::OnBeginDrag(const FRay& Ray)
 	}
 
 	if (bHasSample) {
+		if (BrushStampIndicator)
+		{
+			BrushStampIndicator->bVisible = true;
+		}
+		UpdateBrushStampIndicator();
 		BeginStrokeTransaction(); 
 		PointBuffer.Add(StartSample);
 		QuickLineSourceSamples.Reset();
@@ -1257,6 +1377,11 @@ void UQuickSDFPaintTool::OnUpdateDrag(const FRay& Ray)
 
 	if (bHasSample)
 	{
+		if (BrushStampIndicator)
+		{
+			BrushStampIndicator->bVisible = true;
+		}
+		UpdateBrushStampIndicator();
 		Sample = SmoothStrokeSample(Sample);
 		QuickLineEndSample = Sample;
 		bHasQuickLineEndSample = true;
@@ -1315,6 +1440,7 @@ bool UQuickSDFPaintTool::TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSam
 	const bool bHit = TargetMeshSpatial->FindNearestHitTriangle(LocalRay, HitDistance, HitTID, BaryCoords);
 
 	if (!bHit || HitTID < 0) return false;
+	if (!IsTriangleInTargetMaterialSlot(HitTID)) return false;
 
 	UE::Geometry::FIndex3i TriV = TargetMesh->GetTriangle(HitTID);
 
@@ -1821,6 +1947,11 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
 
                     for (int32 Tid : TargetMesh->TriangleIndicesItr())
                     {
+                        if (!IsTriangleInTargetMaterialSlot(Tid))
+                        {
+                            continue;
+                        }
+
                         if (UVOverlay->IsSetTriangle(Tid))
                         {
                             UE::Geometry::FIndex3i UVIndices = UVOverlay->GetTriangle(Tid);
@@ -1906,28 +2037,48 @@ void UQuickSDFPaintTool::FillOriginalShading(int32 AngleIndex)
 	UE_LOG(LogTemp, Log, TEXT("Starting bake for angle %d at resolution %dx%d"), AngleIndex, Properties->Resolution.X, Properties->Resolution.Y);
 
 	FMeshData MeshData;
+	TUniquePtr<FQuickSDFMeshComponentAdapter> MeshAdapter = FQuickSDFMeshComponentAdapter::Make(CurrentComponent.Get());
+	if (!MeshAdapter.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FillOriginalShading: Unsupported mesh component type"));
+		return;
+	}
+
 	if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(CurrentComponent.Get()))
 	{
 		MeshData.Mesh = SMC->GetStaticMesh();
 		if (MeshData.Mesh)
 		{
 			MeshData.MeshDescription = MeshData.Mesh->GetMeshDescription(0);
-            
-			for (int32 i = 0; i < MeshData.Mesh->GetStaticMaterials().Num(); ++i)
-			{
-				MeshData.MaterialIndices.Add(i);
-			}
-			if (MeshData.MaterialIndices.Num() == 0)
-			{
-				MeshData.MaterialIndices.Add(0);
-			}
 		}
 		
 		MeshData.PrimitiveData = FPrimitiveData(SMC);
 	}
+	else if (USkeletalMeshComponent* SkMC = Cast<USkeletalMeshComponent>(CurrentComponent.Get()))
+	{
+		if (USkeletalMesh* SkeletalMesh = SkMC->GetSkeletalMeshAsset())
+		{
+			MeshData.MeshDescription = SkeletalMesh->HasMeshDescription(0) ? SkeletalMesh->GetMeshDescription(0) : nullptr;
+		}
+
+		MeshData.PrimitiveData = FPrimitiveData(SkMC);
+	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("FillOriginalShading: Currently only supports StaticMeshComponents"));
+		UE_LOG(LogTemp, Warning, TEXT("FillOriginalShading: Unsupported mesh component type"));
+		return;
+	}
+
+	if (!MeshData.MeshDescription)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FillOriginalShading: Target mesh has no LOD0 mesh description"));
+		return;
+	}
+
+	MeshAdapter->GetMaterialSlots(MeshData.MaterialIndices, Properties->TargetMaterialSlot);
+	if (MeshData.MaterialIndices.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FillOriginalShading: Target material slot %d is not valid for this component"), Properties->TargetMaterialSlot);
 		return;
 	}
 	
