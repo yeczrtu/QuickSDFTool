@@ -10,6 +10,117 @@
 #include "IAssetTools.h"
 #include "TextureResource.h"
 #include "Editor.h"
+#include "Misc/PackageName.h"
+#include "ObjectTools.h"
+
+#define LOCTEXT_NAMESPACE "QuickSDFToolSubsystem"
+
+namespace
+{
+bool ValidateTextureAssetPath(const FString& FolderPath, const FString& TextureName, FText* OutError)
+{
+	FString CleanFolder = FolderPath;
+	while (CleanFolder.EndsWith(TEXT("/")))
+	{
+		CleanFolder.LeftChopInline(1);
+	}
+
+	if (!FPackageName::IsValidLongPackageName(CleanFolder))
+	{
+		if (OutError)
+		{
+			*OutError = FText::Format(LOCTEXT("InvalidOutputFolder", "Invalid output folder: {0}\nUse a content path such as /Game/QuickSDF_GENERATED."), FText::FromString(CleanFolder));
+		}
+		return false;
+	}
+
+	if (TextureName.IsEmpty())
+	{
+		if (OutError)
+		{
+			*OutError = LOCTEXT("EmptyTextureName", "Texture name is empty.");
+		}
+		return false;
+	}
+
+	if (ObjectTools::SanitizeObjectName(TextureName) != TextureName)
+	{
+		if (OutError)
+		{
+			*OutError = FText::Format(LOCTEXT("InvalidTextureName", "Invalid texture name: {0}\nUse letters, numbers, and underscores."), FText::FromString(TextureName));
+		}
+		return false;
+	}
+
+	return true;
+}
+
+UTexture2D* FindOrCreateTextureAsset(const FString& FolderPath, const FString& TextureName, bool bOverwriteExisting, FText* OutError)
+{
+	FString CleanFolder = FolderPath;
+	while (CleanFolder.EndsWith(TEXT("/")))
+	{
+		CleanFolder.LeftChopInline(1);
+	}
+
+	if (!ValidateTextureAssetPath(CleanFolder, TextureName, OutError))
+	{
+		return nullptr;
+	}
+
+	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+	FString FinalFolder = CleanFolder;
+	FString FinalName = TextureName;
+
+	if (!bOverwriteExisting)
+	{
+		const FString DesiredPackagePath = CleanFolder / TextureName;
+		FString UniquePackageName;
+		AssetTools.CreateUniqueAssetName(DesiredPackagePath, TEXT(""), UniquePackageName, FinalName);
+		FinalFolder = FPackageName::GetLongPackagePath(UniquePackageName);
+	}
+
+	const FString PackagePath = FinalFolder / FinalName;
+	if (UObject* ExistingObject = StaticLoadObject(UObject::StaticClass(), nullptr, *PackagePath))
+	{
+		UTexture2D* ExistingTexture = Cast<UTexture2D>(ExistingObject);
+		if (!ExistingTexture)
+		{
+			if (OutError)
+			{
+				*OutError = FText::Format(LOCTEXT("ExistingAssetNotTexture", "Cannot overwrite {0}; an asset with that name exists and is not a Texture2D."), FText::FromString(PackagePath));
+			}
+			return nullptr;
+		}
+
+		ExistingTexture->Modify();
+		return ExistingTexture;
+	}
+
+	UTexture2D* NewTexture = Cast<UTexture2D>(AssetTools.CreateAsset(FinalName, FinalFolder, UTexture2D::StaticClass(), nullptr));
+	if (!NewTexture && OutError)
+	{
+		*OutError = FText::Format(LOCTEXT("CreateTextureFailed", "Failed to create texture asset: {0}"), FText::FromString(PackagePath));
+	}
+	return NewTexture;
+}
+
+void FinalizeTextureAsset(UTexture2D* Texture)
+{
+	if (!Texture)
+	{
+		return;
+	}
+
+	Texture->PostEditChange();
+	Texture->GetPackage()->MarkPackageDirty();
+
+	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+	TArray<UObject*> Assets;
+	Assets.Add(Texture);
+	AssetTools.SyncBrowserToAssets(Assets);
+}
+}
 
 void UQuickSDFToolSubsystem::SetTargetComponent(UMeshComponent* NewComponent)
 {
@@ -88,53 +199,61 @@ void UQuickSDFToolSubsystem::StampSamplesToRenderTarget(class UTextureRenderTarg
 	Canvas.Flush_GameThread(false);*/
 }
 
-void UQuickSDFToolSubsystem::ExportToTexture(class UTextureRenderTarget2D* RT, const FString& FolderPath, const FString& AssetName)
+UTexture2D* UQuickSDFToolSubsystem::CreateMaskTexture(UTextureRenderTarget2D* RT, const FString& FolderPath, const FString& TextureName, bool bOverwriteExisting, FText* OutError)
 {
-	//TODO
-	/*UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());
-	if (!Tool) return;
-	
-	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
-
-	for (int32 i = 0; i < TransientRenderTargets.Num(); ++i)
+	if (!RT)
 	{
-		UTextureRenderTarget2D* RT = TransientRenderTargets[i];
-		if (!RT) continue;
-
-		TArray<FColor> Pixels;
-		if (!Tool->CaptureRenderTargetPixels(RT, Pixels)) continue;
-
-		FString FolderPath = TEXT("/Game/QuickSDF_Exports"); // TODO:ファイル名をきめる処理
-		FString AssetName = FString::Printf(TEXT("T_QuickSDF_Angle%d"), i);
-		
-		UTexture2D* NewTex = Cast<UTexture2D>(AssetTools.CreateAsset(AssetName, FolderPath, UTexture2D::StaticClass(), nullptr));
-        
-		if (NewTex)
+		if (OutError)
 		{
-			NewTex->Source.Init(RT->SizeX, RT->SizeY, 1, 1, TSF_BGRA8);
-			void* MipData = NewTex->Source.LockMip(0);
-			FMemory::Memcpy(MipData, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
-			NewTex->Source.UnlockMip(0);
-
-			NewTex->SRGB = RT->SRGB;
-			NewTex->CompressionSettings = TC_Default;
-			NewTex->MipGenSettings = TMGS_NoMipmaps;
-			NewTex->PostEditChange();
-			NewTex->GetPackage()->MarkPackageDirty();
-
-			TArray<UObject*> AssetsToSync;
-			AssetsToSync.Add(NewTex);
-			AssetTools.SyncBrowserToAssets(AssetsToSync);
+			*OutError = LOCTEXT("MaskRenderTargetMissing", "Cannot export mask because the render target is missing.");
 		}
-	}*/
+		return nullptr;
+	}
+
+	TArray<FColor> Pixels;
+	if (!CaptureRenderTargetPixels(RT, Pixels))
+	{
+		if (OutError)
+		{
+			*OutError = LOCTEXT("MaskCaptureFailed", "Failed to read pixels from the mask render target.");
+		}
+		return nullptr;
+	}
+
+	UTexture2D* Texture = FindOrCreateTextureAsset(FolderPath, TextureName, bOverwriteExisting, OutError);
+	if (!Texture)
+	{
+		return nullptr;
+	}
+
+	Texture->Source.Init(RT->SizeX, RT->SizeY, 1, 1, TSF_BGRA8);
+	void* MipData = Texture->Source.LockMip(0);
+	FMemory::Memcpy(MipData, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
+	Texture->Source.UnlockMip(0);
+
+	Texture->SRGB = RT->SRGB;
+	Texture->CompressionSettings = TC_Default;
+	Texture->MipGenSettings = TMGS_NoMipmaps;
+	Texture->Filter = TF_Nearest;
+
+	FinalizeTextureAsset(Texture);
+	return Texture;
 }
 
-void UQuickSDFToolSubsystem::CreateSDFTexture(const TArray<FFloat16Color>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName, ESDFOutputFormat Format)
+UTexture2D* UQuickSDFToolSubsystem::CreateSDFTexture(const TArray<FFloat16Color>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName, ESDFOutputFormat Format, bool bOverwriteExisting, FText* OutError)
 {
-	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
-	UTexture2D* NewTex = Cast<UTexture2D>(AssetTools.CreateAsset(TextureName, FolderPath, UTexture2D::StaticClass(), nullptr));
+	if (Pixels.Num() != Width * Height)
+	{
+		if (OutError)
+		{
+			*OutError = LOCTEXT("InvalidSDFPixelCount", "Cannot save SDF texture because the pixel count does not match the output resolution.");
+		}
+		return nullptr;
+	}
 
-	if (!NewTex) return;
+	UTexture2D* NewTex = FindOrCreateTextureAsset(FolderPath, TextureName, bOverwriteExisting, OutError);
+
+	if (!NewTex) return nullptr;
 
 	// モノポーラ設定時は R チャンネルの値を抽出し 16bit グレースケール (G16) で作成
 	if (Format == ESDFOutputFormat::Monopolar)
@@ -160,12 +279,9 @@ void UQuickSDFToolSubsystem::CreateSDFTexture(const TArray<FFloat16Color>& Pixel
 	NewTex->SRGB = false;
 	NewTex->MipGenSettings = TMGS_NoMipmaps;
 	NewTex->Filter = TF_Bilinear;
-	NewTex->PostEditChange();
-	NewTex->GetPackage()->MarkPackageDirty();
 
-	TArray<UObject*> Assets;
-	Assets.Add(NewTex);
-	AssetTools.SyncBrowserToAssets(Assets);
+	FinalizeTextureAsset(NewTex);
+	return NewTex;
 }
 void UQuickSDFToolSubsystem::DrawTextureToRenderTarget(UTexture2D* SourceTex, UTextureRenderTarget2D* TargetRT)
 {
@@ -202,3 +318,5 @@ void UQuickSDFToolSubsystem::ClearRenderTarget(UTextureRenderTarget2D* TargetRT,
 			TransitionAndCopyTexture(RHICmdList, RTResource->GetRenderTargetTexture(), RTResource->TextureRHI, {});
 		});
 }
+
+#undef LOCTEXT_NAMESPACE

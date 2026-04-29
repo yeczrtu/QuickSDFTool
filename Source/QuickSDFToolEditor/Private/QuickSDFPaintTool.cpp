@@ -33,8 +33,7 @@
 #include "HAL/PlatformApplicationMisc.h"
 #include "InteractiveToolChange.h"
 #include "Misc/ScopedSlowTask.h"
-#include "IAssetTools.h"
-#include "AssetToolsModule.h"
+#include "Misc/MessageDialog.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -126,43 +125,33 @@ void UQuickSDFToolProperties::ExportToTexture()
 	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return;
 
 	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
-	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+	int32 ExportedCount = 0;
+	Asset->Modify();
 
 	for (int32 i = 0; i < Asset->AngleDataList.Num(); ++i)
 	{
 		UTextureRenderTarget2D* RT = Asset->AngleDataList[i].PaintRenderTarget;
 		if (!RT) continue;
 
-		TArray<FColor> Pixels;
-		if (!Subsystem->CaptureRenderTargetPixels(RT, Pixels)) continue;
-
-		FString FolderPath = TEXT("/Game/QuickSDF_Exports");
-		FString AssetName = FString::Printf(TEXT("T_QuickSDF_Angle%d"), i);
-		
-		UTexture2D* NewTex = Cast<UTexture2D>(AssetTools.CreateAsset(AssetName, FolderPath, UTexture2D::StaticClass(), nullptr));
-        
+		const FString AssetName = FString::Printf(TEXT("%s%d"), *MaskTextureNamePrefix, i);
+		FText Error;
+		UTexture2D* NewTex = Subsystem->CreateMaskTexture(RT, MaskExportFolder, AssetName, bOverwriteExistingMasks, &Error);
 		if (NewTex)
 		{
-			NewTex->Source.Init(RT->SizeX, RT->SizeY, 1, 1, TSF_BGRA8);
-			void* MipData = NewTex->Source.LockMip(0);
-			FMemory::Memcpy(MipData, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
-			NewTex->Source.UnlockMip(0);
-
-			NewTex->SRGB = RT->SRGB;
-			NewTex->CompressionSettings = TC_Default;
-			NewTex->MipGenSettings = TMGS_NoMipmaps;
-			NewTex->PostEditChange();
-			NewTex->GetPackage()->MarkPackageDirty();
-
 			// エクスポートしたテクスチャをアセットに紐づけておくことで、次回ロード時に復元されます
 			Asset->AngleDataList[i].TextureMask = NewTex;
-
-			TArray<UObject*> AssetsToSync;
-			AssetsToSync.Add(NewTex);
-			AssetTools.SyncBrowserToAssets(AssetsToSync);
+			++ExportedCount;
+		}
+		else if (!Error.IsEmpty())
+		{
+			FMessageDialog::Open(EAppMsgType::Ok, Error);
+			break;
 		}
 	}
-	Asset->Modify(); // アセットを更新状態にする
+	if (ExportedCount > 0)
+	{
+		Asset->MarkPackageDirty();
+	}
 }
 
 void UQuickSDFToolProperties::FillOriginalShadingToCurrentAngle()
@@ -317,7 +306,18 @@ void UQuickSDFPaintTool::GenerateSDF()
 	if (SlowTask.ShouldCancel()) return;
 
 	TArray<FFloat16Color> FinalPixels = FSDFProcessor::DownscaleAndConvert(CombinedField, HighW, HighH, Upscale);
-	Subsystem->CreateSDFTexture(FinalPixels, OrigW, OrigH, TEXT("/Game/QuickSDF_GENERATED"), TEXT("T_QuickSDF_ThresholdMap"), EffectiveFormat);
+	FText SaveError;
+	UTexture2D* FinalTexture = Subsystem->CreateSDFTexture(FinalPixels, OrigW, OrigH, Properties->SDFOutputFolder, Properties->SDFTextureName, EffectiveFormat, Properties->bOverwriteExistingSDF, &SaveError);
+	if (FinalTexture)
+	{
+		Asset->Modify();
+		Asset->FinalSDFTexture = FinalTexture;
+		Asset->MarkPackageDirty();
+	}
+	else if (!SaveError.IsEmpty())
+	{
+		FMessageDialog::Open(EAppMsgType::Ok, SaveError);
+	}
 }
 
 void UQuickSDFPaintTool::BuildBrushMaskTexture()

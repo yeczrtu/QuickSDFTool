@@ -27,8 +27,8 @@ public:
 	
 	void StampSamplesToRenderTarget(class UTextureRenderTarget2D* RT, class UTexture2D* BrushMask, const TArray<FQuickSDFStrokeSample>& Samples, float BrushPixelSize, bool bIsShadow);
 	
-	void ExportToTexture(class UTextureRenderTarget2D* RT, const FString& FolderPath, const FString& AssetName);
-	void CreateSDFTexture(const TArray<FFloat16Color>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName, ESDFOutputFormat Format);
+	class UTexture2D* CreateMaskTexture(class UTextureRenderTarget2D* RT, const FString& FolderPath, const FString& TextureName, bool bOverwriteExisting, FText* OutError = nullptr);
+	class UTexture2D* CreateSDFTexture(const TArray<FFloat16Color>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName, ESDFOutputFormat Format, bool bOverwriteExisting, FText* OutError = nullptr);
 	
 	UPROPERTY()
 	TObjectPtr<class UQuickSDFAsset> ActiveSDFAsset;
