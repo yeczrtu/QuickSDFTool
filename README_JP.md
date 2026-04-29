@@ -75,6 +75,20 @@ QuickSDFTool/
         └── QuickSDFToolShadersModule
 ```
 
+### ペイントツールのソース構成
+
+`QuickSDFPaintTool` の実装は、エディターツールを保守しやすくするために責務ごとに分割されています。
+
+| ファイル | 役割 |
+|----------|------|
+| `QuickSDFPaintTool.cpp` | ツールのセットアップ/終了処理、入力ビヘイビア登録、ターゲットコンポーネント切り替え |
+| `QuickSDFPaintToolAsset.cpp` | SDF 生成、マスクのインポート/エクスポート、アセット同期、キーフレームとプロパティ処理 |
+| `QuickSDFPaintToolRenderTarget.cpp` | Render Target のピクセル操作、Undo/Redo 用 change オブジェクト、ブラシマスクテクスチャ生成、プレビューマテリアル更新 |
+| `QuickSDFPaintToolStroke.cpp` | ブラシストローク、ヒットテスト、UV プレビューペイント、Quick Line、ブラシサイズ変更 |
+| `QuickSDFPaintToolHUD.cpp` | HUD プレビュー描画と UV オーバーレイ Render Target キャッシュ |
+| `QuickSDFPaintToolBake.cpp` | オリジナルシェーディングのマテリアルベイクとマスクキーフレームへの反映 |
+| `QuickSDFPaintToolPrivate.h/.cpp` | 内部共有の定数、ヘルパー関数、command change 型 |
+
 ### モジュール依存関係
 
 | モジュール | タイプ | 主な依存関係 |

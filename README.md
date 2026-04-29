@@ -81,6 +81,20 @@ QuickSDFTool/
         └── QuickSDFToolShadersModule
 ```
 
+### Paint Tool Source Layout
+
+The `QuickSDFPaintTool` implementation is split by responsibility to keep the editor tool maintainable:
+
+| File | Responsibility |
+|------|----------------|
+| `QuickSDFPaintTool.cpp` | Tool setup/shutdown, input behavior registration, target component switching |
+| `QuickSDFPaintToolAsset.cpp` | SDF generation, mask import/export, asset synchronization, keyframe and property handling |
+| `QuickSDFPaintToolRenderTarget.cpp` | Render target pixel operations, undo/redo change objects, brush mask texture creation, preview material updates |
+| `QuickSDFPaintToolStroke.cpp` | Brush strokes, hit testing, UV preview painting, quick line handling, brush resizing |
+| `QuickSDFPaintToolHUD.cpp` | HUD preview drawing and UV overlay render target cache |
+| `QuickSDFPaintToolBake.cpp` | Original-shading material baking into mask keyframes |
+| `QuickSDFPaintToolPrivate.h/.cpp` | Internal shared constants, helper functions, and command-change types |
+
 ### Module Dependencies
 
 | Module | Type | Key Dependencies |
