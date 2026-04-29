@@ -113,11 +113,14 @@ public:
 	virtual void OnPropertyModified(UObject* PropertySet, FProperty* Property) override;
 	virtual void DrawHUD( FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI ) override;
 	bool ApplyRenderTargetPixels(int32 AngleIndex, const TArray<FColor>& Pixels);
+	bool ApplyRenderTargetPixelsByGuid(const FGuid& AngleGuid, const TArray<FColor>& Pixels);
+	bool ApplyTextureSlotChange(const FGuid& AngleGuid, int32 FallbackIndex, class UTexture2D* Texture, const TArray<FColor>& Pixels);
 	
 	void GenerateSDF();
 	void CreateQuickThresholdMap();
 	void ImportEditedMasks();
 	bool ImportEditedMasksFromTextures(const TArray<UTexture2D*>& InTextures);
+	void SaveQuickSDFAsset();
 	bool CaptureRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const;
 	class UTextureRenderTarget2D* GetActiveRenderTarget() const;
 	void EnsureInitialMasksReady();

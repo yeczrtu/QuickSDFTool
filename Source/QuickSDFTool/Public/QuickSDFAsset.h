@@ -14,6 +14,9 @@ struct FQuickSDFAngleData
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SDF")
 	float Angle = 0.0f;
 
+	UPROPERTY()
+	FGuid MaskGuid;
+
 	// Binarized shadow mask texture for this angle
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SDF")
 	class UTexture2D* TextureMask = nullptr;

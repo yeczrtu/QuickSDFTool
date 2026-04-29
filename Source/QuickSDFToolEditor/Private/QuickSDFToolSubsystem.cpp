@@ -204,6 +204,7 @@ UQuickSDFAsset* CreateDefaultQuickSDFAsset(UObject* Outer)
 		NewAsset->AngleDataList[Index].Angle = QuickSDFSubsystemDefaultAngleCount > 1
 			? (static_cast<float>(Index) / static_cast<float>(QuickSDFSubsystemDefaultAngleCount - 1)) * MaxAngle
 			: 0.0f;
+		NewAsset->AngleDataList[Index].MaskGuid = FGuid::NewGuid();
 	}
 
 	return NewAsset;

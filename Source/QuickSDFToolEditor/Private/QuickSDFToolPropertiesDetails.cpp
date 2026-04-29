@@ -131,6 +131,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 	DetailBuilder.HideCategory(FName(TEXT("Actions")));
 
 	IDetailCategoryBuilder& QuickCategory = DetailBuilder.EditCategory(FName(TEXT("Quick SDF")), LOCTEXT("QuickSDFCategory", "Quick SDF"), ECategoryPriority::Important);
+	IDetailCategoryBuilder& MasksCategory = DetailBuilder.EditCategory(FName(TEXT("Masks")), LOCTEXT("MasksCategory", "Masks"), ECategoryPriority::Important);
 	IDetailCategoryBuilder& OutputCategory = DetailBuilder.EditCategory(FName(TEXT("Output")), LOCTEXT("OutputCategory", "Output"), ECategoryPriority::Important);
 	IDetailCategoryBuilder& AdvancedCategory = DetailBuilder.EditCategory(FName(TEXT("Advanced")), LOCTEXT("AdvancedCategory", "Advanced"), ECategoryPriority::Uncommon);
 	AdvancedCategory.InitiallyCollapsed(true);
@@ -239,12 +240,33 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		]
 	];
 
+	AddPropertyIfValid(MasksCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAsset)));
+	AddPropertyIfValid(MasksCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetTextures)));
+	AddPropertyIfValid(MasksCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, QuickSDFAssetFolder)));
+	AddPropertyIfValid(MasksCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, QuickSDFAssetName)));
+	AddPropertyIfValid(MasksCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bSaveMaskTexturesWithAsset)));
+	MasksCategory.AddCustomRow(LOCTEXT("SaveQuickSDFAssetFilter", "Save QuickSDF Asset"))
+	.WholeRowContent()
+	[
+		SNew(SButton)
+		.Text(LOCTEXT("SaveQuickSDFAssetButton", "Save QuickSDF Asset"))
+		.HAlign(HAlign_Center)
+		.OnClicked_Lambda([WeakProperties]()
+		{
+			if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+			{
+				Props->SaveQuickSDFAsset();
+			}
+			return FReply::Handled();
+		})
+	];
+
 	AddPropertyIfValid(OutputCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SDFOutputFolder)));
 	AddPropertyIfValid(OutputCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SDFTextureName)));
 	AddPropertyIfValid(OutputCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bOverwriteExistingSDF)));
 
-	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAsset)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, ImportedMaskFolder)));
+	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngles)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, Resolution)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, UVChannel)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bShowPreview)));
@@ -267,8 +289,6 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bOverwriteExistingMasks)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, NumAngles)));
-	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngles)));
-	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetTextures)));
 
 	AdvancedCategory.AddCustomRow(LOCTEXT("AdvancedActionsFilter", "Rebake Fill Export Masks Generate SDF"))
 	.WholeRowContent()

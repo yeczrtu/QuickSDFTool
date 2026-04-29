@@ -33,6 +33,15 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Asset Settings")
 	UQuickSDFAsset* TargetAsset = nullptr;
 
+	UPROPERTY(EditAnywhere, Category = "Asset Settings", meta = (DisplayName = "QuickSDF Asset Folder", ContentDir))
+	FString QuickSDFAssetFolder = TEXT("/Game/QuickSDF_Assets");
+
+	UPROPERTY(EditAnywhere, Category = "Asset Settings", meta = (DisplayName = "QuickSDF Asset Name"))
+	FString QuickSDFAssetName = TEXT("DA_QuickSDF");
+
+	UPROPERTY(EditAnywhere, Category = "Asset Settings", meta = (DisplayName = "Save Mask Textures With Asset"))
+	bool bSaveMaskTexturesWithAsset = true;
+
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	int32 EditAngleIndex = 0;
 
@@ -85,7 +94,7 @@ public:
 	int32 TargetMaterialSlot = -1;
 
 	UPROPERTY(EditAnywhere, Category = "Target Settings", meta = (DisplayName = "Isolate Target Material Slot", EditCondition = "TargetMaterialSlot >= 0"))
-	bool bIsolateTargetMaterialSlot = false;
+	bool bIsolateTargetMaterialSlot = true;
 
 	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (ClampMin = "1", UIMin = "1", ClampMax = "8", UIMax = "8"))
 	int32 UpscaleFactor = 1;
@@ -122,6 +131,9 @@ public:
 
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Import Edited Masks"))
 	void ImportEditedMasks();
+
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Save QuickSDF Asset"))
+	void SaveQuickSDFAsset();
 
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Fill Current White"))
 	void FillCurrentMaskWhite();

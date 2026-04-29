@@ -79,6 +79,14 @@ void UQuickSDFToolProperties::ImportEditedMasks()
 	}
 }
 
+void UQuickSDFToolProperties::SaveQuickSDFAsset()
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
+	{
+		Tool->SaveQuickSDFAsset();
+	}
+}
+
 void UQuickSDFToolProperties::FillCurrentMaskWhite()
 {
 	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
