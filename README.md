@@ -170,31 +170,44 @@ The `QuickSDFPaintTool` implementation is split by responsibility to keep the ed
 ## TODO
 
 > [!IMPORTANT]
-> This is a prototype. The following items are planned or under consideration:
+> This is a prototype. The list below is checked against the current source tree and separates completed work from remaining items.
 
-- [ ] **GPU-Accelerated SDF** — Migrate SDF generation from CPU (Felzenszwalb) to fully GPU-based using the existing JFA compute shader
-- [ ] **Skeletal Mesh Support** — Extend paint target support beyond Static Meshes
-- [ ] **Custom Brush Shapes** — Support for importing custom brush alpha textures
-- [ ] **Pressure Sensitivity** — Tablet pressure support for brush opacity/size
-- [ ] **Auto-Save / Hot-Reload** — Periodic checkpoint saves for paint data
-- [ ] **Multi-UV Channel Preview** — Simultaneous visualization of different UV layouts
-- [ ] **Documentation & Tutorials** — Video walkthroughs and detailed wiki
-- [ ] **Performance Profiling** — Benchmark and optimize for high-resolution textures (4K+)
-- [ ] **Icon & Branding** — Custom editor mode icon and plugin branding assets
-- [ ] Frame duplication function
-- [ ] A feature that places images at equal intervals on the timeline.
-- [ ] Buttons and shortcuts to move to the next frame on the timeline.
-- [ ] Function to import existing textures.
-- [ ] Creating social previews for GitHub.
+### Implemented
 
+- [x] **Skeletal Mesh Support** — `FQuickSDFMeshComponentAdapter` supports both Static Mesh and Skeletal Mesh components
+- [x] **Existing Texture Import** — Import selected textures or image files as mask/keyframe sources
+- [x] **Even Timeline Distribution** — Redistribute current keyframes evenly across the active symmetry range
+- [x] **Export Naming & Overwrite Settings** — Configure SDF/mask texture names and choose whether existing assets are overwritten
+- [x] **Autosave Overlay Recovery** — Reattach the timeline overlay after editor save/autosave events
 
-### Known defects
+### Core Generation
 
-- The UI disappears when autosave activates.
-- Depending on how the UV map is unwrapped, the brush size and the area being painted may be misaligned in the paint program.
-- Sometimes, when you click on an image in the timeline, it can become misaligned.
-- Unable to specify a name when exporting an image / Unable to overwrite a file with the same name.
-- The direction of SDF is reversed.
+- [ ] **GPU-Accelerated SDF** — The JFA compute shader and C++ binding exist, but `GenerateSDF()` still uses the CPU `FSDFProcessor` path
+- [ ] **Performance Profiling** — Benchmark and optimize high-resolution texture workflows (4K+)
+
+### Painting & Timeline Workflow
+
+- [ ] **Custom Brush Shapes** — Support importing custom brush alpha textures
+- [ ] **Pressure Sensitivity** — Add tablet pressure support for brush opacity and size
+- [ ] **Frame Duplication** — Add an explicit command to duplicate the current timeline frame and its mask data
+- [ ] **Timeline Navigation** — Add buttons and shortcuts for moving to the previous/next frame
+
+### Asset & Data Management
+
+- [ ] **Auto-Save / Hot-Reload** — Periodically checkpoint paint data and recover unsaved mask changes after reloads
+- [ ] **Multi-UV Channel Preview** — The active UV channel can be selected, but simultaneous multi-channel visualization is not implemented
+
+### Documentation & Release
+
+- [ ] **Documentation & Tutorials** — Add video walkthroughs and a detailed wiki
+- [ ] **Icon & Branding** — Create a custom editor mode icon and plugin branding assets
+- [ ] **GitHub Social Preview** — Create social preview images for GitHub repository sharing
+
+### Known Defects
+
+- Depending on how the UV map is unwrapped, brush size may not match the painted area.
+- Timeline images can become misaligned after being clicked.
+- The direction of SDF output may be reversed.
 
 ---
 
