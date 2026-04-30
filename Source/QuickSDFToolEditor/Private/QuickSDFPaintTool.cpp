@@ -157,7 +157,6 @@ void UQuickSDFPaintTool::RegisterActions(FInteractiveToolActionSet& ActionSet)
 		});
 
 	const TArray<FKey> ToggleKeys = {
-		EKeys::One,
 		EKeys::Two,
 		EKeys::Three,
 		EKeys::Four,
@@ -167,14 +166,27 @@ void UQuickSDFPaintTool::RegisterActions(FInteractiveToolActionSet& ActionSet)
 		EKeys::Eight,
 	};
 
+	ActionSet.RegisterAction(
+		this,
+		QuickSDFActionToggleBase,
+		TEXT("QuickSDFCyclePaintTargetMode"),
+		NSLOCTEXT("QuickSDFPaintTool", "CyclePaintTargetModeShortcut", "Paint Target Mode"),
+		NSLOCTEXT("QuickSDFPaintTool", "CyclePaintTargetModeShortcutDesc", "Cycle the Quick SDF paint target mode."),
+		EModifierKey::Alt,
+		EKeys::One,
+		[this]()
+		{
+			QuickSDFToolUI::CyclePaintTargetMode(this, Properties);
+		});
+
 	const TArray<EQuickSDFPaintToggle>& Toggles = QuickSDFToolUI::GetPaintToggles();
 	for (int32 Index = 0; Index < Toggles.Num() && Index < ToggleKeys.Num(); ++Index)
 	{
 		const EQuickSDFPaintToggle Toggle = Toggles[Index];
 		ActionSet.RegisterAction(
 			this,
-			QuickSDFActionToggleBase + Index,
-			FString::Printf(TEXT("QuickSDFToggle%d"), Index + 1),
+			QuickSDFActionToggleBase + Index + 1,
+			FString::Printf(TEXT("QuickSDFToggle%d"), Index + 2),
 			QuickSDFToolUI::GetToggleLabel(Toggle),
 			QuickSDFToolUI::GetToggleDescription(Toggle),
 			EModifierKey::Alt,

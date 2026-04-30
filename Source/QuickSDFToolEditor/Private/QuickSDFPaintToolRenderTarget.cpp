@@ -550,23 +550,50 @@ TArray<int32> UQuickSDFPaintTool::GetPaintTargetAngleIndices() const
 		return TargetIndices;
 	}
 
-	if (Properties->bPaintAllAngles)
+	const int32 CurrentAngleIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Asset->AngleDataList.Num() - 1);
+	const EQuickSDFPaintTargetMode TargetMode =
+		(Properties->bPaintAllAngles && Properties->PaintTargetMode == EQuickSDFPaintTargetMode::CurrentOnly)
+			? EQuickSDFPaintTargetMode::All
+			: Properties->PaintTargetMode;
+
+	if (TargetMode == EQuickSDFPaintTargetMode::CurrentOnly)
 	{
-		for (int32 Index = 0; Index < Asset->AngleDataList.Num(); ++Index)
+		if (Asset->AngleDataList[CurrentAngleIndex].PaintRenderTarget)
 		{
-			if (Asset->AngleDataList[Index].PaintRenderTarget)
-			{
-				TargetIndices.Add(Index);
-			}
+			TargetIndices.Add(CurrentAngleIndex);
+		}
+		return TargetIndices;
+	}
+
+	TArray<int32> SortedIndices;
+	for (int32 Index = 0; Index < Asset->AngleDataList.Num(); ++Index)
+	{
+		if (Asset->AngleDataList[Index].PaintRenderTarget)
+		{
+			SortedIndices.Add(Index);
 		}
 	}
-	else
+	SortedIndices.Sort([Asset](int32 A, int32 B)
 	{
-		const int32 AngleIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Asset->AngleDataList.Num() - 1);
-		if (Asset->AngleDataList[AngleIndex].PaintRenderTarget)
-		{
-			TargetIndices.Add(AngleIndex);
-		}
+		return Asset->AngleDataList[A].Angle < Asset->AngleDataList[B].Angle;
+	});
+
+	if (TargetMode == EQuickSDFPaintTargetMode::All)
+	{
+		return SortedIndices;
+	}
+
+	const int32 CurrentSortedIndex = SortedIndices.IndexOfByKey(CurrentAngleIndex);
+	if (CurrentSortedIndex == INDEX_NONE)
+	{
+		return TargetIndices;
+	}
+
+	const int32 StartIndex = TargetMode == EQuickSDFPaintTargetMode::BeforeCurrent ? 0 : CurrentSortedIndex;
+	const int32 EndIndex = TargetMode == EQuickSDFPaintTargetMode::BeforeCurrent ? CurrentSortedIndex : SortedIndices.Num() - 1;
+	for (int32 Index = StartIndex; Index <= EndIndex; ++Index)
+	{
+		TargetIndices.Add(SortedIndices[Index]);
 	}
 
 	return TargetIndices;

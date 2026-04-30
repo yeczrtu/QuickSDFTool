@@ -518,6 +518,15 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 						.Padding(1.0f, 0.0f)
 						[
 							MakeTimelineIconButton(
+								"QuickSDF.Action.DuplicateKey",
+								LOCTEXT("DuplicateFrameTooltip", "Duplicate the selected keyframe at the current seek angle"),
+								FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnDuplicateKeyframeClicked))
+						]
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.Padding(1.0f, 0.0f)
+						[
+							MakeTimelineIconButton(
 								"QuickSDF.Action.DeleteKey",
 								LOCTEXT("DelFrameTooltip", "Delete the selected timeline keyframe"),
 								FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnDeleteKeyframeClicked))
@@ -848,6 +857,36 @@ float SQuickSDFTimeline::GetCurrentLightYaw() const
 	return 0.0f;
 }
 
+float SQuickSDFTimeline::GetCurrentSeekAngle() const
+{
+	UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	const float MaxAngle = Props && Props->bSymmetryMode ? 90.0f : 180.0f;
+
+	if (bHasSeekAngle)
+	{
+		return FMath::Clamp(LastSeekAngle, 0.0f, MaxAngle);
+	}
+
+	const float LightYaw = GetCurrentLightYaw();
+	if (LightYaw >= 0.0f)
+	{
+		return FMath::Clamp(LightYaw, 0.0f, MaxAngle);
+	}
+
+	if (Props && Props->TargetAngles.IsValidIndex(Props->EditAngleIndex))
+	{
+		return FMath::Clamp(Props->TargetAngles[Props->EditAngleIndex], 0.0f, MaxAngle);
+	}
+
+	return 0.0f;
+}
+
+float SQuickSDFTimeline::ResolveTimelineActionAngle() const
+{
+	return GetCurrentSeekAngle();
+}
+
 bool SQuickSDFTimeline::IsTimelineTrackUnderCursor(const FVector2D& ScreenPosition) const
 {
 	if (!TimelineTrackCanvas.IsValid())
@@ -918,6 +957,8 @@ void SQuickSDFTimeline::SeekTimelineAtScreenPosition(const FVector2D& ScreenPosi
 	const float MaxAngle = Props->bSymmetryMode ? 90.0f : 180.0f;
 	const float SeekPercent = FMath::Clamp((LocalPosition.X - 20.0f) / TrackWidth, 0.0f, 1.0f);
 	const float SeekAngle = SeekPercent * MaxAngle;
+	LastSeekAngle = SeekAngle;
+	bHasSeekAngle = true;
 
 	int32 BestIndex = INDEX_NONE;
 	float BestDistance = TNumericLimits<float>::Max();
@@ -1214,10 +1255,10 @@ void SQuickSDFTimeline::RebuildTimeline()
 		bool bSymmetry = Tool && Tool->Properties && Tool->Properties->bSymmetryMode;
 		float MaxAngle = bSymmetry ? 90.0f : 180.0f;
 		
-		float LightYaw = GetCurrentLightYaw();
-		if (LightYaw < 0.0f) return FVector2D(-1000.0f, -1000.0f); // Hide if in back hemisphere
+		float SeekAngle = GetCurrentSeekAngle();
+		if (SeekAngle < 0.0f) return FVector2D(-1000.0f, -1000.0f);
 
-		float Percent = FMath::Clamp(LightYaw / MaxAngle, 0.0f, 1.0f);
+		float Percent = FMath::Clamp(SeekAngle / MaxAngle, 0.0f, 1.0f);
 		float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
 		return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 19.0f, 4.0f);
 	}))
@@ -1234,19 +1275,17 @@ FReply SQuickSDFTimeline::OnAddKeyframeClicked()
 	UQuickSDFPaintTool* Tool = GetActivePaintTool();
 	if (Tool)
 	{
-		const float LightYaw = GetCurrentLightYaw();
-		if (LightYaw >= 0.0f)
-		{
-			Tool->AddKeyframeAtAngle(LightYaw);
-		}
-		else if (Tool->Properties && Tool->Properties->TargetAngles.IsValidIndex(Tool->Properties->EditAngleIndex))
-		{
-			Tool->AddKeyframeAtAngle(Tool->Properties->TargetAngles[Tool->Properties->EditAngleIndex]);
-		}
-		else
-		{
-			Tool->AddKeyframe();
-		}
+		Tool->AddKeyframeAtAngle(ResolveTimelineActionAngle());
+	}
+	return FReply::Handled();
+}
+
+FReply SQuickSDFTimeline::OnDuplicateKeyframeClicked()
+{
+	UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	if (Tool)
+	{
+		Tool->DuplicateKeyframeAtAngle(ResolveTimelineActionAngle());
 	}
 	return FReply::Handled();
 }
@@ -1318,7 +1357,10 @@ FReply SQuickSDFTimeline::OnSyncLightClicked()
 	int32 Index = Tool->Properties->EditAngleIndex;
 	if (Tool->Properties->TargetAngles.IsValidIndex(Index))
 	{
-		Mode->SetPreviewLightAngle(Tool->Properties->TargetAngles[Index]);
+		const float TargetAngle = Tool->Properties->TargetAngles[Index];
+		LastSeekAngle = TargetAngle;
+		bHasSeekAngle = true;
+		Mode->SetPreviewLightAngle(TargetAngle);
 	}
 
 	return FReply::Handled();

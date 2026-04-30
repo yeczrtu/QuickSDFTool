@@ -56,8 +56,14 @@ void FQuickSDFToolStyle::Initialize()
 	StyleSet->Set("QuickSDF.Action.CompleteToEight", new IMAGE_BRUSH_SVG("Icons/QuickSDFComplete", Icon16x16));
 	StyleSet->Set("QuickSDF.Action.Redistribute", new IMAGE_BRUSH_SVG("Icons/QuickSDFRedistribute", Icon16x16));
 	StyleSet->Set("QuickSDF.Action.AddKey", new IMAGE_BRUSH_SVG("Icons/QuickSDFAdd", Icon16x16));
+	StyleSet->Set("QuickSDF.Action.DuplicateKey", new IMAGE_BRUSH_SVG("Icons/QuickSDFDuplicate", Icon16x16));
 	StyleSet->Set("QuickSDF.Action.DeleteKey", new IMAGE_BRUSH_SVG("Icons/QuickSDFDelete", Icon16x16));
 	StyleSet->Set("QuickSDF.Action.Snap", new IMAGE_BRUSH_SVG("Icons/QuickSDFSnap", Icon16x16));
+
+	StyleSet->Set("QuickSDF.PaintTarget.Current", new IMAGE_BRUSH_SVG("Icons/QuickSDFPaintCurrent", Icon16x16));
+	StyleSet->Set("QuickSDF.PaintTarget.All", new IMAGE_BRUSH_SVG("Icons/QuickSDFPaintAll", Icon16x16));
+	StyleSet->Set("QuickSDF.PaintTarget.Before", new IMAGE_BRUSH_SVG("Icons/QuickSDFPaintBefore", Icon16x16));
+	StyleSet->Set("QuickSDF.PaintTarget.After", new IMAGE_BRUSH_SVG("Icons/QuickSDFPaintAfter", Icon16x16));
 
 	StyleSet->Set("QuickSDF.Toggle.PaintAllAngles", new IMAGE_BRUSH_SVG("Icons/QuickSDFPaintAll", Icon16x16));
 	StyleSet->Set("QuickSDF.Toggle.AutoSyncLight", new IMAGE_BRUSH_SVG("Icons/QuickSDFAutoLight", Icon16x16));

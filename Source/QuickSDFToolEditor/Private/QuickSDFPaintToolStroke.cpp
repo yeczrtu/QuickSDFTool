@@ -742,11 +742,12 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 {
 	if (Samples.Num() == 0) return;
 
-	if (Properties && Properties->bPaintAllAngles && !bStampingAllPaintTargets)
+	const TArray<int32> PaintTargetAngleIndices = GetPaintTargetAngleIndices();
+	if (Properties && PaintTargetAngleIndices.Num() > 1 && !bStampingAllPaintTargets)
 	{
 		const int32 PreviousEditAngleIndex = Properties->EditAngleIndex;
 		bStampingAllPaintTargets = true;
-		for (int32 AngleIndex : GetPaintTargetAngleIndices())
+		for (int32 AngleIndex : PaintTargetAngleIndices)
 		{
 			Properties->EditAngleIndex = AngleIndex;
 			StampSamples(Samples);

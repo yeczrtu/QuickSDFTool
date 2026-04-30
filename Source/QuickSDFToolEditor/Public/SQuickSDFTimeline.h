@@ -82,6 +82,7 @@ private:
 	// UI Generation
 	void RebuildTimeline();
 	FReply OnAddKeyframeClicked();
+	FReply OnDuplicateKeyframeClicked();
 	FReply OnDeleteKeyframeClicked();
 	FReply OnCompleteToEightClicked();
 	FReply OnRedistributeEvenlyClicked();
@@ -93,6 +94,8 @@ private:
 	bool IsTimelineTrackUnderCursor(const FVector2D& ScreenPosition) const;
 	bool IsNearKeyframeHandle(const FVector2D& ScreenPosition) const;
 	void SeekTimelineAtScreenPosition(const FVector2D& ScreenPosition);
+	float GetCurrentSeekAngle() const;
+	float ResolveTimelineActionAngle() const;
 	EVisibility GetRefineVisibility() const;
 	EVisibility GetCompactVisibility() const;
 	FText GetHeaderStatusText() const;
@@ -109,6 +112,8 @@ private:
 	bool bGridSnapEnabled = false;
 	bool bSeekingTimeline = false;
 	bool bTimelineDragTransactionOpen = false;
+	bool bHasSeekAngle = false;
+	float LastSeekAngle = 0.0f;
 
 	// Widget refs
 	TSharedPtr<class SCanvas> TimelineTrackCanvas;

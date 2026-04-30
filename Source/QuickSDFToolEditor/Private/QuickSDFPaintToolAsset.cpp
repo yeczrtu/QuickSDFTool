@@ -878,6 +878,20 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 
 	if (PropertySet == Properties)
 	{
+		if (Property)
+		{
+			if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, PaintTargetMode))
+			{
+				Properties->bPaintAllAngles = Properties->PaintTargetMode == EQuickSDFPaintTargetMode::All;
+			}
+			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bPaintAllAngles))
+			{
+				Properties->PaintTargetMode = Properties->bPaintAllAngles
+					? EQuickSDFPaintTargetMode::All
+					: EQuickSDFPaintTargetMode::CurrentOnly;
+			}
+		}
+
 		UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
 		UQuickSDFAsset* ActiveAsset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
 
@@ -1044,7 +1058,35 @@ void UQuickSDFPaintTool::AddKeyframeAtAngle(float Angle)
 	AddKeyframeInternal(Angle, true);
 }
 
-void UQuickSDFPaintTool::AddKeyframeInternal(float RequestedAngle, bool bUseRequestedAngle)
+void UQuickSDFPaintTool::DuplicateKeyframeAtAngle(float Angle)
+{
+	if (!Properties) return;
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return;
+
+	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
+	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+	if (Asset->AngleDataList.Num() == 0)
+	{
+		return;
+	}
+
+	const int32 SourceIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Asset->AngleDataList.Num() - 1);
+	if (!Asset->AngleDataList.IsValidIndex(SourceIndex) || !Asset->AngleDataList[SourceIndex].PaintRenderTarget)
+	{
+		return;
+	}
+
+	TArray<FColor> SourcePixels;
+	if (!CaptureRenderTargetPixels(Asset->AngleDataList[SourceIndex].PaintRenderTarget, SourcePixels))
+	{
+		return;
+	}
+
+	AddKeyframeInternal(Angle, true, &SourcePixels);
+}
+
+void UQuickSDFPaintTool::AddKeyframeInternal(float RequestedAngle, bool bUseRequestedAngle, const TArray<FColor>* SourcePixels)
 {
 	if (!Properties) return;
 	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
@@ -1059,7 +1101,10 @@ void UQuickSDFPaintTool::AddKeyframeInternal(float RequestedAngle, bool bUseRequ
 	TArray<TArray<FColor>> BeforePixelsByMask;
 	CaptureMaskState(*this, Asset, BeforeGuids, BeforeAngles, BeforeTextures, BeforePixelsByMask);
 
-	GetToolManager()->BeginUndoTransaction(LOCTEXT("AddKeyframe", "Add Timeline Keyframe"));
+	const bool bDuplicateKeyframe = SourcePixels && SourcePixels->Num() > 0;
+	GetToolManager()->BeginUndoTransaction(bDuplicateKeyframe
+		? LOCTEXT("DuplicateKeyframe", "Duplicate Timeline Keyframe")
+		: LOCTEXT("AddKeyframe", "Add Timeline Keyframe"));
 	Asset->Modify();
 	Properties->Modify();
 
@@ -1142,7 +1187,14 @@ void UQuickSDFPaintTool::AddKeyframeInternal(float RequestedAngle, bool bUseRequ
 	FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex));
 	OnPropertyModified(Properties, Prop);
 
-	if (CurrentComponent.IsValid())
+	if (bDuplicateKeyframe)
+	{
+		const bool bWasSuppressingMaskPixelUndo = bSuppressMaskPixelUndo;
+		bSuppressMaskPixelUndo = true;
+		ApplyPixelsWithUndo(InsertIndex, *SourcePixels, LOCTEXT("DuplicateKeyframePixels", "Duplicate Quick SDF Mask"));
+		bSuppressMaskPixelUndo = bWasSuppressingMaskPixelUndo;
+	}
+	else if (CurrentComponent.IsValid())
 	{
 		const bool bWasSuppressingMaskPixelUndo = bSuppressMaskPixelUndo;
 		bSuppressMaskPixelUndo = true;
@@ -1164,7 +1216,9 @@ void UQuickSDFPaintTool::AddKeyframeInternal(float RequestedAngle, bool bUseRequ
 	Change->BeforeTextures = MoveTemp(BeforeTextures);
 	Change->BeforePixelsByMask = MoveTemp(BeforePixelsByMask);
 	CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterAngles, Change->AfterTextures, Change->AfterPixelsByMask);
-	GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("AddKeyframeMaskState", "Restore Quick SDF Added Keyframe Mask State"));
+	GetToolManager()->EmitObjectChange(this, MoveTemp(Change), bDuplicateKeyframe
+		? LOCTEXT("DuplicateKeyframeMaskState", "Restore Quick SDF Duplicated Keyframe Mask State")
+		: LOCTEXT("AddKeyframeMaskState", "Restore Quick SDF Added Keyframe Mask State"));
 
 	GetToolManager()->EndUndoTransaction();
 }

@@ -15,6 +15,15 @@ enum class EQuickSDFQualityPreset : uint8
 	High2048 UMETA(DisplayName = "High 2048")
 };
 
+UENUM(BlueprintType)
+enum class EQuickSDFPaintTargetMode : uint8
+{
+	CurrentOnly UMETA(DisplayName = "Current Only"),
+	All UMETA(DisplayName = "All Textures"),
+	BeforeCurrent UMETA(DisplayName = "Before Current"),
+	AfterCurrent UMETA(DisplayName = "After Current")
+};
+
 UCLASS()
 class UQuickSDFToolProperties : public UInteractiveToolPropertySet
 {
@@ -63,7 +72,10 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bAutoSyncLight = true;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint All Textures"))
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint Target Mode"))
+	EQuickSDFPaintTargetMode PaintTargetMode = EQuickSDFPaintTargetMode::CurrentOnly;
+
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint All Textures", HideInDetailPanel))
 	bool bPaintAllAngles = false;
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Enable Quick Stroke"))
