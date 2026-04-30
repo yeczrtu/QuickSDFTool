@@ -1036,6 +1036,16 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 
 void UQuickSDFPaintTool::AddKeyframe()
 {
+	AddKeyframeInternal(0.0f, false);
+}
+
+void UQuickSDFPaintTool::AddKeyframeAtAngle(float Angle)
+{
+	AddKeyframeInternal(Angle, true);
+}
+
+void UQuickSDFPaintTool::AddKeyframeInternal(float RequestedAngle, bool bUseRequestedAngle)
+{
 	if (!Properties) return;
 	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
 	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return;
@@ -1053,24 +1063,68 @@ void UQuickSDFPaintTool::AddKeyframe()
 	Asset->Modify();
 	Properties->Modify();
 
-	// Insert after current EditAngleIndex
-	int32 InsertIndex = Properties->EditAngleIndex + 1;
-	
+	const auto GetFallbackInsert = [this, Asset](int32& OutInsertIndex, float& OutAngle)
+	{
+		if (Asset->AngleDataList.Num() == 0)
+		{
+			OutAngle = 0.0f;
+			OutInsertIndex = 0;
+			return;
+		}
+
+		const int32 CurrentIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Asset->AngleDataList.Num() - 1);
+		OutInsertIndex = CurrentIndex + 1;
+		if (OutInsertIndex >= Asset->AngleDataList.Num())
+		{
+			const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
+			OutAngle = FMath::Min(Asset->AngleDataList.Last().Angle + 10.0f, MaxAngle);
+		}
+		else
+		{
+			const float PrevAngle = Asset->AngleDataList[OutInsertIndex - 1].Angle;
+			const float NextAngle = Asset->AngleDataList[OutInsertIndex].Angle;
+			OutAngle = (PrevAngle + NextAngle) * 0.5f;
+		}
+	};
+
+	int32 InsertIndex = 0;
 	float NewAngle = 0.0f;
-	if (Asset->AngleDataList.Num() == 0)
+
+	if (bUseRequestedAngle)
 	{
-		NewAngle = 0.0f;
-		InsertIndex = 0;
-	}
-	else if (InsertIndex >= Asset->AngleDataList.Num())
-	{
-		NewAngle = FMath::Min(Asset->AngleDataList.Last().Angle + 10.0f, 180.0f);
+		const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
+		NewAngle = FMath::Clamp(RequestedAngle, 0.0f, MaxAngle);
+
+		bool bOverlapsExistingKey = false;
+		for (const FQuickSDFAngleData& AngleData : Asset->AngleDataList)
+		{
+			if (FMath::IsNearlyEqual(AngleData.Angle, NewAngle, 0.05f))
+			{
+				bOverlapsExistingKey = true;
+				break;
+			}
+		}
+
+		if (bOverlapsExistingKey)
+		{
+			GetFallbackInsert(InsertIndex, NewAngle);
+		}
+		else
+		{
+			InsertIndex = Asset->AngleDataList.Num();
+			for (int32 Index = 0; Index < Asset->AngleDataList.Num(); ++Index)
+			{
+				if (NewAngle < Asset->AngleDataList[Index].Angle)
+				{
+					InsertIndex = Index;
+					break;
+				}
+			}
+		}
 	}
 	else
 	{
-		float PrevAngle = Asset->AngleDataList[InsertIndex - 1].Angle;
-		float NextAngle = Asset->AngleDataList[InsertIndex].Angle;
-		NewAngle = (PrevAngle + NextAngle) * 0.5f;
+		GetFallbackInsert(InsertIndex, NewAngle);
 	}
 
 	FQuickSDFAngleData NewData;

@@ -134,6 +134,7 @@ public:
 	int32 GetMaskRevision() const { return MaskRevision; }
 	
 	void AddKeyframe();
+	void AddKeyframeAtAngle(float Angle);
 	void RemoveKeyframe(int32 Index);
 	
 	void FillOriginalShading(int32 AngleIndex);
@@ -176,6 +177,7 @@ protected:
 	class UTexture2D* CreateTransientTextureFromPixels(const TArray<FColor>& Pixels, int32 Width, int32 Height) const;
 	bool ApplyPixelsWithUndo(int32 AngleIndex, const TArray<FColor>& Pixels, const FText& ChangeDescription);
 	bool CopyNearestMaskToAngle(int32 DestinationIndex);
+	void AddKeyframeInternal(float RequestedAngle, bool bUseRequestedAngle);
 	void SyncPropertiesFromActiveAsset();
 	void InvalidateUVOverlayCache();
 	class UTextureRenderTarget2D* GetUVOverlayRenderTarget();

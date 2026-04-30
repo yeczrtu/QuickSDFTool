@@ -510,7 +510,7 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 						[
 							MakeTimelineIconButton(
 								"QuickSDF.Action.AddKey",
-								LOCTEXT("AddFrameTooltip", "Add a timeline keyframe"),
+								LOCTEXT("AddFrameTooltip", "Add a timeline keyframe at the current seek angle"),
 								FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnAddKeyframeClicked))
 						]
 						+ SHorizontalBox::Slot()
@@ -1234,7 +1234,19 @@ FReply SQuickSDFTimeline::OnAddKeyframeClicked()
 	UQuickSDFPaintTool* Tool = GetActivePaintTool();
 	if (Tool)
 	{
-		Tool->AddKeyframe();
+		const float LightYaw = GetCurrentLightYaw();
+		if (LightYaw >= 0.0f)
+		{
+			Tool->AddKeyframeAtAngle(LightYaw);
+		}
+		else if (Tool->Properties && Tool->Properties->TargetAngles.IsValidIndex(Tool->Properties->EditAngleIndex))
+		{
+			Tool->AddKeyframeAtAngle(Tool->Properties->TargetAngles[Tool->Properties->EditAngleIndex]);
+		}
+		else
+		{
+			Tool->AddKeyframe();
+		}
 	}
 	return FReply::Handled();
 }
