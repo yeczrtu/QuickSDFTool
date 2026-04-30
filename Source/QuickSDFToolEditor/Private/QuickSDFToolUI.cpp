@@ -13,6 +13,7 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Layout/SUniformGridPanel.h"
 #include "Widgets/SBoxPanel.h"
@@ -274,31 +275,43 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeIconLabelButton(const FName IconName, co
 
 TSharedRef<SWidget> QuickSDFToolUI::MakePaintToggleButton(EQuickSDFPaintToggle Toggle, FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties)
 {
-	return SNew(SCheckBox)
-		.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
-		.ToolTipText_Lambda([Toggle, GetPaintTool, FallbackProperties]()
-		{
-			return GetToggleToolTip(GetProperties(GetPaintTool(), FallbackProperties), Toggle);
-		})
-		.IsChecked_Lambda([Toggle, GetPaintTool, FallbackProperties]()
-		{
-			return GetToggleValue(GetProperties(GetPaintTool(), FallbackProperties), Toggle) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-		})
-		.OnCheckStateChanged_Lambda([Toggle, GetPaintTool, FallbackProperties](ECheckBoxState NewState)
-		{
-			UQuickSDFPaintTool* Tool = GetPaintTool();
-			SetToggleValue(Tool, GetProperties(Tool, FallbackProperties), Toggle, NewState == ECheckBoxState::Checked);
-		})
-		.Padding(FMargin(5.0f, 3.0f))
+	return SNew(SBox)
+		.WidthOverride(28.0f)
+		.HeightOverride(24.0f)
 		[
-			SNew(SImage)
-			.Image(FQuickSDFToolStyle::GetBrush(GetToggleIconName(Toggle)))
-			.ColorAndOpacity_Lambda([Toggle, GetPaintTool, FallbackProperties]()
+			SNew(SCheckBox)
+			.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
+			.ToolTipText_Lambda([Toggle, GetPaintTool, FallbackProperties]()
 			{
-				return GetToggleValue(GetProperties(GetPaintTool(), FallbackProperties), Toggle)
-					? FSlateColor(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
-					: FSlateColor(FLinearColor(0.62f, 0.62f, 0.62f, 1.0f));
+				return GetToggleToolTip(GetProperties(GetPaintTool(), FallbackProperties), Toggle);
 			})
+			.IsChecked_Lambda([Toggle, GetPaintTool, FallbackProperties]()
+			{
+				return GetToggleValue(GetProperties(GetPaintTool(), FallbackProperties), Toggle) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+			})
+			.OnCheckStateChanged_Lambda([Toggle, GetPaintTool, FallbackProperties](ECheckBoxState NewState)
+			{
+				UQuickSDFPaintTool* Tool = GetPaintTool();
+				SetToggleValue(Tool, GetProperties(Tool, FallbackProperties), Toggle, NewState == ECheckBoxState::Checked);
+			})
+			.Padding(FMargin(3.0f, 2.0f))
+			[
+				SNew(SBox)
+				.WidthOverride(16.0f)
+				.HeightOverride(16.0f)
+				.HAlign(HAlign_Center)
+				.VAlign(VAlign_Center)
+				[
+					SNew(SImage)
+					.Image(FQuickSDFToolStyle::GetBrush(GetToggleIconName(Toggle)))
+					.ColorAndOpacity_Lambda([Toggle, GetPaintTool, FallbackProperties]()
+					{
+						return GetToggleValue(GetProperties(GetPaintTool(), FallbackProperties), Toggle)
+							? FSlateColor(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
+							: FSlateColor(FLinearColor(0.62f, 0.62f, 0.62f, 1.0f));
+					})
+				]
+			]
 		];
 }
 
@@ -309,7 +322,7 @@ TSharedRef<SWidget> QuickSDFToolUI::MakePaintToggleBar(FGetPaintTool GetPaintToo
 	{
 		ToggleRow->AddSlot()
 		.AutoWidth()
-		.Padding(1.0f, 0.0f)
+		.Padding(0.5f, 0.0f)
 		[
 			MakePaintToggleButton(Toggle, GetPaintTool, FallbackProperties)
 		];

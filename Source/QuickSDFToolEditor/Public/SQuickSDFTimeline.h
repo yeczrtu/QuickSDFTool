@@ -95,6 +95,7 @@ private:
 	void SeekTimelineAtScreenPosition(const FVector2D& ScreenPosition);
 	EVisibility GetRefineVisibility() const;
 	EVisibility GetCompactVisibility() const;
+	FText GetHeaderStatusText() const;
 	FText GetCompactSummaryText() const;
 
 	// Caching
