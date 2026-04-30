@@ -141,7 +141,6 @@ QuickSDFTool currently targets UE 5.7 because the editor tool is built on curren
 ### P0: Make the Preview Release Reliable
 
 - [ ] Confirm and document the final SDF output direction.
-- [ ] Fix timeline thumbnail/handle misalignment after clicking.
 - [ ] Improve or document UV-dependent brush-size mismatch.
 - [ ] Add a short end-to-end video showing mask paint -> SDF texture -> toon shader result.
 - [ ] Publish `v0.1.0-preview` with release notes and install verification steps.
@@ -204,7 +203,6 @@ For maintainers preparing the GitHub page:
 ## Known Defects
 
 - UV layout can affect the relationship between brush size and painted area.
-- Timeline thumbnails/handles can become misaligned after interaction.
 - SDF output direction still needs final verification against the preview material.
 - GPU JFA shader files exist, but the public generation path currently uses the CPU `FSDFProcessor` path.
 
