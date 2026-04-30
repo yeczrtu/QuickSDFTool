@@ -398,24 +398,13 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 					.Padding(0.0f)
 					[
 						SNew(SVerticalBox)
-						+ SVerticalBox::Slot()
-						.AutoHeight()
-						.Padding(8.0f, 4.0f)
-						[
-							SNew(SBox)
-							[
-								SNew(STextBlock)
-								.Text(this, &SQuickSDFTimeline::GetCompactSummaryText)
-								.Font(FAppStyle::GetFontStyle("SmallFont"))
-								.ColorAndOpacity(FLinearColor(0.8f, 0.8f, 0.8f, 1.0f))
-							]
-						]
-						// Bottom Row: Timeline Track
+						// Timeline Track
 						+ SVerticalBox::Slot()
 						.AutoHeight()
 						.Padding(0.0f)
 						[
 							SNew(SBox)
+							.ToolTipText(this, &SQuickSDFTimeline::GetCompactSummaryText)
 							.HeightOverride(32.0f)
 							[
 								SNew(SOverlay)

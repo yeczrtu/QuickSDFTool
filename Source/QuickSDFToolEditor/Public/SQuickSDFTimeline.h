@@ -105,7 +105,7 @@ private:
 	TArray<TSharedPtr<FSlateBrush>> KeyframeBrushes;
 	TArray<TStrongObjectPtr<UTexture2D>> ThumbnailTextures;
 	int32 CachedMaskRevision = INDEX_NONE;
-	bool bGridSnapEnabled = true;
+	bool bGridSnapEnabled = false;
 	bool bSeekingTimeline = false;
 	bool bTimelineDragTransactionOpen = false;
 
