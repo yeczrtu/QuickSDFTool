@@ -22,6 +22,7 @@ public:
 	virtual TMap<FName, TArray<TSharedPtr<FUICommandInfo>>> GetModeCommands() const override;
 	virtual void ActorSelectionChangeNotify() override;
 	virtual bool IsSelectionAllowed(AActor* InActor, bool bInSelection) const override;
+	virtual bool InputKey(FEditorViewportClient* ViewportClient, FViewport* Viewport, FKey Key, EInputEvent Event) override;
 	// Set the main directional light rotation for previewing
 	void SetPreviewLightAngle(float AzimuthAngle);
 	void SetTimelineSeekAngle(float AzimuthAngle);
@@ -36,6 +37,11 @@ private:
 	void DetachTimelineFromViewport();
 	bool CanSelectRelativeFrame() const;
 	void SelectRelativeFrame(int32 Direction);
+	static bool IsArrowNavigationKey(FKey Key);
+	static bool IsFrameNavigationKey(FKey Key);
+	void CacheViewportViewState(FEditorViewportClient* ViewportClient, FViewport* Viewport);
+	void RestoreViewportViewState(FEditorViewportClient* ViewportClient);
+	void EndViewportNavigationSuppression();
 	void MuteLights();
 	void RestoreLights();
 	void OnPreSaveWorld(UWorld* InWorld, FObjectPreSaveContext InContext);
@@ -53,4 +59,18 @@ private:
 		float Intensity;
 	};
 	TArray<FQuickSDFLightState> OriginalLightStates;
+
+	struct FViewportViewState
+	{
+		FVector Location = FVector::ZeroVector;
+		FRotator Rotation = FRotator::ZeroRotator;
+		FVector LookAtLocation = FVector::ZeroVector;
+		float OrthoZoom = 0.0f;
+		bool bPerspective = true;
+		bool bValid = false;
+	};
+
+	FViewportViewState CachedViewportViewState;
+	FEditorViewportClient* SuppressedViewportClient = nullptr;
+	FViewport* SuppressedViewport = nullptr;
 };

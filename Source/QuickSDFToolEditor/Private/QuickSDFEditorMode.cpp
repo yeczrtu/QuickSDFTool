@@ -13,6 +13,8 @@
 #include "Tools/EdModeInteractiveToolsContext.h"
 #include "QuickSDFSelectTool.h"
 #include "SQuickSDFTimeline.h"
+#include "CameraController.h"
+#include "EditorViewportClient.h"
 #include "LevelEditor.h"
 #include "SLevelViewport.h"
 #include "Framework/Commands/UICommandList.h"
@@ -56,6 +58,7 @@ void UQuickSDFEditorMode::Exit()
 {
 	DetachTimelineFromViewport();
 	TimelineWidget.Reset();
+	EndViewportNavigationSuppression();
 
 	RestoreLights();
 
@@ -190,6 +193,22 @@ void UQuickSDFEditorMode::OnPostSaveWorld(UWorld* InWorld, FObjectPostSaveContex
 
 void UQuickSDFEditorMode::Tick(FEditorViewportClient* ViewportClient, float DeltaTime)
 {
+	if (CachedViewportViewState.bValid && ViewportClient == SuppressedViewportClient)
+	{
+		const bool bAnyArrowKeyDown = SuppressedViewport &&
+			(SuppressedViewport->KeyState(EKeys::Left) ||
+			 SuppressedViewport->KeyState(EKeys::Right) ||
+			 SuppressedViewport->KeyState(EKeys::Up) ||
+			 SuppressedViewport->KeyState(EKeys::Down));
+
+		RestoreViewportViewState(ViewportClient);
+
+		if (!bAnyArrowKeyDown)
+		{
+			EndViewportNavigationSuppression();
+		}
+	}
+
 	if (!TimelineViewport.IsValid())
 	{
 		AttachTimelineToActiveViewport();
@@ -220,6 +239,94 @@ void UQuickSDFEditorMode::BindCommands()
 		Commands.NextFrame,
 		FExecuteAction::CreateUObject(this, &UQuickSDFEditorMode::SelectRelativeFrame, 1),
 		FCanExecuteAction::CreateUObject(this, &UQuickSDFEditorMode::CanSelectRelativeFrame));
+}
+
+bool UQuickSDFEditorMode::InputKey(FEditorViewportClient* ViewportClient, FViewport* Viewport, FKey Key, EInputEvent Event)
+{
+	if (!IsArrowNavigationKey(Key))
+	{
+		return false;
+	}
+
+	if (Event == IE_Pressed || Event == IE_Repeat)
+	{
+		CacheViewportViewState(ViewportClient, Viewport);
+	}
+
+	if (Event == IE_Pressed || Event == IE_Repeat)
+	{
+		if (IsFrameNavigationKey(Key))
+		{
+			SelectRelativeFrame(Key == EKeys::Right ? 1 : -1);
+		}
+	}
+	else if (Event == IE_Released)
+	{
+		RestoreViewportViewState(ViewportClient);
+		EndViewportNavigationSuppression();
+	}
+
+	return true;
+}
+
+bool UQuickSDFEditorMode::IsArrowNavigationKey(FKey Key)
+{
+	return Key == EKeys::Left || Key == EKeys::Right || Key == EKeys::Up || Key == EKeys::Down;
+}
+
+bool UQuickSDFEditorMode::IsFrameNavigationKey(FKey Key)
+{
+	return Key == EKeys::Left || Key == EKeys::Right;
+}
+
+void UQuickSDFEditorMode::CacheViewportViewState(FEditorViewportClient* ViewportClient, FViewport* Viewport)
+{
+	if (!ViewportClient)
+	{
+		return;
+	}
+
+	if (CachedViewportViewState.bValid && SuppressedViewportClient == ViewportClient)
+	{
+		return;
+	}
+
+	SuppressedViewportClient = ViewportClient;
+	SuppressedViewport = Viewport;
+	CachedViewportViewState.Location = ViewportClient->GetViewLocation();
+	CachedViewportViewState.Rotation = ViewportClient->GetViewRotation();
+	CachedViewportViewState.LookAtLocation = ViewportClient->GetLookAtLocation();
+	CachedViewportViewState.OrthoZoom = ViewportClient->GetOrthoZoom();
+	CachedViewportViewState.bPerspective = ViewportClient->IsPerspective();
+	CachedViewportViewState.bValid = true;
+}
+
+void UQuickSDFEditorMode::RestoreViewportViewState(FEditorViewportClient* ViewportClient)
+{
+	if (!CachedViewportViewState.bValid || ViewportClient != SuppressedViewportClient || !ViewportClient)
+	{
+		return;
+	}
+
+	ViewportClient->SetViewLocation(CachedViewportViewState.Location);
+	ViewportClient->SetViewRotation(CachedViewportViewState.Rotation);
+	ViewportClient->SetLookAtLocation(CachedViewportViewState.LookAtLocation, false);
+	if (!CachedViewportViewState.bPerspective && !FMath::IsNearlyZero(CachedViewportViewState.OrthoZoom))
+	{
+		ViewportClient->SetOrthoZoom(CachedViewportViewState.OrthoZoom);
+	}
+	if (FEditorCameraController* CameraController = ViewportClient->GetCameraController())
+	{
+		CameraController->ResetVelocity();
+	}
+	ViewportClient->Invalidate(false, false);
+}
+
+void UQuickSDFEditorMode::EndViewportNavigationSuppression()
+{
+	CachedViewportViewState = FViewportViewState();
+	SuppressedViewportClient = nullptr;
+	SuppressedViewport = nullptr;
 }
 
 bool UQuickSDFEditorMode::CanSelectRelativeFrame() const
