@@ -490,6 +490,12 @@ bool UQuickSDFPaintTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 FInputRayHit UQuickSDFPaintTool::BeginHoverSequenceHitTest(const FInputDeviceRay& PressPos)
 {
 	LastInputScreenPosition = PressPos.ScreenPosition;
+	if (bAdjustingBrushRadius)
+	{
+		// Blender-style brush resize: keep the current brush indicator anchored
+		// while the cursor movement is used only for changing the radius.
+		return FInputRayHit(0.0f);
+	}
 
 	FHitResult OutHit;
 	if (HitTest(PressPos.WorldRay, OutHit))
