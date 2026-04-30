@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "Tools/InteractiveToolsCommands.h"
+#include "QuickSDFToolStyle.h"
 
 class FQuickSDFEditorModeCommands : public TCommands<FQuickSDFEditorModeCommands>
 {
@@ -8,7 +9,7 @@ public:
 		"QuickSDF",
 		NSLOCTEXT("QuickSDF", "QuickSDFCommands", "Quick SDF Mode"),
 		NAME_None,
-		FAppStyle::GetAppStyleSetName())
+		FQuickSDFToolStyle::GetStyleSetName())
 	{}
 
 	virtual void RegisterCommands() override;

@@ -3,6 +3,7 @@
 #include "PropertyEditorModule.h"
 #include "QuickSDFToolProperties.h"
 #include "QuickSDFToolPropertiesDetails.h"
+#include "QuickSDFToolStyle.h"
 
 #define LOCTEXT_NAMESPACE "FQuickSDFToolEditorModule"
 
@@ -20,6 +21,7 @@ void FQuickSDFToolEditorModule::ShutdownModule()
 {
 	FCoreDelegates::OnPostEngineInit.RemoveAll(this);
 	FQuickSDFEditorModeCommands::Unregister();
+	FQuickSDFToolStyle::Shutdown();
 	
 	if (FModuleManager::Get().IsModuleLoaded("PropertyEditor"))
 	{
@@ -30,6 +32,7 @@ void FQuickSDFToolEditorModule::ShutdownModule()
 
 void FQuickSDFToolEditorModule::OnPostEngineInit()
 {
+	FQuickSDFToolStyle::Initialize();
 	FQuickSDFEditorModeCommands::Register();
 }
 

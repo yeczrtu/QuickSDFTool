@@ -2,6 +2,7 @@
 #include "QuickSDFPaintToolPrivate.h"
 #include "QuickSDFMeshComponentAdapter.h"
 #include "QuickSDFToolSubsystem.h"
+#include "QuickSDFToolUI.h"
 #include "QuickSDFAsset.h"
 #include "SDFProcessor.h"
 #include "BaseGizmos/BrushStampIndicator.h"
@@ -131,6 +132,58 @@ void UQuickSDFPaintTool::RegisterActions(FInteractiveToolActionSet& ActionSet)
 		{
 			BeginBrushResizeMode();
 		});
+
+	ActionSet.RegisterAction(
+		this,
+		QuickSDFActionOpenToggleMenu,
+		TEXT("QuickSDFOpenToggleMenu"),
+		NSLOCTEXT("QuickSDFPaintTool", "OpenToggleMenuShortcut", "Quick Toggles"),
+		NSLOCTEXT("QuickSDFPaintTool", "OpenToggleMenuShortcutDesc", "Open the Quick SDF paint toggle menu."),
+		EModifierKey::Alt,
+		EKeys::T,
+		[this]()
+		{
+			TSharedPtr<SWindow> ParentWindow = FSlateApplication::Get().GetActiveTopLevelWindow();
+			if (ParentWindow.IsValid())
+			{
+				QuickSDFToolUI::ShowQuickToggleMenu(
+					ParentWindow.ToSharedRef(),
+					FSlateApplication::Get().GetCursorPos(),
+					[this]()
+					{
+						return this;
+					});
+			}
+		});
+
+	const TArray<FKey> ToggleKeys = {
+		EKeys::One,
+		EKeys::Two,
+		EKeys::Three,
+		EKeys::Four,
+		EKeys::Five,
+		EKeys::Six,
+		EKeys::Seven,
+		EKeys::Eight,
+	};
+
+	const TArray<EQuickSDFPaintToggle>& Toggles = QuickSDFToolUI::GetPaintToggles();
+	for (int32 Index = 0; Index < Toggles.Num() && Index < ToggleKeys.Num(); ++Index)
+	{
+		const EQuickSDFPaintToggle Toggle = Toggles[Index];
+		ActionSet.RegisterAction(
+			this,
+			QuickSDFActionToggleBase + Index,
+			FString::Printf(TEXT("QuickSDFToggle%d"), Index + 1),
+			QuickSDFToolUI::GetToggleLabel(Toggle),
+			QuickSDFToolUI::GetToggleDescription(Toggle),
+			EModifierKey::Alt,
+			ToggleKeys[Index],
+			[this, Toggle]()
+			{
+				QuickSDFToolUI::ToggleValue(this, Properties, Toggle);
+			});
+	}
 }
 
 void UQuickSDFPaintTool::InitializeRenderTargets()

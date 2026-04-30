@@ -1,129 +1,88 @@
 <p align="center">
-  <h1 align="center">QuickSDFTool</h1>
-  <p align="center">
-    An Unreal Engine 5 Editor Mode plugin for creating SDF-based threshold maps for toon/cel shading.
-    <br />
-    <a href="#features">Features</a> · <a href="#installation">Installation</a> · <a href="#quick-start">Quick Start</a> · <a href="./README_JP.md">日本語</a>
-  </p>
+  <img src=".github/assets/social-preview.svg" alt="QuickSDFTool workflow preview" width="960">
+</p>
+
+<h1 align="center">QuickSDFTool</h1>
+
+<p align="center">
+  Unreal Engine 5 Editor Mode for painting toon-shadow masks and generating SDF threshold maps.
+  <br>
+  <a href="#demo">Demo</a> · <a href="#quick-start">Quick Start</a> · <a href="#artist-use-cases">Use Cases</a> · <a href="./README_JP.md">日本語</a>
 </p>
 
 > [!NOTE]
-> **Status: Prototype** — This project is under active development. APIs, workflows, and UI may change without notice.
+> **Status: Prototype.** QuickSDFTool is usable for experimentation and small production tests, but APIs, UI, and saved asset details may still change before a stable release.
 
----
+## Demo
 
-
+QuickSDFTool lets artists paint binary light/shadow masks on a mesh at multiple light angles, then composites those masks into a high-precision SDF threshold texture for toon and cel shading.
 
 https://github.com/user-attachments/assets/1eb770b6-b65d-44bb-b5a0-fbb78d998202
 
+The intended workflow is:
 
-
-## Overview
-
-**QuickSDFTool** is an editor-only tool that lets artists paint binary shadow masks on 3D meshes at various light angles, then automatically composites them into a high-quality **SDF (Signed Distance Field) threshold map**. The generated texture encodes smooth light-to-shadow transitions in UV space, commonly used in anime/toon rendering to control shadow placement per light direction.
-
-### What Is an SDF Threshold Map?
-
-In toon/cel shading pipelines, an SDF threshold map stores per-texel shadow transition thresholds as a function of light angle. By comparing the dot product of the light direction against the stored threshold, the shader can produce artist-controlled, resolution-independent shadow boundaries — far superior to simple N·L thresholding.
-
----
-
-## Features
-
-- **Custom Editor Mode** — Registers a dedicated UE5 Editor Mode (`Quick SDF`) accessible from the mode selector toolbar, built on the Interactive Tools Framework
-- **Direct Mesh Painting** — Paint binary shadow masks directly on Static Meshes in the viewport with real-time preview using the `BaseBrushTool` pipeline
-- **2D UV Canvas Painting** — Paint on a HUD-overlaid 2D texture preview for fine-grained control, with seamless dual-input support (mesh surface ↔ UV canvas)
-- **Spatial Timeline UI** — A viewport-overlaid angular timeline widget for managing keyframes by light angle, with:
-  - Draggable keyframe handles with thumbnail previews
-  - Grid snapping at 5° increments
-  - Add / Remove keyframe controls
-  - Automatic `DirectionalLight` synchronization
-- **Symmetry Mode** — Mirror light angles (0°–90°) to produce symmetric SDF maps, reducing the number of masks needed
-- **Onion Skinning** — Semi-transparent overlay of adjacent keyframe textures for smooth transitions between angles
-- **Auto Fill from Original Shading** — Bake the current viewport lighting (material baking) into a keyframe as a starting point
-- **SDF Generation Pipeline**
-  - CPU-side SDF using Felzenszwalb & Huttenlocher distance transform
-  - GPU-accelerated Jump Flooding Algorithm (JFA) via Compute Shader
-  - Optional super-resolution upscaling (1×–8×) before SDF computation with anti-aliased downscaling
-  - Automatic Monopolar / Bipolar format detection
-  - Multi-channel output (R/G/B/A) for asymmetric or complex shadow profiles
-- **Non-Destructive Workflow** — All paint data is stored in a `UQuickSDFAsset` (Data Asset), which can be saved, reloaded, and iterated upon
-- **Full Undo / Redo** — Paint strokes, keyframe edits, and brush resizing are all wrapped in proper UE5 transactions
-- **Smooth Brush Input** — Catmull-Rom spline interpolation with configurable stroke stabilization and spacing
-
----
-
-## Architecture
-
-```
-QuickSDFTool/
-├── Content/
-│   ├── Materials/        # Preview materials (M_PreviewMat)
-│   ├── Textures/         # Default texture assets
-│   └── Widget/           # UMG widget blueprints
-├── Shaders/
-│   └── Private/
-│       └── JumpFloodingCS.usf   # JFA Compute Shader (SM5+)
-└── Source/
-    ├── QuickSDFTool/              # Runtime Module
-    │   ├── QuickSDFAsset          # UDataAsset for angle data & SDF results
-    │   └── QuickSDFToolModule     # Module registration
-    ├── QuickSDFToolEditor/        # Editor Module
-    │   ├── QuickSDFEditorMode     # UEdMode implementation, light management
-    │   ├── QuickSDFPaintTool      # Core paint tool (BaseBrushTool)
-    │   ├── QuickSDFSelectTool     # Selection tool for target meshes
-    │   ├── QuickSDFToolSubsystem  # Editor subsystem for state management
-    │   ├── SDFProcessor           # CPU SDF generation & multi-channel compositing
-    │   ├── SQuickSDFTimeline      # Slate viewport overlay timeline widget
-    │   └── QuickSDFPreviewWidget  # UMG HUD preview widget
-    └── QuickSDFToolShaders/       # Shader Module
-        ├── JumpFloodingCS         # Compute shader C++ binding
-        └── QuickSDFToolShadersModule
+```mermaid
+flowchart LR
+    A["Paint masks<br>per light angle"] --> B["Generate SDF<br>threshold map"]
+    B --> C["Drive toon shader<br>shadow placement"]
 ```
 
-### Paint Tool Source Layout
+## What Works Today
 
-The `QuickSDFPaintTool` implementation is split by responsibility to keep the editor tool maintainable:
+- Dedicated UE5 Editor Mode named `Quick SDF`.
+- Direct painting on Static Mesh and Skeletal Mesh components.
+- 2D UV preview painting for precise texture-space edits.
+- Angular keyframe timeline with thumbnails, snapping, add/remove controls, and `DirectionalLight` sync.
+- Symmetry mode for front-half sweeps, onion skinning, quick strokes, and paint-all-angles workflow.
+- Mask import/export, non-destructive `UQuickSDFAsset` storage, and UE transaction-based undo/redo.
+- CPU SDF generation with optional 1x-8x upscaling and half-float texture export.
+- Example preview/toon materials under `Content/Materials/`.
 
-| File | Responsibility |
-|------|----------------|
-| `QuickSDFPaintTool.cpp` | Tool setup/shutdown, input behavior registration, target component switching |
-| `QuickSDFPaintToolAsset.cpp` | SDF generation, mask import/export, asset synchronization, keyframe and property handling |
-| `QuickSDFPaintToolRenderTarget.cpp` | Render target pixel operations, undo/redo change objects, brush mask texture creation, preview material updates |
-| `QuickSDFPaintToolStroke.cpp` | Brush strokes, hit testing, UV preview painting, quick line handling, brush resizing |
-| `QuickSDFPaintToolHUD.cpp` | HUD preview drawing and UV overlay render target cache |
-| `QuickSDFPaintToolBake.cpp` | Original-shading material baking into mask keyframes |
-| `QuickSDFPaintToolPrivate.h/.cpp` | Internal shared constants, helper functions, and command-change types |
+## Why SDF Threshold Maps?
 
-### Module Dependencies
+Regular toon shading often thresholds `N dot L`, which makes shadow borders depend heavily on normals and mesh topology. An SDF threshold map stores artist-painted transition timing in UV space instead. Your shader compares the light direction against the texture value, so the shadow shape can follow a designed anime-style face, hair, or clothing pattern.
 
-| Module | Type | Key Dependencies |
-|--------|------|------------------|
-| `QuickSDFTool` | Runtime | `Core`, `Engine` |
-| `QuickSDFToolEditor` | Editor | `InteractiveToolsFramework`, `EditorInteractiveToolsFramework`, `GeometryCore`, `DynamicMesh`, `ModelingComponents`, `MeshConversion`, `MaterialBaking`, `Slate` |
-| `QuickSDFToolShaders` | Runtime (PostConfigInit) | `Core`, `RenderCore`, `RHI` |
+Conceptually:
 
----
+```text
+painted light/shadow masks -> SDF interpolation -> RGBA threshold texture -> controlled toon shadow
+```
 
-## Requirements
+This is especially useful when the "right" shadow is an art-direction decision rather than a physically correct lighting result.
 
-| Requirement | Version |
-|-------------|---------|
-| Unreal Engine | 5.7 (Developed on 5.7.4+) |
-| Shader Model | SM5 or higher |
-| Project Type | C++ project (plugin must be compiled) |
+## Artist Use Cases
 
----
+- **Face shadows:** paint cheek, nose, mouth, and eye-socket shadow shapes that rotate cleanly with the light.
+- **Hair shadows:** author simplified shadow bands for bangs and side hair without relying on noisy mesh normals.
+- **Clothing shadows:** keep graphic fold shadows stable across stylized materials.
+- **Small-team workflows:** iterate in-editor without round-tripping every mask through external tools.
+
+## Quick Start
+
+Use this path when you only want to see a result quickly.
+
+1. Copy this repository into your C++ Unreal project as `Plugins/QuickSDFTool/`.
+2. Regenerate project files, build the project, enable **QuickSDFTool**, then restart the editor.
+3. Open the Editor Mode selector and choose **Quick SDF**.
+4. Select a mesh in the level.
+5. Paint white with `LMB`; paint black/shadow with `Shift + LMB`.
+6. Add or move timeline keys for the light angles you want.
+7. Click **Create Threshold Map** or **Generate SDF Threshold Map** in the tool details.
+8. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
+
+See [Examples](./Examples/README.md), [Material Setup](./Docs/MaterialSetup.md), and [Troubleshooting](./Docs/Troubleshooting.md) for a fuller walkthrough.
 
 ## Installation
 
-1. Clone or download this repository:
+1. Clone or download the repository:
+
    ```bash
-   git clone https://github.com/YOUR_USERNAME/QuickSDFTool.git
+   git clone https://github.com/yeczrtu/QuickSDFTool.git
    ```
 
-2. Copy the `QuickSDFTool/` folder into your project's `Plugins/` directory:
-   ```
+2. Place it in your project:
+
+   ```text
    YourProject/
    └── Plugins/
        └── QuickSDFTool/
@@ -134,122 +93,138 @@ The `QuickSDFPaintTool` implementation is split by responsibility to keep the ed
    ```
 
 3. Regenerate project files and build:
-   ```bash
-   # Windows (Visual Studio)
-   Right-click YourProject.uproject → Generate Visual Studio project files → Build
+
+   ```text
+   Right-click YourProject.uproject -> Generate Visual Studio project files -> Build
    ```
 
-4. Enable the plugin in the Editor:
-   **Edit → Plugins → Search "QuickSDFTool" → Enable → Restart Editor**
+4. Enable the plugin:
 
----
+   ```text
+   Edit -> Plugins -> Search "QuickSDFTool" -> Enable -> Restart Editor
+   ```
 
-## Quick Start
+## Compatibility
 
-1. **Enter the Mode** — Select `Quick SDF` from the Editor Mode dropdown in the viewport toolbar
-2. **Select a Mesh** — Click a Static Mesh actor in the scene; it will switch to the SDF preview material
-3. **Set Up Keyframes** — Use the timeline overlay at the bottom of the viewport to add/remove keyframes at desired light angles
-4. **Paint Shadows** — LMB to paint light (white), Shift+LMB to paint shadow (black) on the mesh or the 2D UV preview
-5. **Navigate Angles** — Click keyframes in the timeline to switch angles; the preview light rotates to match
-6. **Generate SDF** — Click **"Generate SDF Threshold Map"** in the Details panel to run the compositing pipeline
-7. **Export** — The final texture is saved to `/Game/QuickSDF_GENERATED/`
+| Unreal Engine version | Status |
+| --- | --- |
+| 5.7.4 | Tested development target |
+| 5.7.x | Expected to work, not fully release-tested |
+| 5.6 | Not tested |
+| 5.5 | Not tested |
+| 5.4 | Not tested |
 
-### Controls
+QuickSDFTool currently targets UE 5.7 because the editor tool is built on current Interactive Tools Framework, Modeling Components, Material Baking, and shader module behavior used during development. Compatibility with earlier UE5 releases may be possible, but it has not been verified yet.
+
+## Controls
 
 | Input | Action |
-|-------|--------|
-| LMB Drag | Paint light (white) |
-| Shift + LMB Drag | Paint shadow (black) |
-| Ctrl + F + Mouse Move | Resize brush |
-| Timeline Keyframe Click | Select angle |
-| Timeline Keyframe Drag | Adjust angle |
-| Ctrl + Z / Ctrl + Y | Undo / Redo |
+| --- | --- |
+| `LMB Drag` | Paint light/white |
+| `Shift + LMB Drag` | Paint shadow/black |
+| `Ctrl + F + Mouse Move` | Resize brush |
+| `Timeline Key Click` | Select angle |
+| `Timeline Key Drag` | Adjust angle |
+| `Ctrl + Z / Ctrl + Y` | Undo / Redo |
 
----
+## Features
 
-## TODO
+- **Custom Editor Mode** — Registers a dedicated UE5 mode accessible from the mode selector toolbar.
+- **Direct Mesh Painting** — Paint masks directly on target mesh surfaces with realtime preview.
+- **2D UV Canvas Painting** — Paint on a HUD-overlaid texture preview for texture-space control.
+- **Spatial Timeline UI** — Manage mask keyframes by light angle with thumbnail handles.
+- **Auto Fill from Original Shading** — Bake current viewport/material lighting into a keyframe as a starting point.
+- **SDF Generation Pipeline** — Generate threshold maps through SDF interpolation and RGBA channel packing.
+- **Non-Destructive Workflow** — Store work in `UQuickSDFAsset` and iterate without losing mask state.
+
+## Roadmap
 
 > [!IMPORTANT]
-> This is a prototype. The list below is checked against the current source tree and separates completed work from remaining items.
+> The roadmap is ordered by what most improves trust and first-run success for artists trying the plugin.
 
-### Implemented
+### P0: Make the Preview Release Reliable
 
-- [x] **Skeletal Mesh Support** — `FQuickSDFMeshComponentAdapter` supports both Static Mesh and Skeletal Mesh components
-- [x] **Existing Texture Import** — Import selected textures or image files as mask/keyframe sources
-- [x] **Even Timeline Distribution** — Redistribute current keyframes evenly across the active symmetry range
-- [x] **Export Naming & Overwrite Settings** — Configure SDF/mask texture names and choose whether existing assets are overwritten
-- [x] **Autosave Overlay Recovery** — Reattach the timeline overlay after editor save/autosave events
+- [ ] Confirm and document the final SDF output direction.
+- [ ] Fix timeline thumbnail/handle misalignment after clicking.
+- [ ] Improve or document UV-dependent brush-size mismatch.
+- [ ] Add a short end-to-end video showing mask paint -> SDF texture -> toon shader result.
+- [ ] Publish `v0.1.0-preview` with release notes and install verification steps.
 
-### Core Generation
+### P1: Improve Performance and Compatibility
 
-- [ ] **GPU-Accelerated SDF** — The JFA compute shader and C++ binding exist, but `GenerateSDF()` still uses the CPU `FSDFProcessor` path
-- [ ] **Performance Profiling** — Benchmark and optimize high-resolution texture workflows (4K+)
+- [ ] Enable the GPU JFA SDF path in the user-facing generation flow.
+- [ ] Benchmark 1K, 2K, and 4K mask workflows.
+- [ ] Verify UE 5.6, 5.5, and 5.4 compatibility or document required changes.
 
-### Painting & Timeline Workflow
+### P2: Deepen Painting Workflow
 
-- [ ] **Custom Brush Shapes** — Support importing custom brush alpha textures
-- [ ] **Pressure Sensitivity** — Add tablet pressure support for brush opacity and size
-- [ ] **Frame Duplication** — Add an explicit command to duplicate the current timeline frame and its mask data
-- [ ] **Timeline Navigation** — Add buttons and shortcuts for moving to the previous/next frame
+- [ ] Import custom brush alpha textures.
+- [ ] Add tablet pressure support for brush size and opacity.
+- [ ] Duplicate the current timeline frame and mask data.
+- [ ] Add previous/next timeline navigation buttons and shortcuts.
+- [ ] Add autosave/hot-reload recovery for unsaved mask changes.
 
-### Asset & Data Management
+## Architecture
 
-- [ ] **Auto-Save / Hot-Reload** — Periodically checkpoint paint data and recover unsaved mask changes after reloads
-- [ ] **Multi-UV Channel Preview** — The active UV channel can be selected, but simultaneous multi-channel visualization is not implemented
+```text
+QuickSDFTool/
+├── Content/
+│   ├── Materials/        # Preview and toon materials
+│   ├── Textures/         # Default textures
+│   └── Widget/           # UMG widget blueprints
+├── Shaders/
+│   └── Private/
+│       └── JumpFloodingCS.usf
+└── Source/
+    ├── QuickSDFTool/              # Runtime module and UQuickSDFAsset
+    ├── QuickSDFToolEditor/        # Editor Mode, paint tool, timeline, processor
+    └── QuickSDFToolShaders/       # Compute shader binding
+```
 
-### Documentation & Release
-
-- [ ] **Documentation & Tutorials** — Add video walkthroughs and a detailed wiki
-- [ ] **Icon & Branding** — Create a custom editor mode icon and plugin branding assets
-- [ ] **GitHub Social Preview** — Create social preview images for GitHub repository sharing
-
-### Known Defects
-
-- Depending on how the UV map is unwrapped, brush size may not match the painted area.
-- Timeline images can become misaligned after being clicked.
-- The direction of SDF output may be reversed.
-
----
+| Module | Type | Key Dependencies |
+| --- | --- | --- |
+| `QuickSDFTool` | Runtime | `Core`, `Engine` |
+| `QuickSDFToolEditor` | Editor | `InteractiveToolsFramework`, `EditorInteractiveToolsFramework`, `GeometryCore`, `DynamicMesh`, `ModelingComponents`, `MeshConversion`, `MaterialBaking`, `Slate` |
+| `QuickSDFToolShaders` | Runtime / `PostConfigInit` | `Core`, `RenderCore`, `RHI` |
 
 ## How It Works
 
-```mermaid
-flowchart LR
-    A[Paint Binary Masks\nper Light Angle] --> B[Binarize & Upscale]
-    B --> C[Generate SDF\nper Mask]
-    C --> D[Interpolate\nThreshold T]
-    D --> E[Composite\nMulti-Channel]
-    E --> F[Downscale &\nAnti-Alias]
-    F --> G[Export\nHalf-Float Texture]
-```
+1. **Paint** — For each light angle, paint a binary mask on the mesh or UV preview.
+2. **SDF** — Convert each mask to a signed distance field.
+3. **Interpolate** — Find transitions between neighboring masks and derive threshold value `T`.
+4. **Composite** — Pack values into RGBA channels:
+   - **Monopolar:** symmetric shadow behavior, same threshold in RGB.
+   - **Bipolar:** asymmetric shadow enter/exit values across RGBA.
+5. **Export** — Save the final threshold map as a 16-bit half-float texture.
 
-1. **Paint** — For each light angle, paint a binary shadow mask on the mesh  
-2. **SDF** — Each mask is converted to a signed distance field using the Felzenszwalb & Huttenlocher algorithm  
-3. **Interpolation** — The boundary between adjacent masks is located via SDF zero-crossing interpolation, yielding a per-texel threshold value *T* (0–1)  
-4. **Compositing** — Threshold values are packed into RGBA channels:
-   - **Monopolar** (symmetric): All channels store the same threshold
-   - **Bipolar** (asymmetric): R = shadow-enter (0°–90°), B = shadow-exit (0°–90°), G = shadow-enter (90°–180°), A = shadow-exit (90°–180°)
-5. **Export** — Final texture is exported as a 16-bit half-float texture for precision
+## Repository Setup Checklist
 
----
+For maintainers preparing the GitHub page:
+
+- Add these repository topics: `unreal-engine`, `ue5`, `toon-shading`, `cel-shading`, `sdf`, `editor-plugin`, `technical-art`.
+- Upload `.github/assets/social-preview.svg` as the GitHub Social Preview image, or export it to PNG first.
+- Create a `v0.1.0-preview` release using [the prepared release notes](./Docs/ReleaseNotes/v0.1.0-preview.md).
+
+## Known Defects
+
+- UV layout can affect the relationship between brush size and painted area.
+- Timeline thumbnails/handles can become misaligned after interaction.
+- SDF output direction still needs final verification against the preview material.
+- GPU JFA shader files exist, but the public generation path currently uses the CPU `FSDFProcessor` path.
 
 ## Contributing
 
-Contributions are welcome! Please:
+Contributions are welcome. Good first areas are documentation, UE version verification, small workflow fixes, and sample content.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-
----
+1. Fork the repository.
+2. Create a feature branch.
+3. Keep changes scoped.
+4. Open a pull request with reproduction or verification notes.
 
 ## Acknowledgments
 
-- [Unreal Engine Interactive Tools Framework](https://docs.unrealengine.com/5.0/en-US/interactive-tools-framework-in-unreal-engine/) — Foundation for the paint tool
-- Felzenszwalb & Huttenlocher — *Distance Transforms of Sampled Functions* (2012) — SDF algorithm
-- Jump Flooding Algorithm (JFA) — GPU-accelerated distance field computation
-- [UE5 SDF Face Shadowマッピングでアニメ顔用の影を作ろう](https://unrealengine.hatenablog.com/entry/2024/02/28/222220)
-- [SDF TextureとLiltoonでセルルックの影を再現しよう！ - note](https://note.com/ca__mocha/n/n9289fbbc4c8b)
+- [Unreal Engine Interactive Tools Framework](https://docs.unrealengine.com/5.0/en-US/interactive-tools-framework-in-unreal-engine/) — foundation for the editor paint workflow.
+- Felzenszwalb & Huttenlocher — *Distance Transforms of Sampled Functions* (2012).
+- Jump Flooding Algorithm (JFA) — GPU distance field generation reference.
+- [UE5 SDF Face Shadow Mapping article](https://unrealengine.hatenablog.com/entry/2024/02/28/222220).
+- [SDF Texture and LilToon note](https://note.com/ca__mocha/n/n9289fbbc4c8b).

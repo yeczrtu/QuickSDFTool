@@ -8,8 +8,10 @@
 #include "GameFramework/Actor.h"
 #include "PropertyHandle.h"
 #include "QuickSDFAsset.h"
+#include "QuickSDFPaintTool.h"
 #include "QuickSDFToolProperties.h"
 #include "QuickSDFToolSubsystem.h"
+#include "QuickSDFToolUI.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
@@ -158,6 +160,28 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
 	];
 
+	QuickCategory.AddCustomRow(LOCTEXT("PaintTogglesFilter", "Paint Toggles"))
+	.WholeRowContent()
+	[
+		SNew(SVerticalBox)
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, 4.0f, 0.0f, 2.0f)
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("PaintTogglesLabel", "Paint Toggles"))
+			.Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			QuickSDFToolUI::MakePaintToggleBar([]()
+			{
+				return QuickSDFToolUI::GetActivePaintTool();
+			}, WeakProperties)
+		]
+	];
+
 	AddPropertyIfValid(QuickCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, QualityPreset)));
 
 	QuickCategory.AddCustomRow(LOCTEXT("QuickActionsFilter", "Create Threshold Map Import Edited Masks Fill White Fill Black"))
@@ -168,37 +192,42 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		.AutoHeight()
 		.Padding(0.0f, 4.0f, 0.0f, 2.0f)
 		[
-			SNew(SButton)
-			.Text(LOCTEXT("CreateThresholdMapButton", "Create Threshold Map"))
-			.HAlign(HAlign_Center)
+			SNew(SBox)
 			.IsEnabled_Lambda([]()
 			{
 				return CanCreateThresholdMap();
 			})
-			.OnClicked_Lambda([WeakProperties]()
-			{
-				if (UQuickSDFToolProperties* Props = WeakProperties.Get())
-				{
-					Props->CreateQuickThresholdMap();
-				}
-				return FReply::Handled();
-			})
+			[
+				QuickSDFToolUI::MakeIconLabelButton(
+					"QuickSDF.Action.CreateThresholdMap",
+					LOCTEXT("CreateThresholdMapButton", "Create Threshold Map"),
+					LOCTEXT("CreateThresholdMapTooltip", "Create the SDF threshold map from the current masks"),
+					FOnClicked::CreateLambda([WeakProperties]()
+					{
+						if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+						{
+							Props->CreateQuickThresholdMap();
+						}
+						return FReply::Handled();
+					}))
+			]
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		.Padding(0.0f, 2.0f)
 		[
-			SNew(SButton)
-			.Text(LOCTEXT("ImportEditedMasksButton", "Import Edited Masks"))
-			.HAlign(HAlign_Center)
-			.OnClicked_Lambda([WeakProperties]()
-			{
-				if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+			QuickSDFToolUI::MakeIconLabelButton(
+				"QuickSDF.Action.ImportMasks",
+				LOCTEXT("ImportEditedMasksButton", "Import Edited Masks"),
+				LOCTEXT("ImportEditedMasksTooltip", "Import edited mask textures"),
+				FOnClicked::CreateLambda([WeakProperties]()
 				{
-					Props->ImportEditedMasks();
-				}
-				return FReply::Handled();
-			})
+					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+					{
+						Props->ImportEditedMasks();
+					}
+					return FReply::Handled();
+				}))
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
@@ -209,33 +238,35 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 			.FillWidth(1.0f)
 			.Padding(0.0f, 0.0f, 2.0f, 0.0f)
 			[
-				SNew(SButton)
-				.Text(LOCTEXT("FillCurrentWhiteButton", "Fill White"))
-				.HAlign(HAlign_Center)
-				.OnClicked_Lambda([WeakProperties]()
-				{
-					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+				QuickSDFToolUI::MakeIconLabelButton(
+					"QuickSDF.Action.FillWhite",
+					LOCTEXT("FillCurrentWhiteButton", "Fill White"),
+					LOCTEXT("FillCurrentWhiteTooltip", "Fill the current mask with white"),
+					FOnClicked::CreateLambda([WeakProperties]()
 					{
-						Props->FillCurrentMaskWhite();
-					}
-					return FReply::Handled();
-				})
+						if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+						{
+							Props->FillCurrentMaskWhite();
+						}
+						return FReply::Handled();
+					}))
 			]
 			+ SHorizontalBox::Slot()
 			.FillWidth(1.0f)
 			.Padding(2.0f, 0.0f, 0.0f, 0.0f)
 			[
-				SNew(SButton)
-				.Text(LOCTEXT("FillCurrentBlackButton", "Fill Black"))
-				.HAlign(HAlign_Center)
-				.OnClicked_Lambda([WeakProperties]()
-				{
-					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+				QuickSDFToolUI::MakeIconLabelButton(
+					"QuickSDF.Action.FillBlack",
+					LOCTEXT("FillCurrentBlackButton", "Fill Black"),
+					LOCTEXT("FillCurrentBlackTooltip", "Fill the current mask with black"),
+					FOnClicked::CreateLambda([WeakProperties]()
 					{
-						Props->FillCurrentMaskBlack();
-					}
-					return FReply::Handled();
-				})
+						if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+						{
+							Props->FillCurrentMaskBlack();
+						}
+						return FReply::Handled();
+					}))
 			]
 		]
 	];
@@ -248,17 +279,18 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 	MasksCategory.AddCustomRow(LOCTEXT("SaveQuickSDFAssetFilter", "Save QuickSDF Asset"))
 	.WholeRowContent()
 	[
-		SNew(SButton)
-		.Text(LOCTEXT("SaveQuickSDFAssetButton", "Save QuickSDF Asset"))
-		.HAlign(HAlign_Center)
-		.OnClicked_Lambda([WeakProperties]()
-		{
-			if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+		QuickSDFToolUI::MakeIconLabelButton(
+			"QuickSDF.Action.SaveAsset",
+			LOCTEXT("SaveQuickSDFAssetButton", "Save QuickSDF Asset"),
+			LOCTEXT("SaveQuickSDFAssetTooltip", "Save the active QuickSDF asset"),
+			FOnClicked::CreateLambda([WeakProperties]()
 			{
-				Props->SaveQuickSDFAsset();
-			}
-			return FReply::Handled();
-		})
+				if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+				{
+					Props->SaveQuickSDFAsset();
+				}
+				return FReply::Handled();
+			}))
 	];
 
 	AddPropertyIfValid(OutputCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SDFOutputFolder)));
@@ -298,91 +330,103 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		.AutoHeight()
 		.Padding(0.0f, 4.0f, 0.0f, 2.0f)
 		[
-			SNew(SButton)
-			.Text(LOCTEXT("FillCurrentButton", "Rebake Current"))
-			.OnClicked_Lambda([WeakProperties]()
-			{
-				if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+			QuickSDFToolUI::MakeIconLabelButton(
+				"QuickSDF.Action.Rebake",
+				LOCTEXT("FillCurrentButton", "Rebake Current"),
+				LOCTEXT("FillCurrentTooltip", "Rebake the original shading into the current mask"),
+				FOnClicked::CreateLambda([WeakProperties]()
 				{
-					Props->FillOriginalShadingToCurrentAngle();
-				}
-				return FReply::Handled();
-			})
+					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+					{
+						Props->FillOriginalShadingToCurrentAngle();
+					}
+					return FReply::Handled();
+				}))
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		.Padding(0.0f, 2.0f)
 		[
-			SNew(SButton)
-			.Text(LOCTEXT("FillAllButton", "Rebake All"))
-			.OnClicked_Lambda([WeakProperties]()
-			{
-				if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+			QuickSDFToolUI::MakeIconLabelButton(
+				"QuickSDF.Action.Rebake",
+				LOCTEXT("FillAllButton", "Rebake All"),
+				LOCTEXT("FillAllTooltip", "Rebake original shading into all masks"),
+				FOnClicked::CreateLambda([WeakProperties]()
 				{
-					Props->FillOriginalShadingToAllAngles();
-				}
-				return FReply::Handled();
-			})
+					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+					{
+						Props->FillOriginalShadingToAllAngles();
+					}
+					return FReply::Handled();
+				}))
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		.Padding(0.0f, 2.0f)
 		[
-			SNew(SButton)
-			.Text(LOCTEXT("FillAllWhiteButton", "Fill All White"))
-			.OnClicked_Lambda([WeakProperties]()
-			{
-				if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+			QuickSDFToolUI::MakeIconLabelButton(
+				"QuickSDF.Action.FillWhite",
+				LOCTEXT("FillAllWhiteButton", "Fill All White"),
+				LOCTEXT("FillAllWhiteTooltip", "Fill all masks with white"),
+				FOnClicked::CreateLambda([WeakProperties]()
 				{
-					Props->FillAllMasksWhite();
-				}
-				return FReply::Handled();
-			})
+					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+					{
+						Props->FillAllMasksWhite();
+					}
+					return FReply::Handled();
+				}))
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		.Padding(0.0f, 2.0f)
 		[
-			SNew(SButton)
-			.Text(LOCTEXT("FillAllBlackButton", "Fill All Black"))
-			.OnClicked_Lambda([WeakProperties]()
-			{
-				if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+			QuickSDFToolUI::MakeIconLabelButton(
+				"QuickSDF.Action.FillBlack",
+				LOCTEXT("FillAllBlackButton", "Fill All Black"),
+				LOCTEXT("FillAllBlackTooltip", "Fill all masks with black"),
+				FOnClicked::CreateLambda([WeakProperties]()
 				{
-					Props->FillAllMasksBlack();
-				}
-				return FReply::Handled();
-			})
+					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+					{
+						Props->FillAllMasksBlack();
+					}
+					return FReply::Handled();
+				}))
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		.Padding(0.0f, 2.0f)
 		[
-			SNew(SButton)
-			.Text(LOCTEXT("GenerateAdvancedButton", "Generate SDF Threshold Map"))
-			.OnClicked_Lambda([WeakProperties]()
-			{
-				if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+			QuickSDFToolUI::MakeIconLabelButton(
+				"QuickSDF.Action.CreateThresholdMap",
+				LOCTEXT("GenerateAdvancedButton", "Generate SDF Threshold Map"),
+				LOCTEXT("GenerateAdvancedTooltip", "Generate the SDF threshold texture"),
+				FOnClicked::CreateLambda([WeakProperties]()
 				{
-					Props->GenerateSDFThresholdMap();
-				}
-				return FReply::Handled();
-			})
+					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+					{
+						Props->GenerateSDFThresholdMap();
+					}
+					return FReply::Handled();
+				}))
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		.Padding(0.0f, 2.0f)
 		[
-			SNew(SButton)
-			.Text(LOCTEXT("ExportMasksButton", "Export Mask Textures"))
-			.OnClicked_Lambda([WeakProperties]()
-			{
-				if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+			QuickSDFToolUI::MakeIconLabelButton(
+				"QuickSDF.Action.ExportMasks",
+				LOCTEXT("ExportMasksButton", "Export Mask Textures"),
+				LOCTEXT("ExportMasksTooltip", "Export the edited masks as textures"),
+				FOnClicked::CreateLambda([WeakProperties]()
 				{
-					Props->ExportToTexture();
-				}
-				return FReply::Handled();
-			})
+					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+					{
+						Props->ExportToTexture();
+					}
+					return FReply::Handled();
+				}))
 		]
 	];
 }

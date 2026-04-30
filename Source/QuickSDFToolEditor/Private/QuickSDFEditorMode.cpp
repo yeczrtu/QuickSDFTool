@@ -8,6 +8,7 @@
 #include "QuickSDFEditorModeCommands.h"
 #include "QuickSDFPaintToolBuilder.h"
 #include "QuickSDFToolSubsystem.h"
+#include "QuickSDFToolStyle.h"
 #include "Tools/EdModeInteractiveToolsContext.h"
 #include "QuickSDFSelectTool.h"
 #include "SQuickSDFTimeline.h"
@@ -20,7 +21,7 @@ UQuickSDFEditorMode::UQuickSDFEditorMode()
 {
 	Info = FEditorModeInfo(EM_QuickSDFEditorModeId, 
 		INVTEXT("Quick SDF"),
-		FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.MeshPaintMode", "LevelEditor.MeshPaintMode.Small"), 
+		FSlateIcon(FQuickSDFToolStyle::GetStyleSetName(), "LevelEditor.QuickSDFToolMode", "LevelEditor.QuickSDFToolMode.Small"), 
 		true);
 }
 

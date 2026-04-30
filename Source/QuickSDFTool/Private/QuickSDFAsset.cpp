@@ -3,6 +3,7 @@
 #include "Engine/Canvas.h"
 #include "CanvasItem.h"
 #include "RenderResource.h"
+#include "TextureResource.h"
 
 UQuickSDFAsset::UQuickSDFAsset()
 {
@@ -35,11 +36,6 @@ void UQuickSDFAsset::InitializeRenderTargets(UWorld* InWorld)
 					TileItem.BlendMode = SE_BLEND_Opaque;
 					Canvas.DrawItem(TileItem);
 					Canvas.Flush_GameThread(true);
-					
-					ENQUEUE_RENDER_COMMAND(RestoreQuickSDFAssetRTCommand)(
-						[RTResource](FRHICommandListImmediate& RHICmdList) {
-							TransitionAndCopyTexture(RHICmdList, RTResource->GetRenderTargetTexture(), RTResource->TextureRHI, {});
-						});
 				}
 			}
 		}

@@ -22,6 +22,8 @@
 #include "EngineUtils.h"
 #include "Engine/DirectionalLight.h"
 #include "QuickSDFAsset.h"
+#include "QuickSDFToolStyle.h"
+#include "QuickSDFToolUI.h"
 #include "Brushes/SlateImageBrush.h"
 #include "Widgets/Layout/SExpandableArea.h"
 #include "Widgets/Input/SCheckBox.h"
@@ -34,6 +36,18 @@ namespace
 constexpr int32 QuickSDFTimelineThumbnailSize = 64;
 constexpr float QuickSDFTimelineDragStartDistance = 4.0f;
 constexpr float QuickSDFTimelineKeyframeHitSlop = 14.0f;
+
+TSharedRef<SWidget> MakeTimelineIconButton(const FName IconName, const FText& ToolTip, FOnClicked OnClicked)
+{
+	return SNew(SButton)
+		.OnClicked(OnClicked)
+		.ContentPadding(FMargin(4.0f, 2.0f))
+		.ToolTipText(ToolTip)
+		[
+			SNew(SImage)
+			.Image(FQuickSDFToolStyle::GetBrush(IconName))
+		];
+}
 
 UTexture2D* CreateTimelineThumbnailTexture(UQuickSDFPaintTool* Tool, UTextureRenderTarget2D* RenderTarget)
 {
@@ -290,42 +304,38 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 
 					+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
 
-					// Controls (Snap, Symmetry, Add/Delete)
+					// Controls (paint toggles, snap, keyframe actions)
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)
 					[
 						SNew(SHorizontalBox)
-						
+
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+						[
+							QuickSDFToolUI::MakePaintToggleBar([]()
+							{
+								return QuickSDFToolUI::GetActivePaintTool();
+							})
+						]
+
 						// Snap Checkbox
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.VAlign(VAlign_Center)
-						.Padding(5.0f, 0.0f)
+						.Padding(4.0f, 0.0f)
 						[
 							SNew(SCheckBox)
+							.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
+							.ToolTipText(LOCTEXT("SnapTooltip", "Snap dragged timeline keys to 5 degree steps"))
 							.IsChecked(this, &SQuickSDFTimeline::IsGridSnapEnabled)
 							.OnCheckStateChanged(this, &SQuickSDFTimeline::OnGridSnapStateChanged)
 							[
-								SNew(STextBlock)
-								.Text(LOCTEXT("SnapText", "Snap"))
-								.Font(FAppStyle::GetFontStyle("SmallFont"))
-							]
-						]
-
-						// Symmetry Checkbox
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						.Padding(5.0f, 0.0f)
-						[
-							SNew(SCheckBox)
-							.IsChecked(this, &SQuickSDFTimeline::IsSymmetryModeEnabled)
-							.OnCheckStateChanged(this, &SQuickSDFTimeline::OnSymmetryModeStateChanged)
-							[
-								SNew(STextBlock)
-								.Text(LOCTEXT("SymmetryText", "Symmetry"))
-								.Font(FAppStyle::GetFontStyle("SmallFont"))
+								SNew(SImage)
+								.Image(FQuickSDFToolStyle::GetBrush("QuickSDF.Action.Snap"))
 							]
 						]
 
@@ -334,68 +344,50 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 						.AutoWidth()
 						.Padding(2.0f, 0.0f)
 						[
-							SNew(SButton)
-							.OnClicked(this, &SQuickSDFTimeline::OnCompleteToEightClicked)
-							.ContentPadding(FMargin(6.0f, 0.0f))
-							[
-								SNew(STextBlock)
-								.Text(LOCTEXT("CompleteTo8Btn", "Complete to 8"))
-								.Font(FAppStyle::GetFontStyle("SmallFont"))
-							]
+							QuickSDFToolUI::MakeIconLabelButton(
+								"QuickSDF.Action.CompleteToEight",
+								LOCTEXT("CompleteTo8Btn", "8"),
+								LOCTEXT("CompleteTo8Tooltip", "Complete the mask set to eight angles"),
+								FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnCompleteToEightClicked))
 						]
 
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.Padding(2.0f, 0.0f)
 						[
-							SNew(SButton)
-							.OnClicked(this, &SQuickSDFTimeline::OnRedistributeEvenlyClicked)
-							.ContentPadding(FMargin(6.0f, 0.0f))
-							[
-								SNew(STextBlock)
-								.Text(LOCTEXT("RedistributeBtn", "Redistribute"))
-								.Font(FAppStyle::GetFontStyle("SmallFont"))
-							]
+							QuickSDFToolUI::MakeIconLabelButton(
+								"QuickSDF.Action.Redistribute",
+								LOCTEXT("RedistributeBtn", "Even"),
+								LOCTEXT("RedistributeTooltip", "Redistribute timeline angles evenly"),
+								FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnRedistributeEvenlyClicked))
 						]
 
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.Padding(2.0f, 0.0f)
 						[
-							SNew(SButton)
-							.OnClicked(this, &SQuickSDFTimeline::OnAddKeyframeClicked)
-							.ContentPadding(FMargin(4.0f, 0.0f))
-							[
-								SNew(STextBlock)
-								.Text(LOCTEXT("AddFrameBtn", "+"))
-								.Font(FAppStyle::GetFontStyle("BoldFont"))
-							]
+							MakeTimelineIconButton(
+								"QuickSDF.Action.AddKey",
+								LOCTEXT("AddFrameTooltip", "Add a timeline keyframe"),
+								FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnAddKeyframeClicked))
 						]
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.Padding(2.0f, 0.0f)
 						[
-							SNew(SButton)
-							.OnClicked(this, &SQuickSDFTimeline::OnDeleteKeyframeClicked)
-							.ContentPadding(FMargin(4.0f, 0.0f))
-							[
-								SNew(STextBlock)
-								.Text(LOCTEXT("DelFrameBtn", "-"))
-								.Font(FAppStyle::GetFontStyle("BoldFont"))
-							]
+							MakeTimelineIconButton(
+								"QuickSDF.Action.DeleteKey",
+								LOCTEXT("DelFrameTooltip", "Delete the selected timeline keyframe"),
+								FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnDeleteKeyframeClicked))
 						]
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.Padding(2.0f, 0.0f)
 						[
-							SNew(SButton)
-							.OnClicked(this, &SQuickSDFTimeline::OnSyncLightClicked)
-							.ContentPadding(FMargin(4.0f, 0.0f))
-							.ToolTipText(LOCTEXT("SyncLightTooltip", "Sync Directional Light to selected keyframe angle"))
-							[
-								SNew(SImage)
-								.Image(FAppStyle::GetBrush("ClassIcon.DirectionalLight"))
-							]
+							MakeTimelineIconButton(
+								"QuickSDF.Toggle.AutoSyncLight",
+								LOCTEXT("SyncLightTooltip", "Sync Directional Light to selected keyframe angle"),
+								FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnSyncLightClicked))
 						]
 					]
 				]
