@@ -280,7 +280,7 @@ TSharedRef<SWidget> QuickSDFToolUI::MakePaintToggleButton(EQuickSDFPaintToggle T
 		.HeightOverride(24.0f)
 		[
 			SNew(SCheckBox)
-			.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
+			.Style(FQuickSDFToolStyle::Get().Get(), "QuickSDF.Timeline.ToggleButton")
 			.ToolTipText_Lambda([Toggle, GetPaintTool, FallbackProperties]()
 			{
 				return GetToggleToolTip(GetProperties(GetPaintTool(), FallbackProperties), Toggle);

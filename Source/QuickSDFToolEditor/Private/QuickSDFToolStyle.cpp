@@ -1,11 +1,14 @@
 #include "QuickSDFToolStyle.h"
 
 #include "Brushes/SlateImageBrush.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
 #include "Interfaces/IPluginManager.h"
 #include "Styling/AppStyle.h"
+#include "Styling/SlateTypes.h"
 #include "Styling/SlateStyle.h"
 #include "Styling/SlateStyleMacros.h"
 #include "Styling/SlateStyleRegistry.h"
+#include "Styling/StyleColors.h"
 
 #define IMAGE_PLUGIN_BRUSH(RelativePath, ...) FSlateImageBrush(FQuickSDFToolStyle::InContent(RelativePath, ".png"), __VA_ARGS__)
 #define RootToContentDir StyleSet->RootToContentDir
@@ -64,6 +67,38 @@ void FQuickSDFToolStyle::Initialize()
 	StyleSet->Set("QuickSDF.Toggle.OnionSkin", new IMAGE_BRUSH_SVG("Icons/QuickSDFOnion", Icon16x16));
 	StyleSet->Set("QuickSDF.Toggle.QuickLine", new IMAGE_BRUSH_SVG("Icons/QuickSDFQuickStroke", Icon16x16));
 	StyleSet->Set("QuickSDF.Toggle.Symmetry", new IMAGE_BRUSH_SVG("Icons/QuickSDFSymmetry", Icon16x16));
+
+	const float TimelineButtonRadius = 3.0f;
+	const FLinearColor TimelineBorderColor = FStyleColors::DropdownOutline.GetSpecifiedColor();
+
+	const FButtonStyle TimelineButtonStyle = FButtonStyle()
+		.SetNormal(FSlateRoundedBoxBrush(FStyleColors::Dropdown, TimelineButtonRadius, TimelineBorderColor, 1.0f))
+		.SetHovered(FSlateRoundedBoxBrush(FStyleColors::Hover, TimelineButtonRadius, TimelineBorderColor, 1.0f))
+		.SetPressed(FSlateRoundedBoxBrush(FStyleColors::Recessed, TimelineButtonRadius, TimelineBorderColor, 1.0f))
+		.SetNormalForeground(FStyleColors::Foreground)
+		.SetHoveredForeground(FStyleColors::ForegroundHover)
+		.SetPressedForeground(FStyleColors::ForegroundHover)
+		.SetDisabledForeground(FStyleColors::Foreground)
+		.SetNormalPadding(FMargin(1.0f))
+		.SetPressedPadding(FMargin(1.0f));
+	StyleSet->Set("QuickSDF.Timeline.Button", TimelineButtonStyle);
+
+	const FCheckBoxStyle TimelineToggleStyle = FCheckBoxStyle()
+		.SetCheckBoxType(ESlateCheckBoxType::ToggleButton)
+		.SetUncheckedImage(FSlateRoundedBoxBrush(FStyleColors::Dropdown, TimelineButtonRadius, TimelineBorderColor, 1.0f))
+		.SetUncheckedHoveredImage(FSlateRoundedBoxBrush(FStyleColors::Hover, TimelineButtonRadius, TimelineBorderColor, 1.0f))
+		.SetUncheckedPressedImage(FSlateRoundedBoxBrush(FStyleColors::Recessed, TimelineButtonRadius, TimelineBorderColor, 1.0f))
+		.SetCheckedImage(FSlateRoundedBoxBrush(FStyleColors::Primary, TimelineButtonRadius, TimelineBorderColor, 1.0f))
+		.SetCheckedHoveredImage(FSlateRoundedBoxBrush(FStyleColors::PrimaryHover, TimelineButtonRadius, TimelineBorderColor, 1.0f))
+		.SetCheckedPressedImage(FSlateRoundedBoxBrush(FStyleColors::PrimaryPress, TimelineButtonRadius, TimelineBorderColor, 1.0f))
+		.SetForegroundColor(FStyleColors::Foreground)
+		.SetHoveredForegroundColor(FStyleColors::ForegroundHover)
+		.SetPressedForegroundColor(FStyleColors::ForegroundHover)
+		.SetCheckedForegroundColor(FStyleColors::ForegroundHover)
+		.SetCheckedHoveredForegroundColor(FStyleColors::ForegroundHover)
+		.SetCheckedPressedForegroundColor(FStyleColors::ForegroundHover)
+		.SetPadding(FMargin(2.0f));
+	StyleSet->Set("QuickSDF.Timeline.ToggleButton", TimelineToggleStyle);
 
 	FSlateStyleRegistry::RegisterSlateStyle(*StyleSet.Get());
 }

@@ -56,7 +56,7 @@ TSharedRef<SWidget> MakeTimelineIconButton(const FName IconName, const FText& To
 		.HeightOverride(QuickSDFTimelineButtonHeight)
 		[
 			SNew(SButton)
-			.ButtonStyle(FAppStyle::Get(), "EditorViewportToolBar.Button")
+			.ButtonStyle(FQuickSDFToolStyle::Get().Get(), "QuickSDF.Timeline.Button")
 			.HAlign(HAlign_Center)
 			.VAlign(VAlign_Center)
 			.OnClicked(OnClicked)
@@ -81,7 +81,7 @@ TSharedRef<SWidget> MakeTimelineIconLabelButton(const FName IconName, const FTex
 		.HeightOverride(QuickSDFTimelineButtonHeight)
 		[
 			SNew(SButton)
-			.ButtonStyle(FAppStyle::Get(), "EditorViewportToolBar.Button")
+			.ButtonStyle(FQuickSDFToolStyle::Get().Get(), "QuickSDF.Timeline.Button")
 			.HAlign(HAlign_Center)
 			.VAlign(VAlign_Center)
 			.OnClicked(OnClicked)
@@ -454,7 +454,7 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 							.HeightOverride(QuickSDFTimelineButtonHeight)
 							[
 								SNew(SCheckBox)
-								.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
+								.Style(FQuickSDFToolStyle::Get().Get(), "QuickSDF.Timeline.ToggleButton")
 								.ToolTipText(LOCTEXT("SnapTooltip", "Snap dragged timeline keys to 5 degree steps"))
 								.IsChecked(this, &SQuickSDFTimeline::IsGridSnapEnabled)
 								.OnCheckStateChanged(this, &SQuickSDFTimeline::OnGridSnapStateChanged)
