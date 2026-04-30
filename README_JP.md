@@ -1,6 +1,3 @@
-<p align="center">
-  <img src=".github/assets/social-preview.svg" alt="QuickSDFTool workflow preview" width="960">
-</p>
 
 <h1 align="center">QuickSDFTool</h1>
 
