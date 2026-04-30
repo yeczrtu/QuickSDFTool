@@ -882,6 +882,16 @@ float SQuickSDFTimeline::GetCurrentSeekAngle() const
 	return 0.0f;
 }
 
+void SQuickSDFTimeline::SetSeekAngle(float Angle)
+{
+	UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	const float MaxAngle = Props && Props->bSymmetryMode ? 90.0f : 180.0f;
+	LastSeekAngle = FMath::Clamp(Angle, 0.0f, MaxAngle);
+	bHasSeekAngle = true;
+	Invalidate(EInvalidateWidgetReason::PaintAndVolatility);
+}
+
 float SQuickSDFTimeline::ResolveTimelineActionAngle() const
 {
 	return GetCurrentSeekAngle();

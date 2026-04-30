@@ -7,6 +7,7 @@
 #include "InteractiveToolManager.h"
 #include "QuickSDFEditorModeCommands.h"
 #include "QuickSDFPaintToolBuilder.h"
+#include "QuickSDFPaintTool.h"
 #include "QuickSDFToolSubsystem.h"
 #include "QuickSDFToolStyle.h"
 #include "Tools/EdModeInteractiveToolsContext.h"
@@ -14,6 +15,7 @@
 #include "SQuickSDFTimeline.h"
 #include "LevelEditor.h"
 #include "SLevelViewport.h"
+#include "Framework/Commands/UICommandList.h"
 
 const FEditorModeID UQuickSDFEditorMode::EM_QuickSDFEditorModeId = TEXT("EM_QuickSDFEditorMode");
 
@@ -199,6 +201,132 @@ TMap<FName, TArray<TSharedPtr<FUICommandInfo>>> UQuickSDFEditorMode::GetModeComm
 	return FQuickSDFEditorModeCommands::GetCommands();
 }
 
+void UQuickSDFEditorMode::BindCommands()
+{
+	Super::BindCommands();
+
+	if (!Toolkit.IsValid())
+	{
+		return;
+	}
+
+	const FQuickSDFEditorModeCommands& Commands = FQuickSDFEditorModeCommands::Get();
+	const TSharedRef<FUICommandList>& CommandList = Toolkit->GetToolkitCommands();
+	CommandList->MapAction(
+		Commands.PreviousFrame,
+		FExecuteAction::CreateUObject(this, &UQuickSDFEditorMode::SelectRelativeFrame, -1),
+		FCanExecuteAction::CreateUObject(this, &UQuickSDFEditorMode::CanSelectRelativeFrame));
+	CommandList->MapAction(
+		Commands.NextFrame,
+		FExecuteAction::CreateUObject(this, &UQuickSDFEditorMode::SelectRelativeFrame, 1),
+		FCanExecuteAction::CreateUObject(this, &UQuickSDFEditorMode::CanSelectRelativeFrame));
+}
+
+bool UQuickSDFEditorMode::CanSelectRelativeFrame() const
+{
+	UInteractiveToolManager* ToolManager = GetToolManager();
+	const UQuickSDFPaintTool* PaintTool = ToolManager ? Cast<UQuickSDFPaintTool>(ToolManager->GetActiveTool(EToolSide::Mouse)) : nullptr;
+	return PaintTool && PaintTool->Properties && PaintTool->Properties->TargetAngles.Num() > 1;
+}
+
+void UQuickSDFEditorMode::SelectRelativeFrame(int32 Direction)
+{
+	if (Direction == 0)
+	{
+		return;
+	}
+
+	UInteractiveToolManager* ToolManager = GetToolManager();
+	UQuickSDFPaintTool* PaintTool = ToolManager ? Cast<UQuickSDFPaintTool>(ToolManager->GetActiveTool(EToolSide::Mouse)) : nullptr;
+	UQuickSDFToolProperties* Properties = PaintTool ? PaintTool->Properties : nullptr;
+	if (!Properties || Properties->TargetAngles.Num() == 0)
+	{
+		return;
+	}
+
+	const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
+	TArray<int32> TimelineIndices;
+	for (int32 Index = 0; Index < Properties->TargetAngles.Num(); ++Index)
+	{
+		if (!Properties->bSymmetryMode || Properties->TargetAngles[Index] <= MaxAngle)
+		{
+			TimelineIndices.Add(Index);
+		}
+	}
+
+	if (TimelineIndices.Num() == 0)
+	{
+		return;
+	}
+
+	TimelineIndices.Sort([Properties](int32 A, int32 B)
+	{
+		return Properties->TargetAngles[A] < Properties->TargetAngles[B];
+	});
+
+	const int32 CurrentIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Properties->TargetAngles.Num() - 1);
+	const int32 CurrentPosition = TimelineIndices.IndexOfByKey(CurrentIndex);
+	int32 NextPosition = INDEX_NONE;
+
+	if (CurrentPosition != INDEX_NONE)
+	{
+		NextPosition = (CurrentPosition + (Direction > 0 ? 1 : -1) + TimelineIndices.Num()) % TimelineIndices.Num();
+	}
+	else
+	{
+		const float CurrentAngle = Properties->TargetAngles.IsValidIndex(CurrentIndex) ? Properties->TargetAngles[CurrentIndex] : 0.0f;
+		if (Direction > 0)
+		{
+			NextPosition = 0;
+			for (int32 Index = 0; Index < TimelineIndices.Num(); ++Index)
+			{
+				if (Properties->TargetAngles[TimelineIndices[Index]] > CurrentAngle)
+				{
+					NextPosition = Index;
+					break;
+				}
+			}
+		}
+		else
+		{
+			NextPosition = TimelineIndices.Num() - 1;
+			for (int32 Index = TimelineIndices.Num() - 1; Index >= 0; --Index)
+			{
+				if (Properties->TargetAngles[TimelineIndices[Index]] < CurrentAngle)
+				{
+					NextPosition = Index;
+					break;
+				}
+			}
+		}
+	}
+
+	if (!TimelineIndices.IsValidIndex(NextPosition))
+	{
+		return;
+	}
+
+	const int32 NextIndex = TimelineIndices[NextPosition];
+	if (NextIndex == Properties->EditAngleIndex)
+	{
+		return;
+	}
+
+	Properties->EditAngleIndex = NextIndex;
+	FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex));
+	PaintTool->OnPropertyModified(Properties, Prop);
+
+	if (Properties->bAutoSyncLight && Properties->TargetAngles.IsValidIndex(NextIndex))
+	{
+		SetPreviewLightAngle(Properties->TargetAngles[NextIndex]);
+	}
+
+	if (GEditor)
+	{
+		GEditor->RedrawAllViewports(false);
+	}
+}
+
 void UQuickSDFEditorMode::ActorSelectionChangeNotify()
 {
 	if (UQuickSDFToolSubsystem* QuickSDFToolSubsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>())
@@ -245,8 +373,18 @@ void UQuickSDFEditorMode::CreateToolkit()
 	Toolkit = MakeShared<FQuickSDFEditorModeToolkit>();
 }
 
+void UQuickSDFEditorMode::SetTimelineSeekAngle(float AzimuthAngle)
+{
+	if (TimelineWidget.IsValid())
+	{
+		TimelineWidget->SetSeekAngle(AzimuthAngle);
+	}
+}
+
 void UQuickSDFEditorMode::SetPreviewLightAngle(float AzimuthAngle)
 {
+	SetTimelineSeekAngle(AzimuthAngle);
+
 	if (!PreviewLight) return;
 
 	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();

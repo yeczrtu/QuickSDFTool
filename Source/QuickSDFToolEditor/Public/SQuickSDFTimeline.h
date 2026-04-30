@@ -73,6 +73,7 @@ public:
 public:
 	UQuickSDFPaintTool* GetActivePaintTool() const;
 	float GetCurrentLightYaw() const;
+	void SetSeekAngle(float Angle);
 	ECheckBoxState IsSymmetryModeEnabled() const;
 	void OnSymmetryModeStateChanged(ECheckBoxState NewState);
 	ECheckBoxState IsGridSnapEnabled() const;

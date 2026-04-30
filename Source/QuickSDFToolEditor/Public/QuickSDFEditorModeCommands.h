@@ -25,6 +25,8 @@ public:
 
 	// アクション用（ボタン）
 	TSharedPtr<FUICommandInfo> GenerateSDF;
+	TSharedPtr<FUICommandInfo> PreviousFrame;
+	TSharedPtr<FUICommandInfo> NextFrame;
 	
 	TMap<FName, TArray<TSharedPtr<FUICommandInfo>>> Commands;
 };

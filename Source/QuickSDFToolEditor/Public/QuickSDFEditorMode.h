@@ -24,14 +24,18 @@ public:
 	virtual bool IsSelectionAllowed(AActor* InActor, bool bInSelection) const override;
 	// Set the main directional light rotation for previewing
 	void SetPreviewLightAngle(float AzimuthAngle);
+	void SetTimelineSeekAngle(float AzimuthAngle);
 	class ADirectionalLight* GetPreviewLight() const { return PreviewLight; }
 	
 protected:
 	virtual void CreateToolkit() override;
+	virtual void BindCommands() override;
 
 private:
 	void AttachTimelineToActiveViewport();
 	void DetachTimelineFromViewport();
+	bool CanSelectRelativeFrame() const;
+	void SelectRelativeFrame(int32 Direction);
 	void MuteLights();
 	void RestoreLights();
 	void OnPreSaveWorld(UWorld* InWorld, FObjectPreSaveContext InContext);
