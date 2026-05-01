@@ -176,6 +176,45 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 - [ ] Add explicit previous/next timeline toolbar buttons if keyboard navigation is not enough for artists.
 - [ ] Add autosave/hot-reload recovery for unsaved mask changes.
 
+### Planned Feature Requirements
+
+> [!NOTE]
+> These are roadmap requirements for future work. They are not available in the current preview build and do not change the current C++ API, `UQuickSDFAsset` format, Slate UI, or shortcuts.
+
+#### Monotonic Guard / Clipping Mask
+
+- Add a `Monotonic Guard` paint helper that prevents the same UV pixel from changing state more than once across the active angle range. Sequences such as `black -> white -> black` or `white -> black -> white` should be prevented or reported because they break smooth SDF threshold gradients.
+- Support the four expected combinations: increasing angles with white expanding, increasing angles with white shrinking, decreasing angles with white expanding, and decreasing angles with white shrinking.
+- Default `Clip Direction` to `Auto`: `0-90` assumes the white area usually expands as the angle increases, while `90-180` uses the opposite direction. Manual overrides should include `White Expands` and `White Shrinks`.
+- Integrate with the existing `Current / All / Before / After` paint target modes so clipping only constrains the selected mask range.
+
+#### Quick Nose
+
+- Add `Quick Nose` as a non-destructive vector layer for quickly placing a nose-shadow preset from a single artist-picked nose position.
+- Presets should be editable through position, rotation, scale, curve shape, and control points, so the result is a fast starting point rather than a locked final shape.
+- Baking should support the current mask or a multi-mask range, be undoable, and preserve the original vector layer for later edits.
+
+#### Timeline Status Badges
+
+- Extend the existing thumbnail timeline with range highlights for `Current / All / Before / After`.
+- Show compact badges per key for mask presence, `Monotonic Guard` enabled state, unbaked vector layers, and warnings.
+- Tooltips should expose the angle, texture name, edit state, and warning details for each mask.
+
+#### Stroke Auto Fill
+
+- Add `Stroke Auto Fill` so a drawn line can preview and fill the chosen left/right side or inside/outside region.
+- Support both current-mask edits and bulk application through `All / Before / After`.
+- Limit fill operations to the active UV island to avoid accidental fills across unrelated islands.
+- Show a preview before committing the fill, and make the committed result undoable.
+
+#### Acceptance Scenarios
+
+- For `0 / 45 / 90` degree masks where white expands, a guarded pixel should transition only once across the range.
+- For `90 / 135 / 180` degree masks where white shrinks, the same monotonic guarantee should apply in the reversed growth direction.
+- `Quick Nose` should support nose-position picking, preset placement, vector adjustment, baking, and Undo.
+- `Stroke Auto Fill` should be verified for current-only edits, `Before / After / All` edits, UV-island isolation, and left/right or inside/outside fill selection.
+- The English and Japanese README entries should stay synchronized and clearly marked as planned, not implemented.
+
 ## Architecture
 
 ```text
