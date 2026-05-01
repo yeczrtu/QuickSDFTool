@@ -205,9 +205,19 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
             const FVector2D PreviewOrigin = GetPreviewOrigin();
             const FVector2D PreviewSize = GetPreviewSize();
             
-            FCanvasTileItem TileItem(PreviewOrigin, RT->GetResource(), PreviewSize, FLinearColor::White);
-            TileItem.BlendMode = SE_BLEND_Opaque;
-            Canvas->DrawItem(TileItem);
+            if (PreviewMaterial)
+            {
+                PreviewMaterial->SetTextureParameterValue(TEXT("BaseColor"), RT);
+                FCanvasTileItem TileItem(PreviewOrigin, PreviewMaterial->GetRenderProxy(), PreviewSize);
+                TileItem.BlendMode = SE_BLEND_Opaque;
+                Canvas->DrawItem(TileItem);
+            }
+            else
+            {
+                FCanvasTileItem TileItem(PreviewOrigin, RT->GetResource(), PreviewSize, FLinearColor::White);
+                TileItem.BlendMode = SE_BLEND_Opaque;
+                Canvas->DrawItem(TileItem);
+            }
 
             if (Properties->bEnableOnionSkin)
             {
