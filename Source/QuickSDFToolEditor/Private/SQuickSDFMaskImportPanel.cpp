@@ -14,6 +14,7 @@
 #include "IDesktopPlatform.h"
 #include "IImageWrapper.h"
 #include "IImageWrapperModule.h"
+#include "InputCoreTypes.h"
 #include "Misc/FileHelper.h"
 #include "Misc/MessageDialog.h"
 #include "Misc/PackageName.h"
@@ -41,8 +42,9 @@
 
 namespace
 {
-constexpr float QuickSDFImportPanelWidth = 800.0f;
+constexpr float QuickSDFImportPanelWidth = 920.0f;
 constexpr float QuickSDFImportPanelListHeight = 210.0f;
+constexpr float QuickSDFImportAngleMatchTolerance = 0.05f;
 
 bool IsSupportedImageFile(const FString& Filename)
 {
@@ -108,6 +110,18 @@ FString GetSourceName(const FQuickSDFMaskImportSource& Source)
 FString GetSourceKey(const FQuickSDFMaskImportSource& Source)
 {
 	return Source.bExternalFile ? Source.SourcePath : (Source.Texture.IsValid() ? Source.Texture->GetPathName() : GetSourceName(Source));
+}
+
+bool DoSourcesReferToSameContent(const FQuickSDFMaskImportSource& A, const FQuickSDFMaskImportSource& B)
+{
+	if (A.bExternalFile != B.bExternalFile)
+	{
+		return false;
+	}
+
+	return A.bExternalFile
+		? A.SourcePath.Equals(B.SourcePath, ESearchCase::IgnoreCase)
+		: A.Texture == B.Texture;
 }
 
 bool DoesAssetPathExist(const FString& AssetPath)
@@ -179,16 +193,25 @@ TSharedRef<SWidget> MakeSmallButton(const FText& Label, const FText& ToolTip, FO
 }
 }
 
+struct FQuickSDFAssetPickerState
+{
+	FGetCurrentSelectionDelegate GetCurrentSelectionDelegate;
+};
+
 struct FQuickSDFMaskImportRowData
 {
 	FQuickSDFMaskImportSource Source;
 	bool bHasSource = false;
 	bool bAngleFromName = false;
 	bool bAngleInferred = false;
+	bool bAngleFromCurrentSelection = false;
 	int32 SlotIndex = 0;
+	int32 ExistingSlotIndex = INDEX_NONE;
 	float Angle = 0.0f;
 	int32 Width = 0;
 	int32 Height = 0;
+	FText AssignmentText;
+	FText AssignmentToolTipText;
 	FString Destination;
 	FText WarningText;
 };
@@ -261,6 +284,15 @@ public:
 						}
 					}
 				})
+				.Font(FAppStyle::GetFontStyle("SmallFont"));
+		}
+
+		if (ColumnName == TEXT("Assignment"))
+		{
+			return SNew(STextBlock)
+				.Text(Item->AssignmentText)
+				.ToolTipText(Item->AssignmentToolTipText)
+				.ColorAndOpacity(Item->bHasSource ? FSlateColor::UseForeground() : MutedColor)
 				.Font(FAppStyle::GetFontStyle("SmallFont"));
 		}
 
@@ -359,20 +391,32 @@ void SQuickSDFMaskImportPanel::Construct(const FArguments& InArgs)
 
 				+ SVerticalBox::Slot()
 				.AutoHeight()
+				.Padding(0.0f, 0.0f, 0.0f, 6.0f)
+				[
+					SNew(STextBlock)
+					.Text(this, &SQuickSDFMaskImportPanel::GetSelectedTargetText)
+					.ColorAndOpacity(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
+					.Font(FAppStyle::GetFontStyle("SmallFont"))
+				]
+
+				+ SVerticalBox::Slot()
+				.AutoHeight()
 				[
 					SNew(SBox)
 					.HeightOverride(QuickSDFImportPanelListHeight)
 					[
 						SAssignNew(RowListView, SListView<TSharedPtr<FQuickSDFMaskImportRowData>>)
 						.ListItemsSource(&Rows)
-						.SelectionMode(ESelectionMode::None)
+						.SelectionMode(ESelectionMode::Single)
 						.OnGenerateRow(this, &SQuickSDFMaskImportPanel::GenerateRow)
+						.OnSelectionChanged(this, &SQuickSDFMaskImportPanel::OnRowSelectionChanged)
 						.HeaderRow
 						(
 							SNew(SHeaderRow)
 							+ SHeaderRow::Column(TEXT("Slot")).FixedWidth(38.0f).DefaultLabel(LOCTEXT("SlotColumn", "#"))
 							+ SHeaderRow::Column(TEXT("Source")).FillWidth(0.9f).DefaultLabel(LOCTEXT("SourceColumn", "Source"))
 							+ SHeaderRow::Column(TEXT("Angle")).FixedWidth(112.0f).DefaultLabel(LOCTEXT("AngleColumn", "Angle"))
+							+ SHeaderRow::Column(TEXT("Assignment")).FixedWidth(132.0f).DefaultLabel(LOCTEXT("AssignmentColumn", "Assignment"))
 							+ SHeaderRow::Column(TEXT("Size")).FixedWidth(96.0f).DefaultLabel(LOCTEXT("SizeColumn", "Size"))
 							+ SHeaderRow::Column(TEXT("Destination")).FillWidth(1.0f).DefaultLabel(LOCTEXT("DestinationColumn", "Destination"))
 							+ SHeaderRow::Column(TEXT("Warning")).FillWidth(1.0f).DefaultLabel(LOCTEXT("WarningColumn", "Warning"))
@@ -426,6 +470,87 @@ void SQuickSDFMaskImportPanel::Construct(const FArguments& InArgs)
 			]
 		]
 	];
+
+	SelectDefaultRow();
+}
+
+FReply SQuickSDFMaskImportPanel::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton ||
+		MouseEvent.GetEffectingButton() == EKeys::MiddleMouseButton ||
+		MouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
+	{
+		return FReply::Handled().CaptureMouse(AsShared());
+	}
+
+	return FReply::Handled();
+}
+
+FReply SQuickSDFMaskImportPanel::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	return HasMouseCapture()
+		? FReply::Handled().ReleaseMouseCapture()
+		: FReply::Handled();
+}
+
+FReply SQuickSDFMaskImportPanel::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	return FReply::Handled();
+}
+
+FReply SQuickSDFMaskImportPanel::OnMouseWheel(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	return FReply::Handled();
+}
+
+FReply SQuickSDFMaskImportPanel::OnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent)
+{
+	return FReply::Handled();
+}
+
+FReply SQuickSDFMaskImportPanel::OnDrop(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent)
+{
+	if (TSharedPtr<FAssetDragDropOp> AssetDragDropOp = DragDropEvent.GetOperationAs<FAssetDragDropOp>())
+	{
+		TArray<FQuickSDFMaskImportSource> NewSources;
+		for (const FAssetData& AssetData : AssetDragDropOp->GetAssets())
+		{
+			if (UTexture2D* Texture = Cast<UTexture2D>(AssetData.GetAsset()))
+			{
+				FQuickSDFMaskImportSource Source;
+				Source.Texture = Texture;
+				Source.DisplayName = Texture->GetName();
+				Source.Width = Texture->GetSizeX();
+				Source.Height = Texture->GetSizeY();
+				NewSources.Add(Source);
+			}
+		}
+		AddSourcesFromUserAction(NewSources);
+		return FReply::Handled();
+	}
+
+	if (TSharedPtr<FExternalDragOperation> ExternalDragDropOp = DragDropEvent.GetOperationAs<FExternalDragOperation>())
+	{
+		TArray<FQuickSDFMaskImportSource> NewSources;
+		for (const FString& Filename : ExternalDragDropOp->GetFiles())
+		{
+			if (!IsSupportedImageFile(Filename))
+			{
+				continue;
+			}
+
+			FQuickSDFMaskImportSource Source;
+			Source.bExternalFile = true;
+			Source.SourcePath = Filename;
+			Source.DisplayName = FPaths::GetBaseFilename(Filename);
+			ReadImageDimensions(Filename, Source.Width, Source.Height);
+			NewSources.Add(Source);
+		}
+		AddSourcesFromUserAction(NewSources);
+		return FReply::Handled();
+	}
+
+	return FReply::Handled();
 }
 
 TSharedRef<ITableRow> SQuickSDFMaskImportPanel::GenerateRow(TSharedPtr<FQuickSDFMaskImportRowData> Item, const TSharedRef<STableViewBase>& OwnerTable)
@@ -443,6 +568,65 @@ void SQuickSDFMaskImportPanel::AddSources(const TArray<FQuickSDFMaskImportSource
 	{
 		RowListView->RequestListRefresh();
 	}
+}
+
+void SQuickSDFMaskImportPanel::AddSourcesFromUserAction(const TArray<FQuickSDFMaskImportSource>& NewSources)
+{
+	if (NewSources.Num() == 0)
+	{
+		return;
+	}
+
+	const TSharedPtr<FQuickSDFMaskImportRowData> SelectedRow = GetSelectedRow();
+	if (NewSources.Num() == 1 && SelectedRow.IsValid())
+	{
+		AddSingleSourceToSelectedRow(NewSources[0], SelectedRow);
+		return;
+	}
+
+	AddSources(NewSources);
+}
+
+void SQuickSDFMaskImportPanel::AddSingleSourceToSelectedRow(FQuickSDFMaskImportSource Source, const TSharedPtr<FQuickSDFMaskImportRowData>& SelectedRow)
+{
+	if (!SelectedRow.IsValid())
+	{
+		AddSources({ Source });
+		return;
+	}
+
+	if (SelectedRow->bHasSource)
+	{
+		const int32 ExistingSourceIndex = FindSourceIndex(SelectedRow->Source);
+		if (ExistingSourceIndex != INDEX_NONE)
+		{
+			Sources.RemoveAt(ExistingSourceIndex);
+		}
+	}
+
+	const float TargetAngle = SelectedRow->Angle;
+	Source.bHasForcedAngle = true;
+	Source.ForcedAngle = TargetAngle;
+	Sources.Add(Source);
+
+	RebuildRows();
+	SelectRowClosestToAngle(TargetAngle);
+	if (RowListView.IsValid())
+	{
+		RowListView->RequestListRefresh();
+	}
+}
+
+int32 SQuickSDFMaskImportPanel::FindSourceIndex(const FQuickSDFMaskImportSource& Source) const
+{
+	for (int32 Index = 0; Index < Sources.Num(); ++Index)
+	{
+		if (DoSourcesReferToSameContent(Sources[Index], Source))
+		{
+			return Index;
+		}
+	}
+	return INDEX_NONE;
 }
 
 void SQuickSDFMaskImportPanel::RebuildRows()
@@ -473,15 +657,40 @@ void SQuickSDFMaskImportPanel::RebuildRows()
 		{
 			ReadImageDimensions(Source.SourcePath, Row->Width, Row->Height);
 		}
-		Row->bAngleFromName = QuickSDFPaintToolPrivate::TryExtractAngleFromName(GetSourceName(Source), Row->Angle);
-		Row->bAngleInferred = !Row->bAngleFromName;
+		if (Source.bHasForcedAngle)
+		{
+			Row->Angle = Source.ForcedAngle;
+			Row->bAngleFromName = false;
+			Row->bAngleInferred = false;
+			Row->bAngleFromCurrentSelection = true;
+		}
+		else
+		{
+			Row->bAngleFromName = QuickSDFPaintToolPrivate::TryExtractAngleFromName(GetSourceName(Source), Row->Angle);
+			Row->bAngleInferred = !Row->bAngleFromName;
+		}
 		bNeedsFullRange |= Row->bAngleFromName && Row->Angle > 90.01f;
+		bNeedsFullRange |= Source.bHasForcedAngle && Row->Angle > 90.01f;
 		SourceRows.Add(Row);
 	}
 
 	const float MaxAngle = (bBaseSymmetry && !bNeedsFullRange) ? 90.0f : 180.0f;
 	int32 AutoIndex = 0;
 	int32 AutoCount = 0;
+	const bool bUseCurrentAngleForSingleSource =
+		SourceRows.Num() == 1 &&
+		SourceRows[0].IsValid() &&
+		SourceRows[0]->bAngleInferred &&
+		Properties &&
+		Properties->TargetAngles.IsValidIndex(Properties->EditAngleIndex);
+
+	if (bUseCurrentAngleForSingleSource)
+	{
+		SourceRows[0]->Angle = Properties->TargetAngles[Properties->EditAngleIndex];
+		SourceRows[0]->bAngleInferred = false;
+		SourceRows[0]->bAngleFromCurrentSelection = true;
+	}
+
 	for (const TSharedPtr<FQuickSDFMaskImportRowData>& Row : SourceRows)
 	{
 		if (Row.IsValid() && Row->bAngleInferred)
@@ -614,6 +823,47 @@ void SQuickSDFMaskImportPanel::RefreshValidation()
 		}
 
 		Row->SlotIndex = RowIndex;
+		Row->ExistingSlotIndex = INDEX_NONE;
+		if (Properties)
+		{
+			for (int32 TargetIndex = 0; TargetIndex < Properties->TargetAngles.Num(); ++TargetIndex)
+			{
+				if (FMath::IsNearlyEqual(Properties->TargetAngles[TargetIndex], Row->Angle, QuickSDFImportAngleMatchTolerance))
+				{
+					Row->ExistingSlotIndex = TargetIndex;
+					break;
+				}
+			}
+		}
+
+		const FText AngleText = FText::AsNumber(Row->Angle, &FNumberFormattingOptions::DefaultNoGrouping());
+		if (!Row->bHasSource)
+		{
+			Row->AssignmentText = LOCTEXT("EmptyAssignment", "No source");
+			Row->AssignmentToolTipText = FText::Format(
+				LOCTEXT("EmptyAssignmentTooltip", "This is an expected {0} deg slot, but no source will be imported for it."),
+				AngleText);
+		}
+		else if (Row->ExistingSlotIndex != INDEX_NONE)
+		{
+			const bool bCurrentSlot = Properties && Row->ExistingSlotIndex == Properties->EditAngleIndex;
+			Row->AssignmentText = bCurrentSlot
+				? FText::Format(LOCTEXT("CurrentSlotAssignment", "Current slot {0}"), FText::AsNumber(Row->ExistingSlotIndex + 1))
+				: FText::Format(LOCTEXT("ExistingSlotAssignment", "Slot {0}"), FText::AsNumber(Row->ExistingSlotIndex + 1));
+			Row->AssignmentToolTipText = FText::Format(
+				bCurrentSlot ? LOCTEXT("CurrentSlotAssignmentTooltip", "Apply Import will assign this source to the current timeline slot at {0} deg.")
+							 : LOCTEXT("ExistingSlotAssignmentTooltip", "Apply Import will assign this source to existing timeline slot {1} at {0} deg."),
+				AngleText,
+				FText::AsNumber(Row->ExistingSlotIndex + 1));
+		}
+		else
+		{
+			Row->AssignmentText = LOCTEXT("NewSlotAssignment", "New slot");
+			Row->AssignmentToolTipText = FText::Format(
+				LOCTEXT("NewSlotAssignmentTooltip", "Apply Import will create a mask slot at {0} deg."),
+				AngleText);
+		}
+
 		TArray<FText> Warnings;
 		if (!Row->bHasSource)
 		{
@@ -662,6 +912,71 @@ void SQuickSDFMaskImportPanel::RefreshValidation()
 	}
 }
 
+void SQuickSDFMaskImportPanel::OnRowSelectionChanged(TSharedPtr<FQuickSDFMaskImportRowData> Item, ESelectInfo::Type SelectInfo)
+{
+}
+
+TSharedPtr<FQuickSDFMaskImportRowData> SQuickSDFMaskImportPanel::GetSelectedRow() const
+{
+	if (!RowListView.IsValid())
+	{
+		return nullptr;
+	}
+
+	TArray<TSharedPtr<FQuickSDFMaskImportRowData>> SelectedRows = RowListView->GetSelectedItems();
+	return SelectedRows.Num() > 0 ? SelectedRows[0] : nullptr;
+}
+
+void SQuickSDFMaskImportPanel::SelectDefaultRow()
+{
+	if (!RowListView.IsValid() || Rows.Num() == 0)
+	{
+		return;
+	}
+
+	UQuickSDFPaintTool* Tool = PaintTool.Get();
+	const UQuickSDFToolProperties* Properties = Tool ? Tool->Properties.Get() : nullptr;
+	if (Properties && Properties->TargetAngles.IsValidIndex(Properties->EditAngleIndex))
+	{
+		SelectRowClosestToAngle(Properties->TargetAngles[Properties->EditAngleIndex]);
+		return;
+	}
+
+	RowListView->SetSelection(Rows[0], ESelectInfo::Direct);
+	RowListView->RequestScrollIntoView(Rows[0]);
+}
+
+void SQuickSDFMaskImportPanel::SelectRowClosestToAngle(float Angle)
+{
+	if (!RowListView.IsValid() || Rows.Num() == 0)
+	{
+		return;
+	}
+
+	TSharedPtr<FQuickSDFMaskImportRowData> BestRow;
+	float BestDistance = TNumericLimits<float>::Max();
+	for (const TSharedPtr<FQuickSDFMaskImportRowData>& Row : Rows)
+	{
+		if (!Row.IsValid())
+		{
+			continue;
+		}
+
+		const float Distance = FMath::Abs(Row->Angle - Angle);
+		if (Distance < BestDistance)
+		{
+			BestDistance = Distance;
+			BestRow = Row;
+		}
+	}
+
+	if (BestRow.IsValid())
+	{
+		RowListView->SetSelection(BestRow, ESelectInfo::Direct);
+		RowListView->RequestScrollIntoView(BestRow);
+	}
+}
+
 bool SQuickSDFMaskImportPanel::HasImportableRows() const
 {
 	for (const TSharedPtr<FQuickSDFMaskImportRowData>& Row : Rows)
@@ -672,6 +987,27 @@ bool SQuickSDFMaskImportPanel::HasImportableRows() const
 		}
 	}
 	return false;
+}
+
+FText SQuickSDFMaskImportPanel::GetSelectedTargetText() const
+{
+	const TSharedPtr<FQuickSDFMaskImportRowData> SelectedRow = GetSelectedRow();
+	if (!SelectedRow.IsValid())
+	{
+		return LOCTEXT("NoSelectedTarget", "Select a row, then add one file or asset to place it in that slot.");
+	}
+
+	const FText AngleText = FText::AsNumber(SelectedRow->Angle, &FNumberFormattingOptions::DefaultNoGrouping());
+	return SelectedRow->bHasSource
+		? FText::Format(
+			LOCTEXT("SelectedFilledTarget", "Selected target: Slot {0} / {1} deg / replace {2}"),
+			FText::AsNumber(SelectedRow->SlotIndex + 1),
+			AngleText,
+			FText::FromString(GetSourceName(SelectedRow->Source)))
+		: FText::Format(
+			LOCTEXT("SelectedEmptyTarget", "Selected target: Slot {0} / {1} deg"),
+			FText::AsNumber(SelectedRow->SlotIndex + 1),
+			AngleText);
 }
 
 FText SQuickSDFMaskImportPanel::GetSummaryText() const
@@ -751,27 +1087,72 @@ FReply SQuickSDFMaskImportPanel::OnAddFilesClicked()
 		ReadImageDimensions(Filename, Source.Width, Source.Height);
 		NewSources.Add(Source);
 	}
-	AddSources(NewSources);
+	AddSourcesFromUserAction(NewSources);
 	return FReply::Handled();
 }
 
 FReply SQuickSDFMaskImportPanel::OnAddAssetsClicked()
 {
 	FContentBrowserModule& ContentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
+	AssetPickerState = MakeShared<FQuickSDFAssetPickerState>();
+	TWeakPtr<SQuickSDFMaskImportPanel> WeakPanel = SharedThis(this);
 
 	FAssetPickerConfig AssetPickerConfig;
-	AssetPickerConfig.SelectionMode = ESelectionMode::Single;
+	AssetPickerConfig.SelectionMode = ESelectionMode::Multi;
 	AssetPickerConfig.Filter.ClassPaths.Add(UTexture2D::StaticClass()->GetClassPathName());
 	AssetPickerConfig.Filter.bRecursiveClasses = true;
 	AssetPickerConfig.InitialAssetViewType = EAssetViewType::List;
 	AssetPickerConfig.bAllowNullSelection = false;
-	AssetPickerConfig.OnAssetSelected = FOnAssetSelected::CreateSP(this, &SQuickSDFMaskImportPanel::OnAssetPicked);
+	AssetPickerConfig.GetCurrentSelectionDelegates.Add(&AssetPickerState->GetCurrentSelectionDelegate);
+	AssetPickerConfig.OnAssetsActivated = FOnAssetsActivated::CreateLambda(
+		[WeakPanel](const TArray<FAssetData>& ActivatedAssets, EAssetTypeActivationMethod::Type ActivationMethod)
+		{
+			if (TSharedPtr<SQuickSDFMaskImportPanel> PinnedPanel = WeakPanel.Pin())
+			{
+				PinnedPanel->AddAssetDataSelection(ActivatedAssets);
+				FSlateApplication::Get().DismissAllMenus();
+			}
+		});
 
 	TSharedRef<SWidget> MenuContent = SNew(SBox)
-		.WidthOverride(460.0f)
-		.HeightOverride(520.0f)
+		.WidthOverride(520.0f)
+		.HeightOverride(560.0f)
 		[
-			ContentBrowserModule.Get().CreateAssetPicker(AssetPickerConfig)
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot()
+			.FillHeight(1.0f)
+			[
+				ContentBrowserModule.Get().CreateAssetPicker(AssetPickerConfig)
+			]
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(8.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				.VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("AssetPickerHint", "Select one or more Texture2D assets. One selected asset replaces the selected target row."))
+					.Font(FAppStyle::GetFontStyle("SmallFont"))
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(8.0f, 0.0f, 4.0f, 0.0f)
+				[
+					MakeSmallButton(LOCTEXT("AddSelectedAssets", "Add Selected"), LOCTEXT("AddSelectedAssetsTooltip", "Add the selected Texture2D assets to the import preview."), FOnClicked::CreateSP(this, &SQuickSDFMaskImportPanel::OnAddSelectedAssetsClicked))
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				[
+					MakeSmallButton(LOCTEXT("CancelAssetPicker", "Cancel"), LOCTEXT("CancelAssetPickerTooltip", "Close the asset picker."), FOnClicked::CreateLambda([]()
+					{
+						FSlateApplication::Get().DismissAllMenus();
+						return FReply::Handled();
+					}))
+				]
+			]
 		];
 
 	FSlateApplication::Get().PushMenu(
@@ -785,18 +1166,39 @@ FReply SQuickSDFMaskImportPanel::OnAddAssetsClicked()
 	return FReply::Handled();
 }
 
-void SQuickSDFMaskImportPanel::OnAssetPicked(const FAssetData& AssetData)
+FReply SQuickSDFMaskImportPanel::OnAddSelectedAssetsClicked()
 {
-	if (UTexture2D* Texture = Cast<UTexture2D>(AssetData.GetAsset()))
+	if (AssetPickerState.IsValid() && AssetPickerState->GetCurrentSelectionDelegate.IsBound())
 	{
-		FQuickSDFMaskImportSource Source;
-		Source.Texture = Texture;
-		Source.DisplayName = Texture->GetName();
-		Source.Width = Texture->GetSizeX();
-		Source.Height = Texture->GetSizeY();
-		AddSources({ Source });
+		AddAssetDataSelection(AssetPickerState->GetCurrentSelectionDelegate.Execute());
 	}
 	FSlateApplication::Get().DismissAllMenus();
+	return FReply::Handled();
+}
+
+void SQuickSDFMaskImportPanel::OnAssetPicked(const FAssetData& AssetData)
+{
+	AddAssetDataSelection({ AssetData });
+	FSlateApplication::Get().DismissAllMenus();
+}
+
+void SQuickSDFMaskImportPanel::AddAssetDataSelection(const TArray<FAssetData>& AssetDataList)
+{
+	TArray<FQuickSDFMaskImportSource> NewSources;
+	for (const FAssetData& AssetData : AssetDataList)
+	{
+		if (UTexture2D* Texture = Cast<UTexture2D>(AssetData.GetAsset()))
+		{
+			FQuickSDFMaskImportSource Source;
+			Source.Texture = Texture;
+			Source.DisplayName = Texture->GetName();
+			Source.Width = Texture->GetSizeX();
+			Source.Height = Texture->GetSizeY();
+			NewSources.Add(Source);
+		}
+	}
+
+	AddSourcesFromUserAction(NewSources);
 }
 
 FReply SQuickSDFMaskImportPanel::OnCompleteClicked()
@@ -851,6 +1253,7 @@ FReply SQuickSDFMaskImportPanel::OnApplyClicked()
 
 	TArray<UTexture2D*> Textures;
 	TArray<float> Angles;
+	TArray<TSharedPtr<FQuickSDFMaskImportRowData>> ImportRows;
 	int32 CreatedTextureCount = 0;
 	const FString ImportFolder = CleanContentFolder(Properties->ImportedMaskFolder);
 
@@ -881,11 +1284,32 @@ FReply SQuickSDFMaskImportPanel::OnApplyClicked()
 		{
 			Textures.Add(Texture);
 			Angles.Add(Row->Angle);
+			ImportRows.Add(Row);
 		}
 	}
 
 	if (Textures.Num() == 0)
 	{
+		return FReply::Handled();
+	}
+
+	if (Textures.Num() == 1 && ImportRows.Num() == 1 && ImportRows[0].IsValid() && ImportRows[0]->ExistingSlotIndex != INDEX_NONE)
+	{
+		if (Tool->AssignMaskTextureToAngle(ImportRows[0]->ExistingSlotIndex, Textures[0]))
+		{
+			FNotificationInfo Info(FText::Format(
+				LOCTEXT("SingleImportCompleteNotification", "Imported 1 mask / Created {0} textures in {1}"),
+				FText::AsNumber(CreatedTextureCount),
+				FText::FromString(ImportFolder)));
+			Info.ExpireDuration = 4.0f;
+			Info.bUseLargeFont = false;
+			if (TSharedPtr<SNotificationItem> Notification = FSlateNotificationManager::Get().AddNotification(Info))
+			{
+				Notification->SetCompletionState(SNotificationItem::CS_Success);
+			}
+
+			OnClosed.ExecuteIfBound();
+		}
 		return FReply::Handled();
 	}
 
