@@ -207,6 +207,13 @@ void UQuickSDFPaintTool::Setup()
 {
 	Super::Setup();
 
+	if (BrushProperties)
+	{
+		BrushProperties->bSpecifyRadius = true;
+		BrushProperties->bToolSupportsPressureSensitivity = true;
+		RecalculateBrushRadius();
+	}
+
 	Properties = NewObject<UQuickSDFToolProperties>(this);
 	Properties->SetFlags(RF_Transactional);
 	AddToolPropertySource(Properties);

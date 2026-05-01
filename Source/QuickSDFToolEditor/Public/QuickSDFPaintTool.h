@@ -109,6 +109,7 @@ public:
 	virtual FInputRayHit BeginHoverSequenceHitTest(const FInputDeviceRay& PressPos) override;
 	virtual bool OnUpdateHover(const FInputDeviceRay& DevicePos) override;
 	virtual void OnEndHover() override;
+	virtual void UpdateBrushStampIndicator() override;
 	
 	virtual void OnPropertyModified(UObject* PropertySet, FProperty* Property) override;
 	virtual void DrawHUD( FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI ) override;
@@ -156,6 +157,8 @@ protected:
 	void StampSample(const FQuickSDFStrokeSample& Sample);
 	void StampSamples(const TArray<FQuickSDFStrokeSample>& Samples);
 	void AppendStrokeSample(const FQuickSDFStrokeSample& Sample);
+	void StampLinearSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample);
+	void FlushStrokeTail();
 	void StampInterpolatedSegment(
 		const FQuickSDFStrokeSample& P0,
 		const FQuickSDFStrokeSample& P1,
@@ -168,6 +171,10 @@ protected:
 	FVector2f ScreenToPreviewUV(const FVector2D& ScreenPosition) const;
 	FVector2D GetBrushPixelSize(class UTextureRenderTarget2D* RenderTarget) const;
 	double GetCurrentStrokeSpacing(class UTextureRenderTarget2D* RenderTarget) const;
+	double GetEffectiveBrushRadius() const;
+	FVector2D GetSamplePixelPosition(const FQuickSDFStrokeSample& Sample, class UTextureRenderTarget2D* RenderTarget) const;
+	double GetSamplePixelDistance(const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B, class UTextureRenderTarget2D* RenderTarget) const;
+	FQuickSDFStrokeSample LerpStrokeSample(const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B, double Alpha) const;
 	bool IsPaintingShadow() const;
 	TArray<int32> GetPaintTargetAngleIndices() const;
 	void BeginBrushResizeMode();
@@ -261,14 +268,10 @@ protected:
 	TArray<FQuickSDFStrokeSample> QuickLineSourceSamples;
 	FQuickSDFStrokeSample QuickLineStartSample;
 	FQuickSDFStrokeSample QuickLineEndSample;
+	FQuickSDFStrokeSample LastRawStrokeSample;
 	FVector2D QuickLineHoldScreenPosition = FVector2D::ZeroVector;
 	double QuickLineLastMoveTime = 0.0;
-	
-	UPROPERTY(EditAnywhere, Category = "Brush Feel")
-	float StabilizerAmount = 0.2f;
-	
-	UPROPERTY(EditAnywhere, Category = "Brush Feel")
-	float LazyRadius = 5.0f;
+	bool bHasLastRawStrokeSample = false;
 	
 	FVector2D FilteredScreenPosition = FVector2D::ZeroVector;
 	

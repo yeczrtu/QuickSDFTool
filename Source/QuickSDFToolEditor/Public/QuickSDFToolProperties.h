@@ -87,6 +87,15 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Quick Stroke Move Tolerance", ClampMin = "1.0", UIMin = "1.0", UIMax = "32.0"))
 	float QuickLineMoveTolerance = 6.0f;
 
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Enable Stroke Stabilizer"))
+	bool bEnableStrokeStabilizer = true;
+
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Stroke Stabilizer Radius", ClampMin = "0.0", UIMin = "0.0", UIMax = "48.0"))
+	float StrokeStabilizerRadius = 12.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Stroke Spacing", ClampMin = "0.02", UIMin = "0.02", UIMax = "0.25"))
+	float StrokeSpacingRatio = 0.08f;
+
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bEnableOnionSkin = false;
 

@@ -7,7 +7,7 @@
 </p>
 
 > [!NOTE]
-> **Status: Prototype.** QuickSDFTool is usable for experimentation and small production tests, but APIs, UI, and saved asset details may still change before a stable release.
+> **Status: Preview / beta.** QuickSDFTool is usable for experimentation and small production tests, but APIs, UI, and saved asset details may still change before a stable release.
 
 ## Demo
 
@@ -26,12 +26,14 @@ flowchart LR
 ## What Works Today
 
 - Dedicated UE5 Editor Mode named `Quick SDF`.
-- Direct painting on Static Mesh and Skeletal Mesh components.
-- 2D UV preview painting for precise texture-space edits.
-- Angular keyframe timeline with thumbnails, snapping, add/remove controls, and `DirectionalLight` sync.
-- Symmetry mode for front-half sweeps, onion skinning, quick strokes, and paint-all-angles workflow.
-- Mask import/export, non-destructive `UQuickSDFAsset` storage, and UE transaction-based undo/redo.
-- CPU SDF generation with optional 1x-8x upscaling and half-float texture export.
+- Direct painting on Static Mesh and Skeletal Mesh components, including target material-slot isolation.
+- 2D UV preview painting with optional UV guides, original-shadow overlay, and onion skinning.
+- Angular keyframe timeline with thumbnails, seek marker, 5-degree snapping, add/duplicate/delete controls, complete-to-eight, even redistribution, and `DirectionalLight` sync.
+- Arrow-key previous/next frame navigation that suppresses viewport movement while the mode handles the keys.
+- Paint target modes for Current, All, Before Current, and After Current masks.
+- Symmetry mode for front-half sweeps, hold-to-line quick strokes, and paint-all-angles style workflows.
+- Mask import from selected textures, file picker, or timeline drag-and-drop; mask export; non-destructive `UQuickSDFAsset` storage; UE transaction-based undo/redo.
+- CPU SDF generation with automatic Monopolar/Bipolar packing, optional 1x-8x upscaling, and half-float texture export.
 - Example preview/toon materials under `Content/Materials/`.
 
 ## Why SDF Threshold Maps?
@@ -62,9 +64,10 @@ Use this path when you only want to see a result quickly.
 3. Open the Editor Mode selector and choose **Quick SDF**.
 4. Select a mesh in the level.
 5. Paint white with `LMB`; paint black/shadow with `Shift + LMB`.
-6. Add or move timeline keys for the light angles you want.
-7. Click **Create Threshold Map** or **Generate SDF Threshold Map** in the tool details.
-8. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
+6. Add, duplicate, delete, or move timeline keys for the light angles you want.
+7. Choose the paint target mode if you want a stroke to affect only the current mask, all masks, or a range before/after the current key.
+8. Click **Create Threshold Map** or **Generate SDF Threshold Map** in the tool details.
+9. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
 
 See [Examples](./Examples/README.md), [Material Setup](./Docs/MaterialSetup.md), and [Troubleshooting](./Docs/Troubleshooting.md) for a fuller walkthrough.
 
@@ -118,20 +121,31 @@ QuickSDFTool currently targets UE 5.7 because the editor tool is built on curren
 | --- | --- |
 | `LMB Drag` | Paint light/white |
 | `Shift + LMB Drag` | Paint shadow/black |
-| `Ctrl + F + Mouse Move` | Resize brush |
+| `Ctrl + F`, move mouse, click | Resize brush |
+| `Alt + T` | Open the quick toggle menu |
+| `Alt + 1` | Cycle paint target mode |
+| `Alt + 2` - `Alt + 8` | Toggle Auto Light, Preview, UV overlay, Shadow overlay, Onion Skin, Quick Stroke, and Symmetry |
+| `Left / Right Arrow` | Select previous / next timeline frame |
+| `Timeline Track Click / Drag` | Seek the light angle and select the nearest key |
 | `Timeline Key Click` | Select angle |
 | `Timeline Key Drag` | Adjust angle |
+| `Timeline Add / Duplicate / Delete` | Create, copy, or remove keyframes |
+| `Timeline 8 / Even` | Complete the set to eight masks or redistribute angles evenly |
+| `Drag Texture2D assets onto timeline` | Import edited masks |
 | `Ctrl + Z / Ctrl + Y` | Undo / Redo |
 
 ## Features
 
 - **Custom Editor Mode** — Registers a dedicated UE5 mode accessible from the mode selector toolbar.
-- **Direct Mesh Painting** — Paint masks directly on target mesh surfaces with realtime preview.
+- **Direct Mesh Painting** — Paint masks directly on target mesh surfaces with realtime preview and material-slot filtering.
 - **2D UV Canvas Painting** — Paint on a HUD-overlaid texture preview for texture-space control.
-- **Spatial Timeline UI** — Manage mask keyframes by light angle with thumbnail handles.
-- **Auto Fill from Original Shading** — Bake current viewport/material lighting into a keyframe as a starting point.
-- **SDF Generation Pipeline** — Generate threshold maps through SDF interpolation and RGBA channel packing.
-- **Non-Destructive Workflow** — Store work in `UQuickSDFAsset` and iterate without losing mask state.
+- **Paint Target Modes** — Send a stroke to the current mask, all masks, or a before/after range on the timeline.
+- **Spatial Timeline UI** — Manage mask keyframes by light angle with thumbnail handles, seek support, add/duplicate/delete actions, snapping, and quick redistribution tools.
+- **Preview Light Workflow** — Temporarily mutes scene `DirectionalLight` actors, spawns a preview light, and restores original light intensity on exit/save.
+- **Auto Fill from Original Shading** — Bake current viewport/material lighting into masks as a starting point.
+- **Mask I/O** — Import edited masks from selected assets, image files, or timeline drops, and export mask textures for external editing.
+- **SDF Generation Pipeline** — Generate threshold maps through SDF interpolation, automatic Monopolar/Bipolar RGBA packing, and half-float texture output.
+- **Non-Destructive Workflow** — Store work in `UQuickSDFAsset`, optionally save mask textures with the asset, and iterate without losing mask state.
 
 ## Roadmap
 
@@ -155,8 +169,8 @@ QuickSDFTool currently targets UE 5.7 because the editor tool is built on curren
 
 - [ ] Import custom brush alpha textures.
 - [ ] Add tablet pressure support for brush size and opacity.
-- [ ] Duplicate the current timeline frame and mask data.
-- [ ] Add previous/next timeline navigation buttons and shortcuts.
+- [ ] Finish and expose stroke stabilization / lazy-radius brush feel controls.
+- [ ] Add explicit previous/next timeline toolbar buttons if keyboard navigation is not enough for artists.
 - [ ] Add autosave/hot-reload recovery for unsaved mask changes.
 
 ## Architecture
@@ -178,16 +192,16 @@ QuickSDFTool/
 
 | Module | Type | Key Dependencies |
 | --- | --- | --- |
-| `QuickSDFTool` | Runtime | `Core`, `Engine` |
-| `QuickSDFToolEditor` | Editor | `InteractiveToolsFramework`, `EditorInteractiveToolsFramework`, `GeometryCore`, `DynamicMesh`, `ModelingComponents`, `MeshConversion`, `MaterialBaking`, `Slate` |
-| `QuickSDFToolShaders` | Runtime / `PostConfigInit` | `Core`, `RenderCore`, `RHI` |
+| `QuickSDFTool` | Runtime | `Core`, `CoreUObject`, `Engine`, `RenderCore`, `RHI` |
+| `QuickSDFToolEditor` | Editor | `InteractiveToolsFramework`, `EditorInteractiveToolsFramework`, `GeometryCore`, `DynamicMesh`, `MeshDescription`, `ModelingComponents`, `MeshConversion`, `EditorSubsystem`, `UMG`, `Slate`, `LevelEditor`, `PropertyEditor`, `MaterialBaking`, `DesktopPlatform`, `ImageWrapper`, `AssetRegistry` |
+| `QuickSDFToolShaders` | Runtime / `PostConfigInit` | `Core`, `CoreUObject`, `Engine`, `RenderCore`, `RHI`, `Projects` |
 
 ## How It Works
 
 1. **Paint** — For each light angle, paint a binary mask on the mesh or UV preview.
 2. **SDF** — Convert each mask to a signed distance field.
 3. **Interpolate** — Find transitions between neighboring masks and derive threshold value `T`.
-4. **Composite** — Pack values into RGBA channels:
+4. **Composite** — Automatically choose Monopolar or Bipolar output and pack values into RGBA channels:
    - **Monopolar:** symmetric shadow behavior, same threshold in RGB.
    - **Bipolar:** asymmetric shadow enter/exit values across RGBA.
 5. **Export** — Save the final threshold map as a 16-bit half-float texture.
