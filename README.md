@@ -32,6 +32,7 @@ flowchart LR
 - Arrow-key previous/next frame navigation that suppresses viewport movement while the mode handles the keys.
 - Paint target modes for Current, All, Before Current, and After Current masks.
 - Symmetry mode for front-half sweeps, hold-to-line quick strokes, paint-all-angles style workflows, and 8-mask / 15-mask default completion depending on the sweep range.
+- Monotonic Guard for silently clipping paint strokes that would introduce repeated light/shadow flips across mask angles, with validation warnings before SDF generation.
 - Stabilized brush input with lazy-radius smoothing, pressure-sensitive radius support, antialiased brush edges, and optimized 1K-4K render target painting.
 - Mask import from selected textures, file picker, or timeline drag-and-drop; mask export; non-destructive `UQuickSDFAsset` storage; UE transaction-based undo/redo.
 - CPU SDF generation with automatic Monopolar/Bipolar packing, optional 1x-8x upscaling, and half-float texture export.
@@ -126,7 +127,7 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 | `Ctrl + F`, move mouse, click | Resize brush |
 | `Alt + T` | Open the quick toggle menu |
 | `Alt + 1` | Cycle paint target mode |
-| `Alt + 2` - `Alt + 8` | Toggle Auto Light, Preview, UV overlay, Shadow overlay, Onion Skin, Quick Stroke, and Symmetry |
+| `Alt + 2` - `Alt + 9` | Toggle Auto Light, Preview, UV overlay, Shadow overlay, Onion Skin, Quick Stroke, Symmetry, and Monotonic Guard |
 | `Left / Right Arrow` | Select previous / next timeline frame |
 | `Timeline Track Click / Drag` | Seek the light angle and select the nearest key |
 | `Timeline Key Click` | Select angle |
@@ -143,6 +144,7 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 - **Direct Mesh Painting** — Paint masks directly on target mesh surfaces with realtime preview and material-slot filtering.
 - **2D UV Canvas Painting** — Paint on a HUD-overlaid texture preview for texture-space control.
 - **Paint Target Modes** — Send a stroke to the current mask, all masks, or a before/after range on the timeline.
+- **Monotonic Guard / Clipping Mask** — When enabled, normal brush strokes and Quick Stroke are clipped at commit time so the same UV pixel does not flip repeatedly across mask angles. Current-mask strokes are checked against the surrounding processable mask set, but only pixels changed by the stroke are restored. Import, rebake, and SDF generation do not auto-fix masks; they only report validation warnings.
 - **Brush Feel Controls** — Lazy-radius stroke stabilization, fine spacing, antialiased brush masks, and pressure-driven brush radius for tablet workflows.
 - **Spatial Timeline UI** — Manage mask keyframes by light angle with thumbnail handles, a supported seek bar, add/duplicate/delete actions, snapping, symmetry-aware mask completion, and quick redistribution tools.
 - **Preview Light Workflow** — Temporarily mutes scene `DirectionalLight` actors, spawns a preview light, and restores original light intensity on exit/save.
@@ -150,6 +152,17 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 - **Mask I/O** — Import edited masks from selected assets, image files, or timeline drops, and export mask textures for external editing.
 - **SDF Generation Pipeline** — Generate threshold maps through SDF interpolation, automatic Monopolar/Bipolar RGBA packing, and half-float texture output.
 - **Non-Destructive Workflow** — Store work in `UQuickSDFAsset`, optionally save mask textures with the asset, and iterate without losing mask state.
+
+## Monotonic Guard
+
+`Monotonic Guard` is an optional paint-time safety check for SDF threshold masks. It treats `R >= 127` as white and lower values as black, then prevents a pixel from creating repeated transitions such as `black -> white -> black` or `white -> black -> white` across the processable angle sequence.
+
+- The quick toggle is labeled `Guard`; the shortcut is `Alt + 9`.
+- `Clip Direction` defaults to `Auto`: `0-90` degrees uses `White Expands`, and `90-180` degrees uses `White Shrinks`. Manual overrides are available as `White Expands` and `White Shrinks`.
+- Normal brush strokes and Quick Stroke are clipped silently before the undo transaction is finalized. The user action is not blocked and no notification is shown while painting.
+- Soft antialiased stroke edges are handled as stroke intent: a pixel that becomes brighter is treated as a white stroke for guard evaluation, and a pixel that becomes darker is treated as a black stroke, even if it does not cross the `127` binary threshold.
+- `Current / All / Before / After` still decide which masks receive the stroke. The guard evaluates the relevant processable mask sequence and restores only the pixels changed by the current stroke.
+- Imported masks, rebaked masks, and SDF generation are not automatically modified. Use the `Validate Monotonic Guard` action, or run SDF generation with the guard enabled, to get warnings about existing violations.
 
 ## Roadmap
 
@@ -180,13 +193,6 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 
 > [!NOTE]
 > These are roadmap requirements for future work. They are not available in the current preview build and do not change the current C++ API, `UQuickSDFAsset` format, Slate UI, shortcuts, or asset formats.
-
-#### Monotonic Guard / Clipping Mask
-
-- Add a `Monotonic Guard` paint helper that prevents the same UV pixel from changing state more than once across the active angle range. Sequences such as `black -> white -> black` or `white -> black -> white` should be prevented or reported because they break smooth SDF threshold gradients.
-- Support the four expected combinations: increasing angles with white expanding, increasing angles with white shrinking, decreasing angles with white expanding, and decreasing angles with white shrinking.
-- Default `Clip Direction` to `Auto`: `0-90` assumes the white area usually expands as the angle increases, while `90-180` uses the opposite direction. Manual overrides should include `White Expands` and `White Shrinks`.
-- Integrate with the existing `Current / All / Before / After` paint target modes so clipping only constrains the selected mask range.
 
 #### Quick Nose
 
@@ -239,8 +245,6 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 
 #### Acceptance Scenarios
 
-- For `0 / 45 / 90` degree masks where white expands, a guarded pixel should transition only once across the range.
-- For `90 / 135 / 180` degree masks where white shrinks, the same monotonic guarantee should apply in the reversed growth direction.
 - `Quick Nose` should support nose-position picking, preset placement, vector adjustment, baking, and Undo.
 - `Quick Reshape` should support multiple boundary lines such as `0 / 30 / 60 / 90` degrees on one guide layer, update only the matching angle masks, keep the guide layer editable after baking, and warn for lines that do not split a UV island or close a region.
 - `Actor Mesh Component Selection` should let a single actor with multiple mesh components choose one target component, paint and bake only that component, and preserve separate QuickSDF state when switching between components.
