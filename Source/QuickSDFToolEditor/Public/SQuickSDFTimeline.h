@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Input/DragAndDrop.h"
+#include "SQuickSDFMaskImportPanel.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -85,6 +86,7 @@ private:
 	FReply OnAddKeyframeClicked();
 	FReply OnDuplicateKeyframeClicked();
 	FReply OnDeleteKeyframeClicked();
+	FReply OnImportClicked();
 	FReply OnCompleteToEightClicked();
 	FReply OnRedistributeEvenlyClicked();
 	void OnKeyframeClicked(int32 Index);
@@ -94,7 +96,12 @@ private:
 	void OnKeyframeDragEnded();
 	bool IsTimelineTrackUnderCursor(const FVector2D& ScreenPosition) const;
 	bool IsNearKeyframeHandle(const FVector2D& ScreenPosition) const;
+	int32 FindKeyframeAtScreenPosition(const FVector2D& ScreenPosition) const;
 	void SeekTimelineAtScreenPosition(const FVector2D& ScreenPosition);
+	void OpenImportPanel(const TArray<FQuickSDFMaskImportSource>& Sources);
+	void CloseImportPanel();
+	TArray<FQuickSDFMaskImportSource> MakeImportSourcesFromTextures(const TArray<UTexture2D*>& Textures) const;
+	TArray<FQuickSDFMaskImportSource> MakeImportSourcesFromFiles(const TArray<FString>& Filenames) const;
 	float GetCurrentSeekAngle() const;
 	float ResolveTimelineActionAngle() const;
 	EVisibility GetRefineVisibility() const;
@@ -116,9 +123,11 @@ private:
 	bool bSeekingTimeline = false;
 	bool bTimelineDragTransactionOpen = false;
 	bool bHasSeekAngle = false;
+	bool bImportPanelOpen = false;
 	float LastSeekAngle = 0.0f;
 
 	// Widget refs
 	TSharedPtr<class SCanvas> TimelineTrackCanvas;
+	TSharedPtr<class SBox> ImportPanelBox;
 };
 

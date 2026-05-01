@@ -262,54 +262,55 @@ void UQuickSDFPaintTool::CreateQuickThresholdMap()
 
 void UQuickSDFPaintTool::ImportEditedMasks()
 {
+	RequestImportPanel();
+}
+
+void UQuickSDFPaintTool::RequestImportPanel()
+{
+	bImportPanelRequested = true;
+}
+
+bool UQuickSDFPaintTool::ConsumeImportPanelRequest()
+{
+	const bool bRequested = bImportPanelRequested;
+	bImportPanelRequested = false;
+	return bRequested;
+}
+
+bool UQuickSDFPaintTool::AssignMaskTextureToAngle(int32 AngleIndex, UTexture2D* Texture)
+{
 	if (!Properties)
 	{
-		return;
+		return false;
 	}
 
-	TArray<UTexture2D*> Textures = CollectSelectedTextureAssets();
-	if (Textures.Num() == 0)
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	if (!Asset || !Asset->AngleDataList.IsValidIndex(AngleIndex))
 	{
-		IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
-		if (!DesktopPlatform)
-		{
-			return;
-		}
-
-		TArray<FString> SourceFilenames;
-		const void* ParentWindowHandle = FSlateApplication::Get().FindBestParentWindowHandleForDialogs(nullptr);
-		const bool bSelectedFiles = DesktopPlatform->OpenFileDialog(
-			ParentWindowHandle,
-			TEXT("Import Edited Masks"),
-			FString(),
-			FString(),
-			TEXT("Image files|*.png;*.jpg;*.jpeg;*.bmp;*.tga;*.exr|All files|*.*"),
-			EFileDialogFlags::Multiple,
-			SourceFilenames);
-
-		if (!bSelectedFiles || SourceFilenames.Num() == 0)
-		{
-			return;
-		}
-
-		UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
-		if (!Subsystem)
-		{
-			return;
-		}
-
-		FText ImportError;
-		if (!Subsystem->ImportMaskFilesAsTextures(SourceFilenames, Properties->ImportedMaskFolder, Textures, &ImportError))
-		{
-			if (!ImportError.IsEmpty())
-			{
-				FMessageDialog::Open(EAppMsgType::Ok, ImportError);
-			}
-			return;
-		}
+		return false;
 	}
 
-	ImportEditedMasksFromTextures(Textures);
+	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+	EnsureMaskGuids(Asset);
+
+	GetToolManager()->BeginUndoTransaction(LOCTEXT("AssignDroppedQuickSDFMask", "Assign Dropped Quick SDF Mask"));
+	Asset->Modify();
+	Properties->Modify();
+
+	Properties->TargetTextures.SetNum(Asset->AngleDataList.Num());
+	Properties->TargetAngles.SetNum(Asset->AngleDataList.Num());
+	Properties->NumAngles = Asset->AngleDataList.Num();
+	Properties->EditAngleIndex = FMath::Clamp(AngleIndex, 0, Asset->AngleDataList.Num() - 1);
+	Properties->TargetTextures[AngleIndex] = Texture;
+
+	FProperty* EditProp = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex));
+	OnPropertyModified(Properties, EditProp);
+	FProperty* TextureProp = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetTextures));
+	OnPropertyModified(Properties, TextureProp);
+
+	GetToolManager()->EndUndoTransaction();
+	return true;
 }
 
 bool UQuickSDFPaintTool::ImportEditedMasksFromTextures(const TArray<UTexture2D*>& InTextures)
@@ -411,6 +412,122 @@ bool UQuickSDFPaintTool::ImportEditedMasksFromTextures(const TArray<UTexture2D*>
 		{
 			Item.Angle = FMath::Clamp(Item.Angle, 0.0f, MaxAngle);
 		}
+	}
+
+	Items.Sort([](const FImportTextureItem& A, const FImportTextureItem& B)
+	{
+		if (!FMath::IsNearlyEqual(A.Angle, B.Angle))
+		{
+			return A.Angle < B.Angle;
+		}
+		return A.Name < B.Name;
+	});
+
+	const int32 FirstWidth = Items[0].Texture ? Items[0].Texture->GetSizeX() : 0;
+	const int32 FirstHeight = Items[0].Texture ? Items[0].Texture->GetSizeY() : 0;
+	if (FirstWidth > 0 && FirstHeight > 0)
+	{
+		Properties->Resolution = FIntPoint(FirstWidth, FirstHeight);
+		Asset->Resolution = Properties->Resolution;
+	}
+
+	Asset->UVChannel = Properties->UVChannel;
+	Asset->AngleDataList.SetNum(Items.Num());
+	Properties->NumAngles = Items.Num();
+	Properties->TargetAngles.SetNum(Items.Num());
+	Properties->TargetTextures.SetNum(Items.Num());
+
+	for (int32 Index = 0; Index < Items.Num(); ++Index)
+	{
+		Asset->AngleDataList[Index].Angle = Items[Index].Angle;
+		Asset->AngleDataList[Index].MaskGuid = FGuid::NewGuid();
+		Asset->AngleDataList[Index].TextureMask = Items[Index].Texture;
+		Asset->AngleDataList[Index].PaintRenderTarget = nullptr;
+		Properties->TargetAngles[Index] = Items[Index].Angle;
+		Properties->TargetTextures[Index] = Items[Index].Texture;
+	}
+
+	Properties->EditAngleIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Properties->NumAngles - 1);
+	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+	for (int32 Index = 0; Index < Items.Num(); ++Index)
+	{
+		Subsystem->DrawTextureToRenderTarget(Items[Index].Texture, Asset->AngleDataList[Index].PaintRenderTarget);
+	}
+
+	RefreshPreviewMaterial();
+	bUseImportedMasksForQuickCreate = true;
+	MarkMasksChanged();
+	GetToolManager()->EndUndoTransaction();
+	return true;
+}
+
+bool UQuickSDFPaintTool::ImportEditedMasksFromTexturesWithAngles(const TArray<UTexture2D*>& InTextures, const TArray<float>& InAngles)
+{
+	if (!Properties || InTextures.Num() == 0)
+	{
+		return false;
+	}
+
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	if (!Subsystem)
+	{
+		return false;
+	}
+
+	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
+	if (!Asset)
+	{
+		Asset = NewObject<UQuickSDFAsset>(Subsystem);
+		Asset->SetFlags(RF_Transactional);
+		Subsystem->SetActiveSDFAsset(Asset);
+		Properties->TargetAsset = Asset;
+	}
+
+	struct FImportTextureItem
+	{
+		UTexture2D* Texture = nullptr;
+		FString Name;
+		float Angle = 0.0f;
+	};
+
+	TArray<FImportTextureItem> Items;
+	Items.Reserve(InTextures.Num());
+	bool bAnyAngleAboveSymmetryRange = false;
+	for (int32 Index = 0; Index < InTextures.Num(); ++Index)
+	{
+		UTexture2D* Texture = InTextures[Index];
+		if (!Texture)
+		{
+			continue;
+		}
+
+		const float Angle = InAngles.IsValidIndex(Index) ? InAngles[Index] : 0.0f;
+		bAnyAngleAboveSymmetryRange |= Angle > 90.01f;
+
+		FImportTextureItem& Item = Items.AddDefaulted_GetRef();
+		Item.Texture = Texture;
+		Item.Name = Texture->GetName();
+		Item.Angle = Angle;
+	}
+
+	if (Items.Num() == 0)
+	{
+		return false;
+	}
+
+	GetToolManager()->BeginUndoTransaction(LOCTEXT("ImportEditedMasksWithAngles", "Import Edited Quick SDF Masks"));
+	Asset->Modify();
+	Properties->Modify();
+
+	if (bAnyAngleAboveSymmetryRange)
+	{
+		Properties->bSymmetryMode = false;
+	}
+
+	const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
+	for (FImportTextureItem& Item : Items)
+	{
+		Item.Angle = FMath::Clamp(Item.Angle, 0.0f, MaxAngle);
 	}
 
 	Items.Sort([](const FImportTextureItem& A, const FImportTextureItem& B)

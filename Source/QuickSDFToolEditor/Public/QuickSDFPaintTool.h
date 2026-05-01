@@ -124,6 +124,10 @@ public:
 	void CreateQuickThresholdMap();
 	void ImportEditedMasks();
 	bool ImportEditedMasksFromTextures(const TArray<UTexture2D*>& InTextures);
+	bool ImportEditedMasksFromTexturesWithAngles(const TArray<UTexture2D*>& InTextures, const TArray<float>& InAngles);
+	bool AssignMaskTextureToAngle(int32 AngleIndex, UTexture2D* Texture);
+	void RequestImportPanel();
+	bool ConsumeImportPanelRequest();
 	void SaveQuickSDFAsset();
 	bool CaptureRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const;
 	class UTextureRenderTarget2D* GetActiveRenderTarget() const;
@@ -258,6 +262,7 @@ protected:
 	bool bHasQuickLineStartSample = false;
 	bool bHasQuickLineEndSample = false;
 	bool bSuppressMaskPixelUndo = false;
+	bool bImportPanelRequested = false;
 	int32 MaskRevision = 0;
 	int32 CachedUVOverlayUVChannel = INDEX_NONE;
 	int32 CachedUVOverlayMaterialSlot = INDEX_NONE;

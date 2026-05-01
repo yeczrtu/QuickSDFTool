@@ -5,6 +5,7 @@
 #include "DragAndDrop/AssetDragDropOp.h"
 #include "EditorModeManager.h"
 #include "InteractiveToolManager.h"
+#include "Input/DragAndDrop.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSpacer.h"
@@ -32,6 +33,7 @@
 #include "Widgets/Layout/SExpandableArea.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SScaleBox.h"
+#include "Misc/Paths.h"
 
 #define LOCTEXT_NAMESPACE "SQuickSDFTimeline"
 
@@ -51,6 +53,17 @@ constexpr float QuickSDFTimelineAccentB = 1.0f;
 FLinearColor GetQuickSDFTimelineAccentColor(float Alpha = 1.0f)
 {
 	return FLinearColor(QuickSDFTimelineAccentR, QuickSDFTimelineAccentG, QuickSDFTimelineAccentB, Alpha);
+}
+
+bool IsQuickSDFSupportedImageFile(const FString& Filename)
+{
+	const FString Extension = FPaths::GetExtension(Filename).ToLower();
+	return Extension == TEXT("png") ||
+		Extension == TEXT("jpg") ||
+		Extension == TEXT("jpeg") ||
+		Extension == TEXT("bmp") ||
+		Extension == TEXT("tga") ||
+		Extension == TEXT("exr");
 }
 
 TSharedRef<SWidget> MakeTimelineIconButton(const FName IconName, const FText& ToolTip, FOnClicked OnClicked)
@@ -502,6 +515,16 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 						.AutoWidth()
 						.Padding(1.0f, 0.0f)
 						[
+							MakeTimelineIconButton(
+								"QuickSDF.Action.ImportMasks",
+								LOCTEXT("ImportMasksTooltip", "Preview mask texture import assignments"),
+								FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnImportClicked))
+						]
+
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.Padding(1.0f, 0.0f)
+						[
 							MakeTimelineIconLabelButton(
 								"QuickSDF.Action.CompleteToEight",
 								TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateSP(this, &SQuickSDFTimeline::GetCompleteMaskButtonText)),
@@ -594,6 +617,16 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 								]
 							]
 						]
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(0.0f, 6.0f, 0.0f, 0.0f)
+						[
+							SAssignNew(ImportPanelBox, SBox)
+							.Visibility_Lambda([this]()
+							{
+								return bImportPanelOpen ? EVisibility::Visible : EVisibility::Collapsed;
+							})
+						]
 					]
 				]
 			]
@@ -610,6 +643,11 @@ void SQuickSDFTimeline::Tick(const FGeometry& AllottedGeometry, const double InC
 
 	UQuickSDFToolProperties* Props = Tool->Properties;
 	if (!Props) return;
+
+	if (Tool->ConsumeImportPanelRequest())
+	{
+		OpenImportPanel(MakeImportSourcesFromTextures(QuickSDFPaintToolPrivate::CollectSelectedTextureAssets()));
+	}
 
 	bool bNeedsRebuild = false;
 
@@ -655,36 +693,72 @@ void SQuickSDFTimeline::Tick(const FGeometry& AllottedGeometry, const double InC
 FReply SQuickSDFTimeline::OnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent)
 {
 	TSharedPtr<FAssetDragDropOp> AssetDragDropOp = DragDropEvent.GetOperationAs<FAssetDragDropOp>();
-	return AssetDragDropOp.IsValid() && AssetDragDropOp->HasAssets()
-		? FReply::Handled()
-		: FReply::Unhandled();
+	if (AssetDragDropOp.IsValid() && AssetDragDropOp->HasAssets())
+	{
+		for (const FAssetData& AssetData : AssetDragDropOp->GetAssets())
+		{
+			if (AssetData.GetClass() && AssetData.GetClass()->IsChildOf(UTexture2D::StaticClass()))
+			{
+				return FReply::Handled();
+			}
+		}
+	}
+
+	TSharedPtr<FExternalDragOperation> ExternalDragDropOp = DragDropEvent.GetOperationAs<FExternalDragOperation>();
+	if (ExternalDragDropOp.IsValid() && ExternalDragDropOp->HasFiles())
+	{
+		for (const FString& Filename : ExternalDragDropOp->GetFiles())
+		{
+			if (IsQuickSDFSupportedImageFile(Filename))
+			{
+				return FReply::Handled();
+			}
+		}
+	}
+
+	return FReply::Unhandled();
 }
 
 FReply SQuickSDFTimeline::OnDrop(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent)
 {
 	TSharedPtr<FAssetDragDropOp> AssetDragDropOp = DragDropEvent.GetOperationAs<FAssetDragDropOp>();
-	if (!AssetDragDropOp.IsValid() || !AssetDragDropOp->HasAssets())
+	if (AssetDragDropOp.IsValid() && AssetDragDropOp->HasAssets())
 	{
-		return FReply::Unhandled();
-	}
-
-	TArray<UTexture2D*> Textures;
-	for (const FAssetData& AssetData : AssetDragDropOp->GetAssets())
-	{
-		if (UTexture2D* Texture = Cast<UTexture2D>(AssetData.GetAsset()))
+		TArray<UTexture2D*> Textures;
+		for (const FAssetData& AssetData : AssetDragDropOp->GetAssets())
 		{
-			Textures.Add(Texture);
+			if (UTexture2D* Texture = Cast<UTexture2D>(AssetData.GetAsset()))
+			{
+				Textures.Add(Texture);
+			}
 		}
+
+		if (Textures.Num() == 0)
+		{
+			return FReply::Unhandled();
+		}
+
+		if (Textures.Num() == 1)
+		{
+			const int32 TargetIndex = FindKeyframeAtScreenPosition(DragDropEvent.GetScreenSpacePosition());
+			if (TargetIndex != INDEX_NONE)
+			{
+				if (UQuickSDFPaintTool* Tool = GetActivePaintTool())
+				{
+					Tool->AssignMaskTextureToAngle(TargetIndex, Textures[0]);
+					return FReply::Handled();
+				}
+			}
+		}
+
+		OpenImportPanel(MakeImportSourcesFromTextures(Textures));
+		return FReply::Handled();
 	}
 
-	if (Textures.Num() == 0)
+	TSharedPtr<FExternalDragOperation> ExternalDragDropOp = DragDropEvent.GetOperationAs<FExternalDragOperation>();
+	if (ExternalDragDropOp.IsValid() && ExternalDragDropOp->HasFiles())
 	{
-		return FReply::Unhandled();
-	}
-
-	if (UQuickSDFPaintTool* Tool = GetActivePaintTool())
-	{
-		Tool->ImportEditedMasksFromTextures(Textures);
+		OpenImportPanel(MakeImportSourcesFromFiles(ExternalDragDropOp->GetFiles()));
 		return FReply::Handled();
 	}
 
@@ -953,38 +1027,54 @@ bool SQuickSDFTimeline::IsTimelineTrackUnderCursor(const FVector2D& ScreenPositi
 
 bool SQuickSDFTimeline::IsNearKeyframeHandle(const FVector2D& ScreenPosition) const
 {
+	return FindKeyframeAtScreenPosition(ScreenPosition) != INDEX_NONE;
+}
+
+int32 SQuickSDFTimeline::FindKeyframeAtScreenPosition(const FVector2D& ScreenPosition) const
+{
 	if (!TimelineTrackCanvas.IsValid())
 	{
-		return false;
+		return INDEX_NONE;
 	}
 
 	const UQuickSDFPaintTool* Tool = GetActivePaintTool();
 	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
 	if (!Props)
 	{
-		return false;
+		return INDEX_NONE;
 	}
 
 	const FGeometry TrackGeometry = TimelineTrackCanvas->GetTickSpaceGeometry();
 	const FVector2D LocalPosition = TrackGeometry.AbsoluteToLocal(ScreenPosition);
-	const float TrackWidth = FMath::Max(TrackGeometry.GetLocalSize().X - 40.0f, 1.0f);
-	const float MaxAngle = Props->bSymmetryMode ? 90.0f : 180.0f;
-
-	for (float Angle : Props->TargetAngles)
+	const FVector2D LocalSize = TrackGeometry.GetLocalSize();
+	if (LocalPosition.Y < 0.0f || LocalPosition.Y > LocalSize.Y)
 	{
+		return INDEX_NONE;
+	}
+
+	const float TrackWidth = FMath::Max(LocalSize.X - 40.0f, 1.0f);
+	const float MaxAngle = Props->bSymmetryMode ? 90.0f : 180.0f;
+	int32 BestIndex = INDEX_NONE;
+	float BestDistance = TNumericLimits<float>::Max();
+
+	for (int32 Index = 0; Index < Props->TargetAngles.Num(); ++Index)
+	{
+		const float Angle = Props->TargetAngles[Index];
 		if (Props->bSymmetryMode && Angle > MaxAngle)
 		{
 			continue;
 		}
 
 		const float KeyX = FMath::Clamp(Angle / MaxAngle, 0.0f, 1.0f) * TrackWidth + 20.0f;
-		if (FMath::Abs(LocalPosition.X - KeyX) <= QuickSDFTimelineKeyframeHitSlop)
+		const float Distance = FMath::Abs(LocalPosition.X - KeyX);
+		if (Distance <= QuickSDFTimelineKeyframeHitSlop && Distance < BestDistance)
 		{
-			return true;
+			BestDistance = Distance;
+			BestIndex = Index;
 		}
 	}
 
-	return false;
+	return BestIndex;
 }
 
 void SQuickSDFTimeline::SeekTimelineAtScreenPosition(const FVector2D& ScreenPosition)
@@ -1052,6 +1142,72 @@ void SQuickSDFTimeline::SeekTimelineAtScreenPosition(const FVector2D& ScreenPosi
 	{
 		GEditor->RedrawAllViewports(false);
 	}
+}
+
+void SQuickSDFTimeline::OpenImportPanel(const TArray<FQuickSDFMaskImportSource>& Sources)
+{
+	if (!ImportPanelBox.IsValid())
+	{
+		return;
+	}
+
+	UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	bImportPanelOpen = true;
+	ImportPanelBox->SetContent(
+		SNew(SQuickSDFMaskImportPanel)
+		.PaintTool(TWeakObjectPtr<UQuickSDFPaintTool>(Tool))
+		.Sources(Sources)
+		.OnClosed(FSimpleDelegate::CreateSP(this, &SQuickSDFTimeline::CloseImportPanel)));
+}
+
+void SQuickSDFTimeline::CloseImportPanel()
+{
+	bImportPanelOpen = false;
+	if (ImportPanelBox.IsValid())
+	{
+		ImportPanelBox->SetContent(SNullWidget::NullWidget);
+	}
+}
+
+TArray<FQuickSDFMaskImportSource> SQuickSDFTimeline::MakeImportSourcesFromTextures(const TArray<UTexture2D*>& Textures) const
+{
+	TArray<FQuickSDFMaskImportSource> Sources;
+	Sources.Reserve(Textures.Num());
+	for (UTexture2D* Texture : Textures)
+	{
+		if (!Texture)
+		{
+			continue;
+		}
+
+		FQuickSDFMaskImportSource Source;
+		Source.Texture = Texture;
+		Source.DisplayName = Texture->GetName();
+		Source.Width = Texture->GetSizeX();
+		Source.Height = Texture->GetSizeY();
+		Sources.Add(Source);
+	}
+	return Sources;
+}
+
+TArray<FQuickSDFMaskImportSource> SQuickSDFTimeline::MakeImportSourcesFromFiles(const TArray<FString>& Filenames) const
+{
+	TArray<FQuickSDFMaskImportSource> Sources;
+	Sources.Reserve(Filenames.Num());
+	for (const FString& Filename : Filenames)
+	{
+		if (!IsQuickSDFSupportedImageFile(Filename))
+		{
+			continue;
+		}
+
+		FQuickSDFMaskImportSource Source;
+		Source.bExternalFile = true;
+		Source.SourcePath = Filename;
+		Source.DisplayName = FPaths::GetBaseFilename(Filename);
+		Sources.Add(Source);
+	}
+	return Sources;
 }
 
 void SQuickSDFTimeline::RebuildTimeline()
@@ -1350,6 +1506,12 @@ FReply SQuickSDFTimeline::OnDeleteKeyframeClicked()
 			Tool->RemoveKeyframe(Props->EditAngleIndex);
 		}
 	}
+	return FReply::Handled();
+}
+
+FReply SQuickSDFTimeline::OnImportClicked()
+{
+	OpenImportPanel(MakeImportSourcesFromTextures(QuickSDFPaintToolPrivate::CollectSelectedTextureAssets()));
 	return FReply::Handled();
 }
 
