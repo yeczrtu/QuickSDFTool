@@ -96,6 +96,12 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Stroke Spacing", ClampMin = "0.02", UIMin = "0.02", UIMax = "0.25"))
 	float StrokeSpacingRatio = 0.08f;
 
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Brush Edge Antialiasing"))
+	bool bEnableBrushAntialiasing = true;
+
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Brush Edge AA Width", ClampMin = "0.25", UIMin = "0.25", UIMax = "3.0", EditCondition = "bEnableBrushAntialiasing"))
+	float BrushAntialiasingWidth = 1.25f;
+
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bEnableOnionSkin = false;
 

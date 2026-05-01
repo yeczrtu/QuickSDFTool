@@ -10,7 +10,7 @@
 namespace QuickSDFPaintToolPrivate
 {
 inline constexpr double QuickSDFStrokeSpacingFactor = 0.12;
-inline constexpr int32 QuickSDFBrushMaskResolution = 128;
+inline constexpr int32 QuickSDFBrushMaskResolution = 256;
 inline constexpr int32 QuickSDFPreviewActionIncreaseBrush = static_cast<int32>(EStandardToolActions::BaseClientDefinedActionID) + 1;
 inline constexpr int32 QuickSDFActionOpenToggleMenu = static_cast<int32>(EStandardToolActions::BaseClientDefinedActionID) + 20;
 inline constexpr int32 QuickSDFActionToggleBase = static_cast<int32>(EStandardToolActions::BaseClientDefinedActionID) + 30;

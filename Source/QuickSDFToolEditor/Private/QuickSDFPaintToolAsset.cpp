@@ -890,6 +890,12 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 					? EQuickSDFPaintTargetMode::All
 					: EQuickSDFPaintTargetMode::CurrentOnly;
 			}
+			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bEnableBrushAntialiasing) ||
+				Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, BrushAntialiasingWidth))
+			{
+				BrushMaskTexture = nullptr;
+				BuildBrushMaskTexture();
+			}
 		}
 
 		UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();

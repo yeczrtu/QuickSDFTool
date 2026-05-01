@@ -87,6 +87,10 @@ void UQuickSDFPaintTool::BuildBrushMaskTexture()
 		return;
 	}
 
+	const bool bUseAntialiasing = !Properties || Properties->bEnableBrushAntialiasing;
+	const float AAWidth = bUseAntialiasing
+		? FMath::Max(Properties ? Properties->BrushAntialiasingWidth : 1.25f, 0.25f)
+		: 0.0f;
 	const float Radius = (QuickSDFBrushMaskResolution - 1) * 0.5f;
 	const FVector2f Center(Radius, Radius);
 
@@ -96,8 +100,13 @@ void UQuickSDFPaintTool::BuildBrushMaskTexture()
 		{
 			const FVector2f Pos(static_cast<float>(X), static_cast<float>(Y));
 			const float Dist = FVector2f::Distance(Pos, Center);
-			const float Falloff = FMath::Clamp(Radius - Dist + 0.5f, 0.0f, 1.0f);
-			const uint8 Alpha = static_cast<uint8>(Falloff * 255.0f);
+			float Coverage = Dist <= Radius ? 1.0f : 0.0f;
+			if (bUseAntialiasing)
+			{
+				const float SignedDistance = Radius - Dist;
+				Coverage = FMath::SmoothStep(-AAWidth, AAWidth, SignedDistance);
+			}
+			const uint8 Alpha = static_cast<uint8>(FMath::Clamp(Coverage, 0.0f, 1.0f) * 255.0f);
 
 			Pixels[Y * QuickSDFBrushMaskResolution + X] = FColor(255, 255, 255, Alpha);
 		}
