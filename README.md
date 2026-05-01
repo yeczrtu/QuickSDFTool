@@ -210,6 +210,17 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 - Show compact badges per key for mask presence, `Monotonic Guard` enabled state, unbaked vector layers, and warnings.
 - Tooltips should expose the angle, texture name, edit state, and warning details for each mask.
 
+#### Mask Freeze
+
+- Add a `Mask Freeze` workflow to reduce VRAM usage by releasing paint render targets for masks that are not actively being edited.
+- A frozen mask should keep its authored data as asset-backed mask data or CPU/disk-backed saved texture data, while its transient `PaintRenderTarget` can be discarded until editing or preview requires it again.
+- Thawing a mask should recreate its render target from the saved mask data and restore normal paint behavior without changing the mask result.
+- Provide actions for freezing the current mask, freezing all inactive masks, thawing the current mask, and thawing all masks.
+- Automatically thaw any frozen mask that becomes part of a multi-mask edit, such as `All / Before / After`, bulk fill, Quick Reshape baking, or any future operation that writes to more than the current mask.
+- Timeline keys should show frozen/unfrozen state with a badge so artists can tell which masks are immediately editable and which will need to be restored.
+- SDF generation, export, save, and overwrite-source workflows must transparently thaw or read frozen masks so output does not silently omit frozen data.
+- Undo/Redo should not lose mask data across freeze/thaw operations.
+
 #### Stroke Auto Fill
 
 - Add `Stroke Auto Fill` so a drawn line can preview and fill the chosen left/right side or inside/outside region.
@@ -223,6 +234,7 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 - For `90 / 135 / 180` degree masks where white shrinks, the same monotonic guarantee should apply in the reversed growth direction.
 - `Quick Nose` should support nose-position picking, preset placement, vector adjustment, baking, and Undo.
 - `Quick Reshape` should support multiple boundary lines such as `0 / 30 / 60 / 90` degrees on one guide layer, update only the matching angle masks, keep the guide layer editable after baking, and warn for lines that do not split a UV island or close a region.
+- `Mask Freeze` should lower VRAM usage in a high-resolution, multi-mask setup, restore frozen masks without visual changes, and automatically thaw every affected mask before applying multi-mask edits.
 - `Stroke Auto Fill` should be verified for current-only edits, `Before / After / All` edits, UV-island isolation, and left/right or inside/outside fill selection.
 - The English and Japanese README entries should stay synchronized and clearly marked as planned, not implemented.
 
