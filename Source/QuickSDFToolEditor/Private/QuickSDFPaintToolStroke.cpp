@@ -72,8 +72,16 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::SmoothStrokeSample(const FQuickSDFStro
 	}
 
 	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
-	const double LazyRadiusPixels = FMath::Max(static_cast<double>(Properties->StrokeStabilizerRadius), 0.0);
-	if (!RT || LazyRadiusPixels <= KINDA_SMALL_NUMBER)
+	if (!RT)
+	{
+		FilteredStrokeSample = RawSample;
+		bHasFilteredStrokeSample = true;
+		return RawSample;
+	}
+
+	const double ResolutionScale = static_cast<double>(FMath::Min(RT->SizeX, RT->SizeY)) / 1024.0;
+	const double LazyRadiusPixels = FMath::Max(static_cast<double>(Properties->StrokeStabilizerRadius) * ResolutionScale, 0.0);
+	if (LazyRadiusPixels <= KINDA_SMALL_NUMBER)
 	{
 		FilteredStrokeSample = RawSample;
 		bHasFilteredStrokeSample = true;

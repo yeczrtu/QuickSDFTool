@@ -12,7 +12,8 @@ enum class EQuickSDFQualityPreset : uint8
 {
 	Draft512 UMETA(DisplayName = "Draft 512"),
 	Standard1024 UMETA(DisplayName = "Standard 1024"),
-	High2048 UMETA(DisplayName = "High 2048")
+	High2048 UMETA(DisplayName = "High 2048"),
+	Ultra4096 UMETA(DisplayName = "Ultra 4096")
 };
 
 UENUM(BlueprintType)

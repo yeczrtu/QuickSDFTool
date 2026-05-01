@@ -102,6 +102,8 @@ int32 GetQuickSDFPresetSize(EQuickSDFQualityPreset Preset)
 		return 512;
 	case EQuickSDFQualityPreset::High2048:
 		return 2048;
+	case EQuickSDFQualityPreset::Ultra4096:
+		return 4096;
 	case EQuickSDFQualityPreset::Standard1024:
 	default:
 		return 1024;
