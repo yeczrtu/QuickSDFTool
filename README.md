@@ -179,7 +179,7 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 ### Planned Feature Requirements
 
 > [!NOTE]
-> These are roadmap requirements for future work. They are not available in the current preview build and do not change the current C++ API, `UQuickSDFAsset` format, Slate UI, or shortcuts.
+> These are roadmap requirements for future work. They are not available in the current preview build and do not change the current C++ API, `UQuickSDFAsset` format, Slate UI, shortcuts, or asset formats.
 
 #### Monotonic Guard / Clipping Mask
 
@@ -193,6 +193,16 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 - Add `Quick Nose` as a non-destructive vector layer for quickly placing a nose-shadow preset from a single artist-picked nose position.
 - Presets should be editable through position, rotation, scale, curve shape, and control points, so the result is a fast starting point rather than a locked final shape.
 - Baking should support the current mask or a multi-mask range, be undoable, and preserve the original vector layer for later edits.
+
+#### Quick Reshape
+
+- Treat `Quick Reshape` as a tentative name for a higher-level boundary authoring workflow. Artists draw multiple `Boundary Line` curves on one non-destructive UV-canvas guide layer, then assign each curve to a timeline angle with `Assigned Angle`.
+- Each boundary line represents the light/shadow split for its assigned mask. `Bake Matching Angles` should generate or update only the masks whose angles are assigned to boundary lines, not every timeline mask.
+- Store boundary lines as editable vector data so their position and curve shape can be refined after baking and baked again later.
+- Choose the white/black fill side with `Auto Side` by default, inferred from the angle and line direction, and allow per-line correction with `Invert Side`.
+- A valid boundary line should either split the active UV island or form a closed region. Ambiguous partial lines should warn before baking, and fills should stay constrained to the active UV island.
+- Keep `Quick Reshape` separate from `Stroke Auto Fill`: `Stroke Auto Fill` is a single-line fill helper, while `Quick Reshape` creates masks from a multi-angle boundary plan.
+- Allow `Monotonic Guard` to validate Quick Reshape output during or after baking so repeated `black -> white -> black` or `white -> black -> white` transitions can be caught.
 
 #### Timeline Status Badges
 
@@ -212,6 +222,7 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 - For `0 / 45 / 90` degree masks where white expands, a guarded pixel should transition only once across the range.
 - For `90 / 135 / 180` degree masks where white shrinks, the same monotonic guarantee should apply in the reversed growth direction.
 - `Quick Nose` should support nose-position picking, preset placement, vector adjustment, baking, and Undo.
+- `Quick Reshape` should support multiple boundary lines such as `0 / 30 / 60 / 90` degrees on one guide layer, update only the matching angle masks, keep the guide layer editable after baking, and warn for lines that do not split a UV island or close a region.
 - `Stroke Auto Fill` should be verified for current-only edits, `Before / After / All` edits, UV-island isolation, and left/right or inside/outside fill selection.
 - The English and Japanese README entries should stay synchronized and clearly marked as planned, not implemented.
 
