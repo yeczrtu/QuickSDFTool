@@ -210,6 +210,15 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 - Show compact badges per key for mask presence, `Monotonic Guard` enabled state, unbaked vector layers, and warnings.
 - Tooltips should expose the angle, texture name, edit state, and warning details for each mask.
 
+#### Actor Mesh Component Selection
+
+- Address the current limitation where a single actor that owns multiple mesh components does not provide a clear way to choose which mesh should be edited by QuickSDFTool.
+- Add a component-level target picker for eligible `StaticMeshComponent` and `SkeletalMeshComponent` instances inside the selected actor.
+- The picker should show enough context to identify each target, such as component name, mesh asset name, material slots, and visibility state.
+- Painting, mask import, mask export, baking, SDF generation, and material-slot isolation should apply only to the selected mesh component, not every mesh on the actor.
+- Switching between mesh components should preserve each component's QuickSDF asset/mask state so artists can work on face, hair, clothing, or accessory meshes separately inside one actor.
+- If viewport picking is supported, clicking a surface on a multi-mesh actor should resolve to the hit mesh component when possible and fall back to the component picker when ambiguous.
+
 #### Mask Freeze
 
 - Add a `Mask Freeze` workflow to reduce VRAM usage by releasing paint render targets for masks that are not actively being edited.
@@ -234,6 +243,7 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 - For `90 / 135 / 180` degree masks where white shrinks, the same monotonic guarantee should apply in the reversed growth direction.
 - `Quick Nose` should support nose-position picking, preset placement, vector adjustment, baking, and Undo.
 - `Quick Reshape` should support multiple boundary lines such as `0 / 30 / 60 / 90` degrees on one guide layer, update only the matching angle masks, keep the guide layer editable after baking, and warn for lines that do not split a UV island or close a region.
+- `Actor Mesh Component Selection` should let a single actor with multiple mesh components choose one target component, paint and bake only that component, and preserve separate QuickSDF state when switching between components.
 - `Mask Freeze` should lower VRAM usage in a high-resolution, multi-mask setup, restore frozen masks without visual changes, and automatically thaw every affected mask before applying multi-mask edits.
 - `Stroke Auto Fill` should be verified for current-only edits, `Before / After / All` edits, UV-island isolation, and left/right or inside/outside fill selection.
 - The English and Japanese README entries should stay synchronized and clearly marked as planned, not implemented.
