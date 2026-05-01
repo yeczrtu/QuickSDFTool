@@ -28,10 +28,11 @@ flowchart LR
 - Dedicated UE5 Editor Mode named `Quick SDF`.
 - Direct painting on Static Mesh and Skeletal Mesh components, including target material-slot isolation.
 - 2D UV preview painting with optional UV guides, original-shadow overlay, and onion skinning.
-- Angular keyframe timeline with thumbnails, seek marker, 5-degree snapping, add/duplicate/delete controls, complete-to-eight, even redistribution, and `DirectionalLight` sync.
+- Angular keyframe timeline with thumbnails, a seek bar/marker, 5-degree snapping, add/duplicate/delete controls, symmetry-aware mask completion, even redistribution, and `DirectionalLight` sync.
 - Arrow-key previous/next frame navigation that suppresses viewport movement while the mode handles the keys.
 - Paint target modes for Current, All, Before Current, and After Current masks.
-- Symmetry mode for front-half sweeps, hold-to-line quick strokes, and paint-all-angles style workflows.
+- Symmetry mode for front-half sweeps, hold-to-line quick strokes, paint-all-angles style workflows, and 8-mask / 15-mask default completion depending on the sweep range.
+- Stabilized brush input with lazy-radius smoothing, pressure-sensitive radius support, antialiased brush edges, and optimized 1K-4K render target painting.
 - Mask import from selected textures, file picker, or timeline drag-and-drop; mask export; non-destructive `UQuickSDFAsset` storage; UE transaction-based undo/redo.
 - CPU SDF generation with automatic Monopolar/Bipolar packing, optional 1x-8x upscaling, and half-float texture export.
 - Example preview/toon materials under `Content/Materials/`.
@@ -73,6 +74,8 @@ See [Examples](./Examples/README.md), [Material Setup](./Docs/MaterialSetup.md),
 
 ## Installation
 
+QuickSDFTool requires Unreal Engine 5.7 or later and a C++ Unreal project.
+
 1. Clone or download the repository:
 
    ```bash
@@ -108,12 +111,11 @@ See [Examples](./Examples/README.md), [Material Setup](./Docs/MaterialSetup.md),
 | Unreal Engine version | Status |
 | --- | --- |
 | 5.7.4 | Tested development target |
-| 5.7.x | Expected to work, not fully release-tested |
-| 5.6 | Not tested |
-| 5.5 | Not tested |
-| 5.4 | Not tested |
+| 5.7.x | Supported target |
+| 5.8+ | Intended to be supported, but not release-tested yet |
+| 5.6 and earlier | Not supported |
 
-QuickSDFTool currently targets UE 5.7 because the editor tool is built on current Interactive Tools Framework, Modeling Components, Material Baking, and shader module behavior used during development. Compatibility with earlier UE5 releases may be possible, but it has not been verified yet.
+QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Interactive Tools Framework, Modeling Components, Material Baking, and shader module behavior used in UE 5.7 development, so older UE5 releases are outside the supported target range.
 
 ## Controls
 
@@ -130,7 +132,8 @@ QuickSDFTool currently targets UE 5.7 because the editor tool is built on curren
 | `Timeline Key Click` | Select angle |
 | `Timeline Key Drag` | Adjust angle |
 | `Timeline Add / Duplicate / Delete` | Create, copy, or remove keyframes |
-| `Timeline 8 / Even` | Complete the set to eight masks or redistribute angles evenly |
+| `Timeline Seek Bar Click / Drag` | Seek the preview angle and select the nearest timeline key |
+| `Timeline 8 or 15 / Even` | Complete the default mask set or redistribute angles evenly. Symmetry mode completes to 8 masks; non-symmetry mode completes to 15 masks |
 | `Drag Texture2D assets onto timeline` | Import edited masks |
 | `Ctrl + Z / Ctrl + Y` | Undo / Redo |
 
@@ -140,7 +143,8 @@ QuickSDFTool currently targets UE 5.7 because the editor tool is built on curren
 - **Direct Mesh Painting** — Paint masks directly on target mesh surfaces with realtime preview and material-slot filtering.
 - **2D UV Canvas Painting** — Paint on a HUD-overlaid texture preview for texture-space control.
 - **Paint Target Modes** — Send a stroke to the current mask, all masks, or a before/after range on the timeline.
-- **Spatial Timeline UI** — Manage mask keyframes by light angle with thumbnail handles, seek support, add/duplicate/delete actions, snapping, and quick redistribution tools.
+- **Brush Feel Controls** — Lazy-radius stroke stabilization, fine spacing, antialiased brush masks, and pressure-driven brush radius for tablet workflows.
+- **Spatial Timeline UI** — Manage mask keyframes by light angle with thumbnail handles, a supported seek bar, add/duplicate/delete actions, snapping, symmetry-aware mask completion, and quick redistribution tools.
 - **Preview Light Workflow** — Temporarily mutes scene `DirectionalLight` actors, spawns a preview light, and restores original light intensity on exit/save.
 - **Auto Fill from Original Shading** — Bake current viewport/material lighting into masks as a starting point.
 - **Mask I/O** — Import edited masks from selected assets, image files, or timeline drops, and export mask textures for external editing.
@@ -163,13 +167,12 @@ QuickSDFTool currently targets UE 5.7 because the editor tool is built on curren
 
 - [ ] Enable the GPU JFA SDF path in the user-facing generation flow.
 - [ ] Benchmark 1K, 2K, and 4K mask workflows.
-- [ ] Verify UE 5.6, 5.5, and 5.4 compatibility or document required changes.
+- [ ] Keep UE 5.7+ compatibility notes current as new engine versions are released.
 
 ### P2: Deepen Painting Workflow
 
 - [ ] Import custom brush alpha textures.
-- [ ] Add tablet pressure support for brush size and opacity.
-- [ ] Finish and expose stroke stabilization / lazy-radius brush feel controls.
+- [ ] Add richer brush presets and optional custom brush falloff controls.
 - [ ] Add explicit previous/next timeline toolbar buttons if keyboard navigation is not enough for artists.
 - [ ] Add autosave/hot-reload recovery for unsaved mask changes.
 
