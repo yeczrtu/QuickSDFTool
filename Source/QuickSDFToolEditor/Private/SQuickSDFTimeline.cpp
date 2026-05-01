@@ -1,5 +1,6 @@
 ﻿#include "SQuickSDFTimeline.h"
 #include "QuickSDFPaintTool.h"
+#include "QuickSDFPaintToolPrivate.h"
 #include "QuickSDFEditorMode.h"
 #include "DragAndDrop/AssetDragDropOp.h"
 #include "EditorModeManager.h"
@@ -77,7 +78,7 @@ TSharedRef<SWidget> MakeTimelineIconButton(const FName IconName, const FText& To
 		];
 }
 
-TSharedRef<SWidget> MakeTimelineIconLabelButton(const FName IconName, const FText& Label, const FText& ToolTip, FOnClicked OnClicked, float Width)
+TSharedRef<SWidget> MakeTimelineIconLabelButton(const FName IconName, TAttribute<FText> Label, TAttribute<FText> ToolTip, FOnClicked OnClicked, float Width)
 {
 	return SNew(SBox)
 		.WidthOverride(Width)
@@ -503,8 +504,8 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 						[
 							MakeTimelineIconLabelButton(
 								"QuickSDF.Action.CompleteToEight",
-								LOCTEXT("CompleteTo8Btn", "8"),
-								LOCTEXT("CompleteTo8Tooltip", "Complete the mask set to eight angles"),
+								TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateSP(this, &SQuickSDFTimeline::GetCompleteMaskButtonText)),
+								TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateSP(this, &SQuickSDFTimeline::GetCompleteMaskTooltipText)),
 								FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnCompleteToEightClicked),
 								46.0f)
 						]
@@ -515,8 +516,8 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 						[
 							MakeTimelineIconLabelButton(
 								"QuickSDF.Action.Redistribute",
-								LOCTEXT("RedistributeBtn", "Even"),
-								LOCTEXT("RedistributeTooltip", "Redistribute timeline angles evenly"),
+								TAttribute<FText>(LOCTEXT("RedistributeBtn", "Even")),
+								TAttribute<FText>(LOCTEXT("RedistributeTooltip", "Redistribute timeline angles evenly")),
 								FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnRedistributeEvenlyClicked),
 								62.0f)
 						]
@@ -766,6 +767,28 @@ FText SQuickSDFTimeline::GetCompactSummaryText() const
 	const int32 CurrentIndex = Props ? FMath::Clamp(Props->EditAngleIndex, 0, FMath::Max(Props->NumAngles - 1, 0)) : 0;
 	const float CurrentAngle = Props && Props->TargetAngles.IsValidIndex(CurrentIndex) ? Props->TargetAngles[CurrentIndex] : 0.0f;
 	return FText::Format(LOCTEXT("CompactSummary", "{0} masks ready. Current {1}: {2} deg. Click or drag the timeline to seek."), MaskCount, CurrentIndex + 1, FText::AsNumber(FMath::RoundToInt(CurrentAngle)));
+}
+
+FText SQuickSDFTimeline::GetCompleteMaskButtonText() const
+{
+	const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	const bool bSymmetryMode = !Props || Props->bSymmetryMode;
+	const int32 TargetCount = QuickSDFPaintToolPrivate::GetQuickSDFDefaultAngleCount(bSymmetryMode);
+	return FText::AsNumber(TargetCount);
+}
+
+FText SQuickSDFTimeline::GetCompleteMaskTooltipText() const
+{
+	const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	const bool bSymmetryMode = !Props || Props->bSymmetryMode;
+	const int32 TargetCount = QuickSDFPaintToolPrivate::GetQuickSDFDefaultAngleCount(bSymmetryMode);
+	const int32 MaxAngle = bSymmetryMode ? 90 : 180;
+	return FText::Format(
+		LOCTEXT("CompleteDefaultMasksTooltip", "Complete the mask set to {0} angles across 0-{1} degrees"),
+		FText::AsNumber(TargetCount),
+		FText::AsNumber(MaxAngle));
 }
 
 ECheckBoxState SQuickSDFTimeline::IsGridSnapEnabled() const

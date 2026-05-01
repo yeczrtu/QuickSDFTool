@@ -101,6 +101,8 @@ private:
 	EVisibility GetCompactVisibility() const;
 	FText GetHeaderStatusText() const;
 	FText GetCompactSummaryText() const;
+	FText GetCompleteMaskButtonText() const;
+	FText GetCompleteMaskTooltipText() const;
 
 	// Caching
 	int32 CachedNumAngles = -1;

@@ -687,7 +687,8 @@ void UQuickSDFPaintTool::CompleteToEightMasks()
 
 	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
 	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
-	if (!Subsystem || !Asset || Asset->AngleDataList.Num() >= QuickSDFDefaultAngleCount)
+	const int32 TargetAngleCount = GetQuickSDFDefaultAngleCount(Properties->bSymmetryMode);
+	if (!Subsystem || !Asset || Asset->AngleDataList.Num() >= TargetAngleCount)
 	{
 		return;
 	}
@@ -695,10 +696,10 @@ void UQuickSDFPaintTool::CompleteToEightMasks()
 	TArray<float> AddedAngles;
 	const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
 	TArray<float> StandardAngles;
-	for (int32 Index = 0; Index < QuickSDFDefaultAngleCount; ++Index)
+	for (int32 Index = 0; Index < TargetAngleCount; ++Index)
 	{
-		StandardAngles.Add(QuickSDFDefaultAngleCount > 1
-			? (static_cast<float>(Index) / static_cast<float>(QuickSDFDefaultAngleCount - 1)) * MaxAngle
+		StandardAngles.Add(TargetAngleCount > 1
+			? (static_cast<float>(Index) / static_cast<float>(TargetAngleCount - 1)) * MaxAngle
 			: 0.0f);
 	}
 
@@ -710,13 +711,13 @@ void UQuickSDFPaintTool::CompleteToEightMasks()
 	TArray<TArray<FColor>> BeforePixelsByMask;
 	CaptureMaskState(*this, Asset, BeforeGuids, BeforeAngles, BeforeTextures, BeforePixelsByMask);
 
-	GetToolManager()->BeginUndoTransaction(LOCTEXT("CompleteToEightMasks", "Complete Quick SDF Masks to 8"));
+	GetToolManager()->BeginUndoTransaction(LOCTEXT("CompleteToDefaultMasks", "Complete Quick SDF Masks"));
 	Asset->Modify();
 	Properties->Modify();
 
 	for (float CandidateAngle : StandardAngles)
 	{
-		if (Asset->AngleDataList.Num() >= QuickSDFDefaultAngleCount)
+		if (Asset->AngleDataList.Num() >= TargetAngleCount)
 		{
 			break;
 		}
@@ -741,7 +742,7 @@ void UQuickSDFPaintTool::CompleteToEightMasks()
 		}
 	}
 
-	while (Asset->AngleDataList.Num() < QuickSDFDefaultAngleCount)
+	while (Asset->AngleDataList.Num() < TargetAngleCount)
 	{
 		FQuickSDFAngleData NewData;
 		NewData.Angle = StandardAngles.IsValidIndex(Asset->AngleDataList.Num())
@@ -798,7 +799,7 @@ void UQuickSDFPaintTool::CompleteToEightMasks()
 	Change->BeforeTextures = MoveTemp(BeforeTextures);
 	Change->BeforePixelsByMask = MoveTemp(BeforePixelsByMask);
 	CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterAngles, Change->AfterTextures, Change->AfterPixelsByMask);
-	GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("CompleteToEightMaskState", "Restore Quick SDF Complete to 8 Mask State"));
+	GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("CompleteDefaultMaskState", "Restore Quick SDF Complete Mask State"));
 
 	GetToolManager()->EndUndoTransaction();
 }

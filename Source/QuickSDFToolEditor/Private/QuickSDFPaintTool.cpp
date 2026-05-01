@@ -239,11 +239,14 @@ void UQuickSDFPaintTool::Setup()
 		{
 			ActiveAsset->Resolution = FIntPoint(1024, 1024);
 			ActiveAsset->UVChannel = 0;
-			float InitialMaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
-			for (int32 i = 0; i < 8; ++i)
+			const float InitialMaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
+			const int32 InitialAngleCount = GetQuickSDFDefaultAngleCount(Properties->bSymmetryMode);
+			for (int32 i = 0; i < InitialAngleCount; ++i)
 			{
 				FQuickSDFAngleData Data;
-				Data.Angle = (i / 7.0f) * InitialMaxAngle;
+				Data.Angle = InitialAngleCount > 1
+					? (static_cast<float>(i) / static_cast<float>(InitialAngleCount - 1)) * InitialMaxAngle
+					: 0.0f;
 				Data.MaskGuid = FGuid::NewGuid();
 				ActiveAsset->AngleDataList.Add(Data);
 			}

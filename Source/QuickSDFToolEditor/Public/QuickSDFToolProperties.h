@@ -175,7 +175,7 @@ public:
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Fill All Black"))
 	void FillAllMasksBlack();
 
-	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Complete to 8 Masks"))
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Complete Default Masks"))
 	void CompleteToEightMasks();
 
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Redistribute Angles Evenly"))

@@ -16,8 +16,15 @@ inline constexpr int32 QuickSDFActionOpenToggleMenu = static_cast<int32>(EStanda
 inline constexpr int32 QuickSDFActionToggleBase = static_cast<int32>(EStandardToolActions::BaseClientDefinedActionID) + 30;
 inline constexpr float QuickSDFMinResizeSensitivity = 0.01f;
 inline constexpr int32 QuickSDFBipolarDetectionStride = 500;
-inline constexpr int32 QuickSDFDefaultAngleCount = 8;
+inline constexpr int32 QuickSDFDefaultSymmetricAngleCount = 8;
+inline constexpr int32 QuickSDFDefaultAsymmetricAngleCount = (QuickSDFDefaultSymmetricAngleCount - 1) * 2 + 1;
+inline constexpr int32 QuickSDFDefaultAngleCount = QuickSDFDefaultSymmetricAngleCount;
 inline constexpr int32 QuickSDFUVOverlaySupersample = 4;
+
+inline int32 GetQuickSDFDefaultAngleCount(bool bSymmetryMode)
+{
+	return bSymmetryMode ? QuickSDFDefaultSymmetricAngleCount : QuickSDFDefaultAsymmetricAngleCount;
+}
 
 struct FQuickSDFUVEdgeKey
 {
