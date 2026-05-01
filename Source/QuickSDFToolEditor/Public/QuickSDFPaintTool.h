@@ -233,9 +233,11 @@ protected:
 	EQuickSDFStrokeInputMode ActiveStrokeInputMode = EQuickSDFStrokeInputMode::None;
 	bool bAdjustingBrushRadius = false;
 	FVector2D BrushResizeStartScreenPosition = FVector2D::ZeroVector;
+	FBrushStampData BrushResizeStartStamp;
 	float BrushResizeStartRadius = 0.0f;
 	float BrushResizeSensitivity = 0.1f;
 	bool bBrushResizeTransactionOpen = false;
+	bool bBrushResizeHadVisibleStamp = false;
 	bool bStrokeTransactionActive = false;
 	bool bStampingAllPaintTargets = false;
 	bool bUseImportedMasksForQuickCreate = false;
@@ -275,5 +277,5 @@ private:
 	double AccumulatedDistance = 0.0;
 	FOneEuroFilter WorldPosFilter;
 	FOneEuroFilter UVFilter;
-	FVector2D BrushResizeStartAbsolutePosition;
+	FVector2D BrushResizeStartAbsolutePosition = FVector2D::ZeroVector;
 };

@@ -316,6 +316,7 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::TransformQuickLineSample(const FQuickS
 void UQuickSDFPaintTool::BeginBrushResizeMode()
 {
 	if (!BrushProperties) return;
+	if (bAdjustingBrushRadius) return;
 	if (!bBrushResizeTransactionOpen)
 	{
 		GetToolManager()->BeginUndoTransaction(LOCTEXT("QuickSDFBrushResizeTransaction", "Quick SDF Change Brush Radius"));
@@ -326,8 +327,13 @@ void UQuickSDFPaintTool::BeginBrushResizeMode()
 	bAdjustingBrushRadius = true;
 	BrushResizeStartScreenPosition = LastInputScreenPosition;
 	BrushResizeStartAbsolutePosition = FSlateApplication::Get().GetCursorPos();
-	BrushResizeStartScreenPosition = LastInputScreenPosition;
+	BrushResizeStartStamp = LastBrushStamp;
 	BrushResizeStartRadius = BrushProperties->BrushRadius;
+	bBrushResizeHadVisibleStamp = BrushStampIndicator && BrushStampIndicator->bVisible;
+	if (BrushStampIndicator && bBrushResizeHadVisibleStamp)
+	{
+		BrushStampIndicator->bVisible = true;
+	}
 }
 
 void UQuickSDFPaintTool::UpdateBrushResizeFromCursor()
@@ -342,7 +348,19 @@ void UQuickSDFPaintTool::UpdateBrushResizeFromCursor()
 		BrushProperties->BrushSize = FMath::Clamp((NewRadius - RangeMin) / RangeSize, 0.0f, 1.0f);
 	}
 	BrushProperties->BrushRadius = NewRadius;
-	LastBrushStamp.Radius = NewRadius;
+	if (bBrushResizeHadVisibleStamp)
+	{
+		LastBrushStamp = BrushResizeStartStamp;
+		LastBrushStamp.Radius = NewRadius;
+		if (BrushStampIndicator)
+		{
+			BrushStampIndicator->bVisible = true;
+		}
+	}
+	else
+	{
+		LastBrushStamp.Radius = NewRadius;
+	}
 	NotifyOfPropertyChangeByTool(BrushProperties);
 }
 
@@ -351,7 +369,9 @@ void UQuickSDFPaintTool::EndBrushResizeMode()
 	if (!bAdjustingBrushRadius) return;
 	UpdateBrushResizeFromCursor();
 	FSlateApplication::Get().SetCursorPos(BrushResizeStartAbsolutePosition);
+	LastInputScreenPosition = BrushResizeStartScreenPosition;
 	bAdjustingBrushRadius = false;
+	bBrushResizeHadVisibleStamp = false;
 	if (bBrushResizeTransactionOpen)
 	{
 		GetToolManager()->EndUndoTransaction();
@@ -490,6 +510,11 @@ bool UQuickSDFPaintTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 FInputRayHit UQuickSDFPaintTool::BeginHoverSequenceHitTest(const FInputDeviceRay& PressPos)
 {
 	LastInputScreenPosition = PressPos.ScreenPosition;
+	if (bAdjustingBrushRadius)
+	{
+		UpdateBrushResizeFromCursor();
+		return FInputRayHit(0.0f);
+	}
 
 	FHitResult OutHit;
 	if (HitTest(PressPos.WorldRay, OutHit))
@@ -547,6 +572,10 @@ bool UQuickSDFPaintTool::OnUpdateHover(const FInputDeviceRay& DevicePos)
 
 void UQuickSDFPaintTool::OnEndHover()
 {
+	if (bAdjustingBrushRadius)
+	{
+		return;
+	}
 	if (BrushStampIndicator)
 	{
 		BrushStampIndicator->bVisible = false;

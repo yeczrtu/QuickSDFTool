@@ -397,7 +397,11 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 
 void UQuickSDFPaintTool::Shutdown(EToolShutdownType ShutdownType)
 {
-	if (bBrushResizeTransactionOpen)
+	if (bAdjustingBrushRadius)
+	{
+		EndBrushResizeMode();
+	}
+	else if (bBrushResizeTransactionOpen)
 	{
 		GetToolManager()->EndUndoTransaction();
 		bBrushResizeTransactionOpen = false;
