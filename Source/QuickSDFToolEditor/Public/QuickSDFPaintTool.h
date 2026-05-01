@@ -262,8 +262,6 @@ protected:
 	TArray<int32> StrokeTransactionAngleIndices;
 	TArray<FColor> StrokeBeforePixels;
 	TArray<TArray<FColor>> StrokeBeforePixelsByAngle;
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UTexture2D>> StrokeBeforeTexturesByAngle;
 
 	TArray<FQuickSDFStrokeSample> QuickLineSourceSamples;
 	FQuickSDFStrokeSample QuickLineStartSample;

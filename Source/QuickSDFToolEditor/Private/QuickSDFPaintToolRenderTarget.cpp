@@ -196,11 +196,11 @@ bool UQuickSDFPaintTool::RestoreStrokeStartPixels() const
 	}
 
 	bool bRestoredAny = false;
-	for (int32 Index = 0; Index < StrokeTransactionAngleIndices.Num() && Index < StrokeBeforeTexturesByAngle.Num(); ++Index)
+	for (int32 Index = 0; Index < StrokeTransactionAngleIndices.Num() && Index < StrokeBeforePixelsByAngle.Num(); ++Index)
 	{
 		const int32 AngleIndex = StrokeTransactionAngleIndices[Index];
 		if (Asset->AngleDataList.IsValidIndex(AngleIndex) &&
-			RestoreRenderTargetTexture(Asset->AngleDataList[AngleIndex].PaintRenderTarget, StrokeBeforeTexturesByAngle[Index]))
+			RestoreRenderTargetPixels(Asset->AngleDataList[AngleIndex].PaintRenderTarget, StrokeBeforePixelsByAngle[Index]))
 		{
 			bRestoredAny = true;
 		}
@@ -452,7 +452,6 @@ void UQuickSDFPaintTool::BeginStrokeTransaction()
 	
 	StrokeBeforePixels.Reset();
 	StrokeBeforePixelsByAngle.Reset();
-	StrokeBeforeTexturesByAngle.Reset();
 	const TArray<int32> CandidateAngleIndices = GetPaintTargetAngleIndices();
 	StrokeTransactionAngleIndices.Reset();
 	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
@@ -471,7 +470,6 @@ void UQuickSDFPaintTool::BeginStrokeTransaction()
 		if (CaptureRenderTargetPixels(Asset->AngleDataList[AngleIndex].PaintRenderTarget, BeforePixels))
 		{
 			StrokeTransactionAngleIndices.Add(AngleIndex);
-			StrokeBeforeTexturesByAngle.Add(CreateTransientTextureFromPixels(BeforePixels, Asset->AngleDataList[AngleIndex].PaintRenderTarget->SizeX, Asset->AngleDataList[AngleIndex].PaintRenderTarget->SizeY));
 			StrokeBeforePixelsByAngle.Add(MoveTemp(BeforePixels));
 			if (StrokeBeforePixelsByAngle.Num() == 1)
 			{
@@ -527,7 +525,6 @@ void UQuickSDFPaintTool::EndStrokeTransaction()
 	StrokeTransactionAngleIndices.Reset();
 	StrokeBeforePixels.Reset();
 	StrokeBeforePixelsByAngle.Reset();
-	StrokeBeforeTexturesByAngle.Reset();
 }
 
 UTextureRenderTarget2D* UQuickSDFPaintTool::GetActiveRenderTarget() const
