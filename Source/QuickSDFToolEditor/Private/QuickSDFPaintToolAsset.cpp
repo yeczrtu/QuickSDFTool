@@ -62,6 +62,67 @@
 
 using namespace QuickSDFPaintToolPrivate;
 
+namespace
+{
+bool ResizeMaskPixelsBilinear(
+	const TArray<FColor>& SourcePixels,
+	int32 SourceWidth,
+	int32 SourceHeight,
+	int32 TargetWidth,
+	int32 TargetHeight,
+	TArray<FColor>& OutPixels)
+{
+	if (SourcePixels.Num() != SourceWidth * SourceHeight ||
+		SourceWidth <= 0 || SourceHeight <= 0 ||
+		TargetWidth <= 0 || TargetHeight <= 0)
+	{
+		return false;
+	}
+
+	if (SourceWidth == TargetWidth && SourceHeight == TargetHeight)
+	{
+		OutPixels = SourcePixels;
+		return true;
+	}
+
+	OutPixels.SetNum(TargetWidth * TargetHeight);
+	auto SampleChannel = [](uint8 C00, uint8 C10, uint8 C01, uint8 C11, float Tx, float Ty)
+	{
+		const float Top = FMath::Lerp(static_cast<float>(C00), static_cast<float>(C10), Tx);
+		const float Bottom = FMath::Lerp(static_cast<float>(C01), static_cast<float>(C11), Tx);
+		return static_cast<uint8>(FMath::Clamp(FMath::RoundToInt(FMath::Lerp(Top, Bottom, Ty)), 0, 255));
+	};
+
+	for (int32 Y = 0; Y < TargetHeight; ++Y)
+	{
+		const float SourceY = ((static_cast<float>(Y) + 0.5f) * SourceHeight / TargetHeight) - 0.5f;
+		const int32 Y0 = FMath::Clamp(FMath::FloorToInt(SourceY), 0, SourceHeight - 1);
+		const int32 Y1 = FMath::Clamp(Y0 + 1, 0, SourceHeight - 1);
+		const float Ty = FMath::Clamp(SourceY - FMath::FloorToFloat(SourceY), 0.0f, 1.0f);
+
+		for (int32 X = 0; X < TargetWidth; ++X)
+		{
+			const float SourceX = ((static_cast<float>(X) + 0.5f) * SourceWidth / TargetWidth) - 0.5f;
+			const int32 X0 = FMath::Clamp(FMath::FloorToInt(SourceX), 0, SourceWidth - 1);
+			const int32 X1 = FMath::Clamp(X0 + 1, 0, SourceWidth - 1);
+			const float Tx = FMath::Clamp(SourceX - FMath::FloorToFloat(SourceX), 0.0f, 1.0f);
+
+			const FColor& C00 = SourcePixels[Y0 * SourceWidth + X0];
+			const FColor& C10 = SourcePixels[Y0 * SourceWidth + X1];
+			const FColor& C01 = SourcePixels[Y1 * SourceWidth + X0];
+			const FColor& C11 = SourcePixels[Y1 * SourceWidth + X1];
+			FColor& Target = OutPixels[Y * TargetWidth + X];
+			Target.R = SampleChannel(C00.R, C10.R, C01.R, C11.R, Tx, Ty);
+			Target.G = SampleChannel(C00.G, C10.G, C01.G, C11.G, Tx, Ty);
+			Target.B = SampleChannel(C00.B, C10.B, C01.B, C11.B, Tx, Ty);
+			Target.A = SampleChannel(C00.A, C10.A, C01.A, C11.A, Tx, Ty);
+		}
+	}
+
+	return true;
+}
+}
+
 void UQuickSDFPaintTool::GenerateSDF()
 {
 	if (!Properties)
@@ -1016,14 +1077,45 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 			// 解像度の同期 — FIntPoint のサブプロパティ (X, Y) 変更も検出するため、名前ではなく値の差分で判定
 			if (ActiveAsset->Resolution != Properties->Resolution)
 			{
-				ActiveAsset->Resolution = Properties->Resolution;
-				// Force re-creation of render targets at the new resolution
+				Properties->Resolution.X = FMath::Max(Properties->Resolution.X, 1);
+				Properties->Resolution.Y = FMath::Max(Properties->Resolution.Y, 1);
+				const FIntPoint NewResolution = Properties->Resolution;
+
+				TArray<TArray<FColor>> ResizedPixelsByAngle;
+				ResizedPixelsByAngle.SetNum(ActiveAsset->AngleDataList.Num());
+				for (int32 AngleIndex = 0; AngleIndex < ActiveAsset->AngleDataList.Num(); ++AngleIndex)
+				{
+					UTextureRenderTarget2D* RenderTarget = ActiveAsset->AngleDataList[AngleIndex].PaintRenderTarget;
+					TArray<FColor> SourcePixels;
+					if (RenderTarget &&
+						CaptureRenderTargetPixels(RenderTarget, SourcePixels) &&
+						SourcePixels.Num() == RenderTarget->SizeX * RenderTarget->SizeY)
+					{
+						ResizeMaskPixelsBilinear(
+							SourcePixels,
+							RenderTarget->SizeX,
+							RenderTarget->SizeY,
+							NewResolution.X,
+							NewResolution.Y,
+							ResizedPixelsByAngle[AngleIndex]);
+					}
+				}
+
+				ActiveAsset->Resolution = NewResolution;
 				for (FQuickSDFAngleData& Data : ActiveAsset->AngleDataList)
 				{
 					Data.PaintRenderTarget = nullptr;
 				}
 				ActiveAsset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+				for (int32 AngleIndex = 0; AngleIndex < ActiveAsset->AngleDataList.Num(); ++AngleIndex)
+				{
+					if (ResizedPixelsByAngle.IsValidIndex(AngleIndex) && ResizedPixelsByAngle[AngleIndex].Num() == NewResolution.X * NewResolution.Y)
+					{
+						RestoreRenderTargetPixels(ActiveAsset->AngleDataList[AngleIndex].PaintRenderTarget, ResizedPixelsByAngle[AngleIndex]);
+					}
+				}
 				RefreshPreviewMaterial();
+				MarkMasksChanged();
 			}
 
 			if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, UVChannel))
