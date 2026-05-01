@@ -465,7 +465,7 @@ void SQuickSDFMaskImportPanel::Construct(const FArguments& InArgs)
 					+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 4.0f, 0.0f)
 					[
 						SNew(SButton)
-						.IsEnabled(this, &SQuickSDFMaskImportPanel::HasImportableRows)
+						.IsEnabled(this, &SQuickSDFMaskImportPanel::CanApplyImport)
 						.ToolTipText(this, &SQuickSDFMaskImportPanel::GetApplyToolTipText)
 						.OnClicked(this, &SQuickSDFMaskImportPanel::OnApplyClicked)
 						.ContentPadding(FMargin(9.0f, 3.0f))
@@ -695,8 +695,6 @@ void SQuickSDFMaskImportPanel::AddMultipleSourcesFromSelectedRow(TArray<FQuickSD
 		}
 	}
 
-	const int32 DesiredExpectedCount = StartIndex + NewSources.Num();
-	ExpectedCountOverride = FMath::Max(ExpectedCountOverride, DesiredExpectedCount);
 	Sources.Append(NewSources);
 
 	RebuildRows();
@@ -990,7 +988,7 @@ void SQuickSDFMaskImportPanel::RefreshValidation()
 		{
 			Row->AssignmentText = LOCTEXT("NewSlotAssignment", "New slot");
 			Row->AssignmentToolTipText = FText::Format(
-				LOCTEXT("NewSlotAssignmentTooltip", "Apply Import will create a mask slot at {0} deg."),
+				LOCTEXT("NewSlotAssignmentTooltip", "This source is not assigned to an existing timeline slot at {0} deg."),
 				AngleText);
 		}
 
@@ -1004,6 +1002,10 @@ void SQuickSDFMaskImportPanel::RefreshValidation()
 			if (Row->bAngleInferred)
 			{
 				Warnings.Add(LOCTEXT("InferredAngleWarning", "Angle inferred"));
+			}
+			if (Row->ExistingSlotIndex == INDEX_NONE)
+			{
+				Warnings.Add(LOCTEXT("NoExistingSlotWarning", "No existing slot"));
 			}
 			if (bBaseSymmetry && Row->Angle > 90.01f)
 			{
@@ -1171,6 +1173,23 @@ bool SQuickSDFMaskImportPanel::HasImportableRows() const
 	return false;
 }
 
+bool SQuickSDFMaskImportPanel::HasNewSlotImportRows() const
+{
+	for (const TSharedPtr<FQuickSDFMaskImportRowData>& Row : Rows)
+	{
+		if (Row.IsValid() && Row->bHasSource && Row->ExistingSlotIndex == INDEX_NONE)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool SQuickSDFMaskImportPanel::CanApplyImport() const
+{
+	return HasImportableRows() && !HasNewSlotImportRows();
+}
+
 FText SQuickSDFMaskImportPanel::GetUndoToolTipText() const
 {
 	return CanUndoPreviewChange()
@@ -1224,9 +1243,15 @@ FText SQuickSDFMaskImportPanel::GetSummaryText() const
 
 FText SQuickSDFMaskImportPanel::GetApplyToolTipText() const
 {
-	return HasImportableRows()
-		? LOCTEXT("ApplyTooltip", "Create needed Texture2D assets, then assign the listed masks to the timeline.")
-		: LOCTEXT("ApplyDisabledTooltip", "Add at least one texture or image file before applying.");
+	if (!HasImportableRows())
+	{
+		return LOCTEXT("ApplyDisabledTooltip", "Add at least one texture or image file before applying.");
+	}
+	if (HasNewSlotImportRows())
+	{
+		return LOCTEXT("ApplyNewSlotDisabledTooltip", "Some sources target new slots. Select existing timeline rows; Apply Import will not change the mask count.");
+	}
+	return LOCTEXT("ApplyTooltip", "Create needed Texture2D assets, then assign the listed masks to existing timeline slots.");
 }
 
 FText SQuickSDFMaskImportPanel::GetImportedFolderText() const
@@ -1446,8 +1471,15 @@ FReply SQuickSDFMaskImportPanel::OnApplyClicked()
 		return FReply::Handled();
 	}
 
+	if (HasNewSlotImportRows())
+	{
+		FMessageDialog::Open(
+			EAppMsgType::Ok,
+			LOCTEXT("ApplyNewSlotBlockedMessage", "Some sources target new slots. Select existing timeline rows before applying. Apply Import does not change the mask count."));
+		return FReply::Handled();
+	}
+
 	TArray<UTexture2D*> Textures;
-	TArray<float> Angles;
 	TArray<TSharedPtr<FQuickSDFMaskImportRowData>> ImportRows;
 	int32 CreatedTextureCount = 0;
 	const FString ImportFolder = CleanContentFolder(Properties->ImportedMaskFolder);
@@ -1478,7 +1510,6 @@ FReply SQuickSDFMaskImportPanel::OnApplyClicked()
 		if (Texture)
 		{
 			Textures.Add(Texture);
-			Angles.Add(Row->Angle);
 			ImportRows.Add(Row);
 		}
 	}
@@ -1494,37 +1525,24 @@ FReply SQuickSDFMaskImportPanel::OnApplyClicked()
 		bCanAssignExistingSlots &= ImportRow.IsValid() && ImportRow->ExistingSlotIndex != INDEX_NONE;
 	}
 
-	if (bCanAssignExistingSlots)
+	if (!bCanAssignExistingSlots)
 	{
-		bool bAllAssigned = true;
-		for (int32 Index = 0; Index < Textures.Num(); ++Index)
-		{
-			bAllAssigned &= Tool->AssignMaskTextureToAngle(ImportRows[Index]->ExistingSlotIndex, Textures[Index]);
-		}
-
-		if (bAllAssigned)
-		{
-			FNotificationInfo Info(FText::Format(
-				LOCTEXT("SlotImportCompleteNotification", "Imported {0} masks / Created {1} textures in {2}"),
-				FText::AsNumber(Textures.Num()),
-				FText::AsNumber(CreatedTextureCount),
-				FText::FromString(ImportFolder)));
-			Info.ExpireDuration = 4.0f;
-			Info.bUseLargeFont = false;
-			if (TSharedPtr<SNotificationItem> Notification = FSlateNotificationManager::Get().AddNotification(Info))
-			{
-				Notification->SetCompletionState(SNotificationItem::CS_Success);
-			}
-
-			OnClosed.ExecuteIfBound();
-		}
+		FMessageDialog::Open(
+			EAppMsgType::Ok,
+			LOCTEXT("ApplyExistingSlotFailedMessage", "All sources must be assigned to existing timeline slots before applying."));
 		return FReply::Handled();
 	}
 
-	if (Tool->ImportEditedMasksFromTexturesWithAngles(Textures, Angles))
+	bool bAllAssigned = true;
+	for (int32 Index = 0; Index < Textures.Num(); ++Index)
+	{
+		bAllAssigned &= Tool->AssignMaskTextureToAngle(ImportRows[Index]->ExistingSlotIndex, Textures[Index]);
+	}
+
+	if (bAllAssigned)
 	{
 		FNotificationInfo Info(FText::Format(
-			LOCTEXT("ImportCompleteNotification", "Imported {0} masks / Created {1} textures in {2}"),
+			LOCTEXT("SlotImportCompleteNotification", "Imported {0} masks / Created {1} textures in {2}"),
 			FText::AsNumber(Textures.Num()),
 			FText::AsNumber(CreatedTextureCount),
 			FText::FromString(ImportFolder)));
@@ -1534,7 +1552,6 @@ FReply SQuickSDFMaskImportPanel::OnApplyClicked()
 		{
 			Notification->SetCompletionState(SNotificationItem::CS_Success);
 		}
-
 		OnClosed.ExecuteIfBound();
 	}
 

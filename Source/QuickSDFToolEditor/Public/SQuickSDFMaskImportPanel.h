@@ -79,6 +79,8 @@ private:
 	bool RestoreLastUndoState();
 	bool CanUndoPreviewChange() const;
 	bool HasImportableRows() const;
+	bool HasNewSlotImportRows() const;
+	bool CanApplyImport() const;
 	FText GetUndoToolTipText() const;
 	FText GetSelectedTargetText() const;
 	FText GetSummaryText() const;
