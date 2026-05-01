@@ -20,6 +20,7 @@ public:
 		SLATE_ATTRIBUTE(bool, bIsActive)
 		SLATE_ATTRIBUTE(bool, bSnapEnabled)
 		SLATE_ATTRIBUTE(bool, bSymmetryMode)
+		SLATE_ATTRIBUTE(bool, bAllowSourceTextureOverwrite)
 		SLATE_ATTRIBUTE(FSlateBrush*, TextureBrush)
 		SLATE_EVENT(FOnKeyframeAngleChanged, OnAngleChanged)
 		SLATE_EVENT(FSimpleDelegate, OnClicked)
@@ -41,6 +42,7 @@ private:
 	TAttribute<bool> bIsActive;
 	TAttribute<bool> bSnapEnabled;
 	TAttribute<bool> bSymmetryMode;
+	TAttribute<bool> bAllowSourceTextureOverwrite;
 	TAttribute<FSlateBrush*> TextureBrush;
 	bool bIsMouseDown = false;
 	bool bIsDragging = false;

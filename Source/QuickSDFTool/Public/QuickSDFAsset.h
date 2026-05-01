@@ -21,6 +21,9 @@ struct FQuickSDFAngleData
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SDF")
 	class UTexture2D* TextureMask = nullptr;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SDF")
+	bool bAllowSourceTextureOverwrite = false;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Transient, Category = "SDF")
 	class UTextureRenderTarget2D* PaintRenderTarget = nullptr;
 };

@@ -215,6 +215,7 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 	bIsActive = InArgs._bIsActive;
 	bSnapEnabled = InArgs._bSnapEnabled;
 	bSymmetryMode = InArgs._bSymmetryMode;
+	bAllowSourceTextureOverwrite = InArgs._bAllowSourceTextureOverwrite;
 	TextureBrush = InArgs._TextureBrush;
 	OnAngleChanged = InArgs._OnAngleChanged;
 	OnClicked = InArgs._OnClicked;
@@ -227,6 +228,13 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 			? FSlateColor(FLinearColor(0.95f, 0.95f, 0.95f, 1.0f))
 			: FSlateColor(FLinearColor(0.72f, 0.72f, 0.72f, 0.72f));
 	});
+
+	SetToolTipText(TAttribute<FText>::CreateLambda([this]()
+	{
+		return bAllowSourceTextureOverwrite.Get()
+			? LOCTEXT("WritableSourceKeyframeTooltip", "Writable source: Overwrite Source Textures can write this mask back to its Texture2D.")
+			: LOCTEXT("ReadOnlySourceKeyframeTooltip", "Read-only source: this mask will not overwrite its Texture2D.");
+	}));
 
 	ChildSlot
 	[
@@ -302,6 +310,23 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 			}))
 			.ColorAndOpacity(ColorAttr)
 			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+			.ShadowOffset(FVector2D(1.0f, 1.0f))
+			.ShadowColorAndOpacity(FLinearColor::Black)
+		]
+
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Top)
+		.Padding(0.0f, 11.0f, 0.0f, 0.0f)
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("WritableSourceKeyframeLabel", "Writable"))
+			.Visibility(TAttribute<EVisibility>::CreateLambda([this]()
+			{
+				return bAllowSourceTextureOverwrite.Get() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+			}))
+			.ColorAndOpacity(FLinearColor(1.0f, 0.78f, 0.3f, 1.0f))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 6))
 			.ShadowOffset(FVector2D(1.0f, 1.0f))
 			.ShadowColorAndOpacity(FLinearColor::Black)
 		]
@@ -1428,6 +1453,17 @@ void SQuickSDFTimeline::RebuildTimeline()
 			.bSymmetryMode(TAttribute<bool>::CreateLambda([this]() {
 				UQuickSDFPaintTool* ActiveTool = this->GetActivePaintTool();
 				return ActiveTool && ActiveTool->Properties && ActiveTool->Properties->bSymmetryMode;
+			}))
+			.bAllowSourceTextureOverwrite(TAttribute<bool>::CreateLambda([this, i]() {
+				if (const UQuickSDFPaintTool* ActiveTool = this->GetActivePaintTool())
+				{
+					if (const UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr)
+					{
+						const UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
+						return Asset && Asset->AngleDataList.IsValidIndex(i) && Asset->AngleDataList[i].bAllowSourceTextureOverwrite;
+					}
+				}
+				return false;
 			}))
 			.TextureBrush(TAttribute<FSlateBrush*>::CreateLambda([this, i]() -> FSlateBrush* {
 				if (KeyframeBrushes.IsValidIndex(i)) return KeyframeBrushes[i].Get();

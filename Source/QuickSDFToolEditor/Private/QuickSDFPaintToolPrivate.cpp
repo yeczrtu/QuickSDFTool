@@ -284,11 +284,13 @@ void CaptureMaskState(
 	TArray<FGuid>& OutGuids,
 	TArray<float>& OutAngles,
 	TArray<UTexture2D*>& OutTextures,
+	TArray<bool>& OutAllowSourceTextureOverwrites,
 	TArray<TArray<FColor>>& OutPixelsByMask)
 {
 	OutGuids.Reset();
 	OutAngles.Reset();
 	OutTextures.Reset();
+	OutAllowSourceTextureOverwrites.Reset();
 	OutPixelsByMask.Reset();
 	if (!Asset)
 	{
@@ -301,6 +303,7 @@ void CaptureMaskState(
 		OutGuids.Add(AngleData.MaskGuid);
 		OutAngles.Add(AngleData.Angle);
 		OutTextures.Add(AngleData.TextureMask);
+		OutAllowSourceTextureOverwrites.Add(AngleData.bAllowSourceTextureOverwrite);
 
 		TArray<FColor>& Pixels = OutPixelsByMask.AddDefaulted_GetRef();
 		if (AngleData.PaintRenderTarget)
@@ -315,6 +318,7 @@ void RestoreMaskStateOnNextTick(
 	const TArray<FGuid>& MaskGuids,
 	const TArray<float>& Angles,
 	const TArray<UTexture2D*>& Textures,
+	const TArray<bool>& AllowSourceTextureOverwrites,
 	const TArray<TArray<FColor>>& PixelsByMask)
 {
 	if (!Tool)
@@ -322,19 +326,20 @@ void RestoreMaskStateOnNextTick(
 		return;
 	}
 
-	Tool->RestoreMaskStateByGuid(MaskGuids, Angles, Textures, PixelsByMask);
+	Tool->RestoreMaskStateByGuid(MaskGuids, Angles, Textures, AllowSourceTextureOverwrites, PixelsByMask);
 
 	TWeakObjectPtr<UQuickSDFPaintTool> WeakTool(Tool);
 	TArray<FGuid> DeferredGuids = MaskGuids;
 	TArray<float> DeferredAngles = Angles;
 	TArray<UTexture2D*> DeferredTextures = Textures;
+	TArray<bool> DeferredAllowSourceTextureOverwrites = AllowSourceTextureOverwrites;
 	TArray<TArray<FColor>> DeferredPixelsByMask = PixelsByMask;
 	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
-		[WeakTool, DeferredGuids = MoveTemp(DeferredGuids), DeferredAngles = MoveTemp(DeferredAngles), DeferredTextures = MoveTemp(DeferredTextures), DeferredPixelsByMask = MoveTemp(DeferredPixelsByMask)](float)
+		[WeakTool, DeferredGuids = MoveTemp(DeferredGuids), DeferredAngles = MoveTemp(DeferredAngles), DeferredTextures = MoveTemp(DeferredTextures), DeferredAllowSourceTextureOverwrites = MoveTemp(DeferredAllowSourceTextureOverwrites), DeferredPixelsByMask = MoveTemp(DeferredPixelsByMask)](float)
 		{
 			if (WeakTool.IsValid())
 			{
-				WeakTool->RestoreMaskStateByGuid(DeferredGuids, DeferredAngles, DeferredTextures, DeferredPixelsByMask);
+				WeakTool->RestoreMaskStateByGuid(DeferredGuids, DeferredAngles, DeferredTextures, DeferredAllowSourceTextureOverwrites, DeferredPixelsByMask);
 			}
 			return false;
 		}));

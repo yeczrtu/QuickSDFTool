@@ -373,7 +373,7 @@ bool UQuickSDFPaintTool::ApplyRenderTargetPixelsInRectByGuid(const FGuid& AngleG
 	return false;
 }
 
-bool UQuickSDFPaintTool::ApplyTextureSlotChange(const FGuid& AngleGuid, int32 FallbackIndex, UTexture2D* Texture, const TArray<FColor>& Pixels)
+bool UQuickSDFPaintTool::ApplyTextureSlotChange(const FGuid& AngleGuid, int32 FallbackIndex, UTexture2D* Texture, bool bAllowSourceTextureOverwrite, const TArray<FColor>& Pixels)
 {
 	if (!Properties)
 	{
@@ -405,6 +405,7 @@ bool UQuickSDFPaintTool::ApplyTextureSlotChange(const FGuid& AngleGuid, int32 Fa
 	}
 
 	AngleData.TextureMask = Texture;
+	AngleData.bAllowSourceTextureOverwrite = bAllowSourceTextureOverwrite;
 	if (Properties->TargetTextures.IsValidIndex(AngleIndex))
 	{
 		Properties->TargetTextures[AngleIndex] = Texture;
@@ -434,7 +435,7 @@ bool UQuickSDFPaintTool::ApplyTextureSlotChange(const FGuid& AngleGuid, int32 Fa
 	return bRestored;
 }
 
-void UQuickSDFPaintTool::RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, const TArray<float>& Angles, const TArray<UTexture2D*>& Textures, const TArray<TArray<FColor>>& PixelsByMask)
+void UQuickSDFPaintTool::RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, const TArray<float>& Angles, const TArray<UTexture2D*>& Textures, const TArray<bool>& AllowSourceTextureOverwrites, const TArray<TArray<FColor>>& PixelsByMask)
 {
 	if (!Properties)
 	{
@@ -455,6 +456,7 @@ void UQuickSDFPaintTool::RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, 
 		AngleData.Angle = Angles.IsValidIndex(SnapshotIndex) ? Angles[SnapshotIndex] : 0.0f;
 		AngleData.MaskGuid = MaskGuids[SnapshotIndex].IsValid() ? MaskGuids[SnapshotIndex] : FGuid::NewGuid();
 		AngleData.TextureMask = Textures.IsValidIndex(SnapshotIndex) ? Textures[SnapshotIndex] : nullptr;
+		AngleData.bAllowSourceTextureOverwrite = AllowSourceTextureOverwrites.IsValidIndex(SnapshotIndex) ? AllowSourceTextureOverwrites[SnapshotIndex] : false;
 		AngleData.PaintRenderTarget = nullptr;
 	}
 
@@ -919,7 +921,7 @@ void FQuickSDFTextureSlotChange::Apply(UObject* Object)
 {
 	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
 	{
-		Tool->ApplyTextureSlotChange(AngleGuid, AngleIndex, AfterTexture, AfterPixels);
+		Tool->ApplyTextureSlotChange(AngleGuid, AngleIndex, AfterTexture, bAfterAllowSourceTextureOverwrite, AfterPixels);
 	}
 }
 
@@ -927,7 +929,7 @@ void FQuickSDFTextureSlotChange::Revert(UObject* Object)
 {
 	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
 	{
-		Tool->ApplyTextureSlotChange(AngleGuid, AngleIndex, BeforeTexture, BeforePixels);
+		Tool->ApplyTextureSlotChange(AngleGuid, AngleIndex, BeforeTexture, bBeforeAllowSourceTextureOverwrite, BeforePixels);
 	}
 }
 
@@ -935,7 +937,7 @@ void FQuickSDFMaskStateChange::Apply(UObject* Object)
 {
 	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
 	{
-		RestoreMaskStateOnNextTick(Tool, AfterGuids, AfterAngles, AfterTextures, AfterPixelsByMask);
+		RestoreMaskStateOnNextTick(Tool, AfterGuids, AfterAngles, AfterTextures, AfterAllowSourceTextureOverwrites, AfterPixelsByMask);
 	}
 }
 
@@ -943,7 +945,7 @@ void FQuickSDFMaskStateChange::Revert(UObject* Object)
 {
 	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
 	{
-		RestoreMaskStateOnNextTick(Tool, BeforeGuids, BeforeAngles, BeforeTextures, BeforePixelsByMask);
+		RestoreMaskStateOnNextTick(Tool, BeforeGuids, BeforeAngles, BeforeTextures, BeforeAllowSourceTextureOverwrites, BeforePixelsByMask);
 	}
 }
 }

@@ -184,7 +184,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 
 	AddPropertyIfValid(QuickCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, QualityPreset)));
 
-	QuickCategory.AddCustomRow(LOCTEXT("QuickActionsFilter", "Create Threshold Map Import Edited Masks Fill White Fill Black"))
+	QuickCategory.AddCustomRow(LOCTEXT("QuickActionsFilter", "Create Threshold Map Import Edited Masks Overwrite Source Textures Fill White Fill Black"))
 	.WholeRowContent()
 	[
 		SNew(SVerticalBox)
@@ -225,6 +225,23 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
 					{
 						Props->ImportEditedMasks();
+					}
+					return FReply::Handled();
+				}))
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, 2.0f)
+		[
+			QuickSDFToolUI::MakeIconLabelButton(
+				"QuickSDF.Action.ExportMasks",
+				LOCTEXT("OverwriteSourceTexturesButton", "Overwrite Source Textures"),
+				LOCTEXT("OverwriteSourceTexturesTooltip", "Write the current masks back to Texture2D assets that were explicitly marked writable during import."),
+				FOnClicked::CreateLambda([WeakProperties]()
+				{
+					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+					{
+						Props->OverwriteSourceTextures();
 					}
 					return FReply::Handled();
 				}))

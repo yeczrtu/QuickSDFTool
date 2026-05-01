@@ -367,6 +367,50 @@ UTexture2D* UQuickSDFToolSubsystem::CreateMaskTexture(UTextureRenderTarget2D* RT
 	return Texture;
 }
 
+bool UQuickSDFToolSubsystem::OverwriteTextureWithRenderTarget(UTexture2D* Texture, UTextureRenderTarget2D* RT, FText* OutError)
+{
+	if (!Texture)
+	{
+		if (OutError)
+		{
+			*OutError = LOCTEXT("OverwriteTextureMissing", "Cannot overwrite source texture because the Texture2D is missing.");
+		}
+		return false;
+	}
+	if (!RT)
+	{
+		if (OutError)
+		{
+			*OutError = LOCTEXT("OverwriteRenderTargetMissing", "Cannot overwrite source texture because the mask render target is missing.");
+		}
+		return false;
+	}
+
+	TArray<FColor> Pixels;
+	if (!CaptureRenderTargetPixels(RT, Pixels))
+	{
+		if (OutError)
+		{
+			*OutError = LOCTEXT("OverwriteCaptureFailed", "Failed to read pixels from the mask render target.");
+		}
+		return false;
+	}
+
+	Texture->Modify();
+	Texture->Source.Init(RT->SizeX, RT->SizeY, 1, 1, TSF_BGRA8);
+	void* MipData = Texture->Source.LockMip(0);
+	FMemory::Memcpy(MipData, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
+	Texture->Source.UnlockMip(0);
+
+	Texture->SRGB = RT->SRGB;
+	Texture->CompressionSettings = TC_Default;
+	Texture->MipGenSettings = TMGS_NoMipmaps;
+	Texture->Filter = TF_Nearest;
+
+	FinalizeTextureAsset(Texture);
+	return true;
+}
+
 UTexture2D* UQuickSDFToolSubsystem::CreateSDFTexture(const TArray<FFloat16Color>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName, ESDFOutputFormat Format, bool bOverwriteExisting, FText* OutError)
 {
 	if (Pixels.Num() != Width * Height)

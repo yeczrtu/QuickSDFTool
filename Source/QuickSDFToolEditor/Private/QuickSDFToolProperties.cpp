@@ -79,6 +79,14 @@ void UQuickSDFToolProperties::ImportEditedMasks()
 	}
 }
 
+void UQuickSDFToolProperties::OverwriteSourceTextures()
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
+	{
+		Tool->OverwriteSourceTextures();
+	}
+}
+
 void UQuickSDFToolProperties::SaveQuickSDFAsset()
 {
 	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))

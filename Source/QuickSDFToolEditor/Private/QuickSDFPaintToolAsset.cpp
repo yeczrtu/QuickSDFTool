@@ -43,6 +43,7 @@
 #include "DesktopPlatformModule.h"
 #include "Engine/Selection.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Framework/Notifications/NotificationManager.h"
 #include "IDesktopPlatform.h"
 #include "Misc/DefaultValueHelper.h"
 #include "Containers/Ticker.h"
@@ -51,6 +52,7 @@
 #include "IAssetTools.h"
 #include "Misc/PackageName.h"
 #include "ObjectTools.h"
+#include "Widgets/Notifications/SNotificationList.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -277,7 +279,7 @@ bool UQuickSDFPaintTool::ConsumeImportPanelRequest()
 	return bRequested;
 }
 
-bool UQuickSDFPaintTool::AssignMaskTextureToAngle(int32 AngleIndex, UTexture2D* Texture)
+bool UQuickSDFPaintTool::AssignMaskTextureToAngle(int32 AngleIndex, UTexture2D* Texture, bool bAllowSourceTextureOverwrite)
 {
 	if (!Properties)
 	{
@@ -293,6 +295,16 @@ bool UQuickSDFPaintTool::AssignMaskTextureToAngle(int32 AngleIndex, UTexture2D* 
 
 	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
 	EnsureMaskGuids(Asset);
+	FQuickSDFAngleData& AngleData = Asset->AngleDataList[AngleIndex];
+	if (!AngleData.PaintRenderTarget)
+	{
+		return false;
+	}
+
+	TArray<FColor> BeforePixels;
+	CaptureRenderTargetPixels(AngleData.PaintRenderTarget, BeforePixels);
+	UTexture2D* BeforeTexture = AngleData.TextureMask;
+	const bool bBeforeAllowSourceTextureOverwrite = AngleData.bAllowSourceTextureOverwrite;
 
 	GetToolManager()->BeginUndoTransaction(LOCTEXT("AssignDroppedQuickSDFMask", "Assign Dropped Quick SDF Mask"));
 	Asset->Modify();
@@ -303,14 +315,169 @@ bool UQuickSDFPaintTool::AssignMaskTextureToAngle(int32 AngleIndex, UTexture2D* 
 	Properties->NumAngles = Asset->AngleDataList.Num();
 	Properties->EditAngleIndex = FMath::Clamp(AngleIndex, 0, Asset->AngleDataList.Num() - 1);
 	Properties->TargetTextures[AngleIndex] = Texture;
+	AngleData.TextureMask = Texture;
+	AngleData.bAllowSourceTextureOverwrite = bAllowSourceTextureOverwrite;
 
 	FProperty* EditProp = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex));
 	OnPropertyModified(Properties, EditProp);
-	FProperty* TextureProp = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetTextures));
-	OnPropertyModified(Properties, TextureProp);
+
+	if (Texture)
+	{
+		Subsystem->DrawTextureToRenderTarget(Texture, AngleData.PaintRenderTarget);
+	}
+	else
+	{
+		Subsystem->ClearRenderTarget(AngleData.PaintRenderTarget);
+	}
+
+	TArray<FColor> AfterPixels;
+	CaptureRenderTargetPixels(AngleData.PaintRenderTarget, AfterPixels);
+
+	TUniquePtr<FQuickSDFTextureSlotChange> Change = MakeUnique<FQuickSDFTextureSlotChange>();
+	Change->AngleIndex = AngleIndex;
+	Change->AngleGuid = AngleData.MaskGuid;
+	Change->BeforeTexture = BeforeTexture;
+	Change->AfterTexture = Texture;
+	Change->bBeforeAllowSourceTextureOverwrite = bBeforeAllowSourceTextureOverwrite;
+	Change->bAfterAllowSourceTextureOverwrite = bAllowSourceTextureOverwrite;
+	Change->BeforePixels = MoveTemp(BeforePixels);
+	Change->AfterPixels = MoveTemp(AfterPixels);
+	GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("AssignQuickSDFMaskTexture", "Assign Quick SDF Mask Texture"));
+
+	RefreshPreviewMaterial();
+	MarkMasksChanged();
 
 	GetToolManager()->EndUndoTransaction();
 	return true;
+}
+
+void UQuickSDFPaintTool::OverwriteSourceTextures()
+{
+	if (!Properties)
+	{
+		return;
+	}
+
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	if (!Subsystem || !Asset)
+	{
+		return;
+	}
+
+	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
+
+	struct FOverwriteSourceTarget
+	{
+		int32 AngleIndex = INDEX_NONE;
+		float Angle = 0.0f;
+		UTexture2D* Texture = nullptr;
+		UTextureRenderTarget2D* RenderTarget = nullptr;
+		bool bResolutionMismatch = false;
+	};
+
+	TArray<FOverwriteSourceTarget> Targets;
+	TMap<UTexture2D*, int32> TextureToFirstIndex;
+	for (int32 Index = 0; Index < Asset->AngleDataList.Num(); ++Index)
+	{
+		const FQuickSDFAngleData& AngleData = Asset->AngleDataList[Index];
+		if (!AngleData.bAllowSourceTextureOverwrite)
+		{
+			continue;
+		}
+		if (!AngleData.TextureMask || !AngleData.PaintRenderTarget)
+		{
+			continue;
+		}
+
+		if (const int32* ExistingIndex = TextureToFirstIndex.Find(AngleData.TextureMask))
+		{
+			FMessageDialog::Open(
+				EAppMsgType::Ok,
+				FText::Format(
+					LOCTEXT("OverwriteDuplicateTextureBlocked", "Cannot overwrite source textures because {0} is writable from multiple slots ({1} and {2}). Disable source overwrite on one slot first."),
+					FText::FromString(AngleData.TextureMask->GetPathName()),
+					FText::AsNumber(*ExistingIndex + 1),
+					FText::AsNumber(Index + 1)));
+			return;
+		}
+		TextureToFirstIndex.Add(AngleData.TextureMask, Index);
+
+		FOverwriteSourceTarget& OverwriteTarget = Targets.AddDefaulted_GetRef();
+		OverwriteTarget.AngleIndex = Index;
+		OverwriteTarget.Angle = AngleData.Angle;
+		OverwriteTarget.Texture = AngleData.TextureMask;
+		OverwriteTarget.RenderTarget = AngleData.PaintRenderTarget;
+
+		const int32 SourceWidth = AngleData.TextureMask->Source.IsValid() ? AngleData.TextureMask->Source.GetSizeX() : AngleData.TextureMask->GetSizeX();
+		const int32 SourceHeight = AngleData.TextureMask->Source.IsValid() ? AngleData.TextureMask->Source.GetSizeY() : AngleData.TextureMask->GetSizeY();
+		OverwriteTarget.bResolutionMismatch = SourceWidth > 0 && SourceHeight > 0 &&
+			(SourceWidth != AngleData.PaintRenderTarget->SizeX || SourceHeight != AngleData.PaintRenderTarget->SizeY);
+	}
+
+	if (Targets.Num() == 0)
+	{
+		FMessageDialog::Open(EAppMsgType::Ok, LOCTEXT("NoWritableSourceTextures", "No writable source textures are assigned. Enable Allow source overwrite in the import preview first."));
+		return;
+	}
+
+	FString ConfirmText = FString::Printf(TEXT("Overwrite %d source texture%s with the current mask pixels?\n\n"), Targets.Num(), Targets.Num() == 1 ? TEXT("") : TEXT("s"));
+	const int32 MaxPreviewRows = 12;
+	for (int32 TargetIndex = 0; TargetIndex < FMath::Min(Targets.Num(), MaxPreviewRows); ++TargetIndex)
+	{
+		const FOverwriteSourceTarget& OverwriteTarget = Targets[TargetIndex];
+		ConfirmText += FString::Printf(
+			TEXT("Slot %d / %.0f deg -> %s%s\n"),
+			OverwriteTarget.AngleIndex + 1,
+			OverwriteTarget.Angle,
+			*OverwriteTarget.Texture->GetPathName(),
+			OverwriteTarget.bResolutionMismatch ? TEXT(" (resolution will change)") : TEXT(""));
+	}
+	if (Targets.Num() > MaxPreviewRows)
+	{
+		ConfirmText += FString::Printf(TEXT("...and %d more\n"), Targets.Num() - MaxPreviewRows);
+	}
+	if (!IsPersistentQuickSDFAsset(Asset))
+	{
+		ConfirmText += TEXT("\nWarning: the active QuickSDF asset has not been saved, so source-overwrite permissions may not persist until you save it.");
+	}
+	ConfirmText += TEXT("\nThis cannot restore overwritten Texture2D pixels via QuickSDF undo.");
+
+	if (FMessageDialog::Open(EAppMsgType::YesNo, FText::FromString(ConfirmText)) != EAppReturnType::Yes)
+	{
+		return;
+	}
+
+	int32 OverwrittenCount = 0;
+	for (const FOverwriteSourceTarget& OverwriteTarget : Targets)
+	{
+		FText Error;
+		if (Subsystem->OverwriteTextureWithRenderTarget(OverwriteTarget.Texture, OverwriteTarget.RenderTarget, &Error))
+		{
+			++OverwrittenCount;
+		}
+		else
+		{
+			if (!Error.IsEmpty())
+			{
+				FMessageDialog::Open(EAppMsgType::Ok, Error);
+			}
+			break;
+		}
+	}
+
+	if (OverwrittenCount > 0)
+	{
+		FNotificationInfo Info(FText::Format(
+			LOCTEXT("OverwriteSourceTexturesComplete", "Overwrote {0} source textures"),
+			FText::AsNumber(OverwrittenCount)));
+		Info.ExpireDuration = 4.0f;
+		Info.bUseLargeFont = false;
+		if (TSharedPtr<SNotificationItem> Notification = FSlateNotificationManager::Get().AddNotification(Info))
+		{
+			Notification->SetCompletionState(SNotificationItem::CS_Success);
+		}
+	}
 }
 
 bool UQuickSDFPaintTool::ImportEditedMasksFromTextures(const TArray<UTexture2D*>& InTextures)
@@ -442,6 +609,7 @@ bool UQuickSDFPaintTool::ImportEditedMasksFromTextures(const TArray<UTexture2D*>
 		Asset->AngleDataList[Index].Angle = Items[Index].Angle;
 		Asset->AngleDataList[Index].MaskGuid = FGuid::NewGuid();
 		Asset->AngleDataList[Index].TextureMask = Items[Index].Texture;
+		Asset->AngleDataList[Index].bAllowSourceTextureOverwrite = false;
 		Asset->AngleDataList[Index].PaintRenderTarget = nullptr;
 		Properties->TargetAngles[Index] = Items[Index].Angle;
 		Properties->TargetTextures[Index] = Items[Index].Texture;
@@ -558,6 +726,7 @@ bool UQuickSDFPaintTool::ImportEditedMasksFromTexturesWithAngles(const TArray<UT
 		Asset->AngleDataList[Index].Angle = Items[Index].Angle;
 		Asset->AngleDataList[Index].MaskGuid = FGuid::NewGuid();
 		Asset->AngleDataList[Index].TextureMask = Items[Index].Texture;
+		Asset->AngleDataList[Index].bAllowSourceTextureOverwrite = false;
 		Asset->AngleDataList[Index].PaintRenderTarget = nullptr;
 		Properties->TargetAngles[Index] = Items[Index].Angle;
 		Properties->TargetTextures[Index] = Items[Index].Texture;
@@ -653,6 +822,7 @@ void UQuickSDFPaintTool::SaveQuickSDFAsset()
 
 		SavedData.Angle = SourceData.Angle;
 		SavedData.MaskGuid = SourceData.MaskGuid.IsValid() ? SourceData.MaskGuid : FGuid::NewGuid();
+		SavedData.bAllowSourceTextureOverwrite = SourceData.bAllowSourceTextureOverwrite;
 		if (SavedAsset != ActiveAsset)
 		{
 			SavedData.PaintRenderTarget = nullptr;
@@ -825,8 +995,9 @@ void UQuickSDFPaintTool::CompleteToEightMasks()
 	TArray<FGuid> BeforeGuids;
 	TArray<float> BeforeAngles;
 	TArray<UTexture2D*> BeforeTextures;
+	TArray<bool> BeforeAllowSourceTextureOverwrites;
 	TArray<TArray<FColor>> BeforePixelsByMask;
-	CaptureMaskState(*this, Asset, BeforeGuids, BeforeAngles, BeforeTextures, BeforePixelsByMask);
+	CaptureMaskState(*this, Asset, BeforeGuids, BeforeAngles, BeforeTextures, BeforeAllowSourceTextureOverwrites, BeforePixelsByMask);
 
 	GetToolManager()->BeginUndoTransaction(LOCTEXT("CompleteToDefaultMasks", "Complete Quick SDF Masks"));
 	Asset->Modify();
@@ -914,8 +1085,9 @@ void UQuickSDFPaintTool::CompleteToEightMasks()
 	Change->BeforeGuids = MoveTemp(BeforeGuids);
 	Change->BeforeAngles = MoveTemp(BeforeAngles);
 	Change->BeforeTextures = MoveTemp(BeforeTextures);
+	Change->BeforeAllowSourceTextureOverwrites = MoveTemp(BeforeAllowSourceTextureOverwrites);
 	Change->BeforePixelsByMask = MoveTemp(BeforePixelsByMask);
-	CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterAngles, Change->AfterTextures, Change->AfterPixelsByMask);
+	CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterAngles, Change->AfterTextures, Change->AfterAllowSourceTextureOverwrites, Change->AfterPixelsByMask);
 	GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("CompleteDefaultMaskState", "Restore Quick SDF Complete Mask State"));
 
 	GetToolManager()->EndUndoTransaction();
@@ -1005,6 +1177,7 @@ void UQuickSDFPaintTool::FillMaskColor(bool bFillAllAngles, const FLinearColor& 
 			? LOCTEXT("FillMaskBlackChange", "Fill Quick SDF Mask Black")
 			: LOCTEXT("FillMaskWhiteChange", "Fill Quick SDF Mask White"));
 		Asset->AngleDataList[AngleIndex].TextureMask = nullptr;
+		Asset->AngleDataList[AngleIndex].bAllowSourceTextureOverwrite = false;
 		if (Properties->TargetTextures.IsValidIndex(AngleIndex))
 		{
 			Properties->TargetTextures[AngleIndex] = nullptr;
@@ -1159,9 +1332,11 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 						}
 
 						UTexture2D* BeforeTexture = AngleData.TextureMask;
+						const bool bBeforeAllowSourceTextureOverwrite = AngleData.bAllowSourceTextureOverwrite;
 						UTexture2D* AfterTexture = Properties->TargetTextures[i];
 						ActiveAsset->Modify();
 						AngleData.TextureMask = AfterTexture;
+						AngleData.bAllowSourceTextureOverwrite = false;
 
 						// 画像がセットされたならキャンバスに転写、外されたなら白紙に戻す
 						if (AfterTexture != nullptr)
@@ -1184,6 +1359,8 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 						Change->AngleGuid = AngleData.MaskGuid;
 						Change->BeforeTexture = BeforeTexture;
 						Change->AfterTexture = AfterTexture;
+						Change->bBeforeAllowSourceTextureOverwrite = bBeforeAllowSourceTextureOverwrite;
+						Change->bAfterAllowSourceTextureOverwrite = false;
 						Change->BeforePixels = MoveTemp(BeforePixels);
 						Change->AfterPixels = MoveTemp(AfterPixels);
 						GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("AssignQuickSDFMaskTexture", "Assign Quick SDF Mask Texture"));
@@ -1314,8 +1491,9 @@ void UQuickSDFPaintTool::AddKeyframeInternal(float RequestedAngle, bool bUseRequ
 	TArray<FGuid> BeforeGuids;
 	TArray<float> BeforeAngles;
 	TArray<UTexture2D*> BeforeTextures;
+	TArray<bool> BeforeAllowSourceTextureOverwrites;
 	TArray<TArray<FColor>> BeforePixelsByMask;
-	CaptureMaskState(*this, Asset, BeforeGuids, BeforeAngles, BeforeTextures, BeforePixelsByMask);
+	CaptureMaskState(*this, Asset, BeforeGuids, BeforeAngles, BeforeTextures, BeforeAllowSourceTextureOverwrites, BeforePixelsByMask);
 
 	const bool bDuplicateKeyframe = SourcePixels && SourcePixels->Num() > 0;
 	GetToolManager()->BeginUndoTransaction(bDuplicateKeyframe
@@ -1430,8 +1608,9 @@ void UQuickSDFPaintTool::AddKeyframeInternal(float RequestedAngle, bool bUseRequ
 	Change->BeforeGuids = MoveTemp(BeforeGuids);
 	Change->BeforeAngles = MoveTemp(BeforeAngles);
 	Change->BeforeTextures = MoveTemp(BeforeTextures);
+	Change->BeforeAllowSourceTextureOverwrites = MoveTemp(BeforeAllowSourceTextureOverwrites);
 	Change->BeforePixelsByMask = MoveTemp(BeforePixelsByMask);
-	CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterAngles, Change->AfterTextures, Change->AfterPixelsByMask);
+	CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterAngles, Change->AfterTextures, Change->AfterAllowSourceTextureOverwrites, Change->AfterPixelsByMask);
 	GetToolManager()->EmitObjectChange(this, MoveTemp(Change), bDuplicateKeyframe
 		? LOCTEXT("DuplicateKeyframeMaskState", "Restore Quick SDF Duplicated Keyframe Mask State")
 		: LOCTEXT("AddKeyframeMaskState", "Restore Quick SDF Added Keyframe Mask State"));
@@ -1454,8 +1633,9 @@ void UQuickSDFPaintTool::RemoveKeyframe(int32 Index)
 		TArray<FGuid> BeforeGuids;
 		TArray<float> BeforeAngles;
 		TArray<UTexture2D*> BeforeTextures;
+		TArray<bool> BeforeAllowSourceTextureOverwrites;
 		TArray<TArray<FColor>> BeforePixelsByMask;
-		CaptureMaskState(*this, Asset, BeforeGuids, BeforeAngles, BeforeTextures, BeforePixelsByMask);
+		CaptureMaskState(*this, Asset, BeforeGuids, BeforeAngles, BeforeTextures, BeforeAllowSourceTextureOverwrites, BeforePixelsByMask);
 
 		GetToolManager()->BeginUndoTransaction(LOCTEXT("RemoveKeyframe", "Remove Timeline Keyframe"));
 		Asset->Modify();
@@ -1477,8 +1657,9 @@ void UQuickSDFPaintTool::RemoveKeyframe(int32 Index)
 		Change->BeforeGuids = MoveTemp(BeforeGuids);
 		Change->BeforeAngles = MoveTemp(BeforeAngles);
 		Change->BeforeTextures = MoveTemp(BeforeTextures);
+		Change->BeforeAllowSourceTextureOverwrites = MoveTemp(BeforeAllowSourceTextureOverwrites);
 		Change->BeforePixelsByMask = MoveTemp(BeforePixelsByMask);
-		CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterAngles, Change->AfterTextures, Change->AfterPixelsByMask);
+		CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterAngles, Change->AfterTextures, Change->AfterAllowSourceTextureOverwrites, Change->AfterPixelsByMask);
 		GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("RemoveKeyframeMaskState", "Restore Quick SDF Removed Keyframe Mask State"));
 
 		GetToolManager()->EndUndoTransaction();

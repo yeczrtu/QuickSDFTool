@@ -103,6 +103,8 @@ public:
 	FGuid AngleGuid;
 	UTexture2D* BeforeTexture = nullptr;
 	UTexture2D* AfterTexture = nullptr;
+	bool bBeforeAllowSourceTextureOverwrite = false;
+	bool bAfterAllowSourceTextureOverwrite = false;
 	TArray<FColor> BeforePixels;
 	TArray<FColor> AfterPixels;
 
@@ -117,10 +119,12 @@ public:
 	TArray<FGuid> BeforeGuids;
 	TArray<float> BeforeAngles;
 	TArray<UTexture2D*> BeforeTextures;
+	TArray<bool> BeforeAllowSourceTextureOverwrites;
 	TArray<TArray<FColor>> BeforePixelsByMask;
 	TArray<FGuid> AfterGuids;
 	TArray<float> AfterAngles;
 	TArray<UTexture2D*> AfterTextures;
+	TArray<bool> AfterAllowSourceTextureOverwrites;
 	TArray<TArray<FColor>> AfterPixelsByMask;
 
 	virtual void Apply(UObject* Object) override;
@@ -156,11 +160,13 @@ void CaptureMaskState(
 	TArray<FGuid>& OutGuids,
 	TArray<float>& OutAngles,
 	TArray<UTexture2D*>& OutTextures,
+	TArray<bool>& OutAllowSourceTextureOverwrites,
 	TArray<TArray<FColor>>& OutPixelsByMask);
 void RestoreMaskStateOnNextTick(
 	UQuickSDFPaintTool* Tool,
 	const TArray<FGuid>& MaskGuids,
 	const TArray<float>& Angles,
 	const TArray<UTexture2D*>& Textures,
+	const TArray<bool>& AllowSourceTextureOverwrites,
 	const TArray<TArray<FColor>>& PixelsByMask);
 }

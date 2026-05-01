@@ -160,6 +160,9 @@ public:
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Import Edited Masks"))
 	void ImportEditedMasks();
 
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Overwrite Source Textures"))
+	void OverwriteSourceTextures();
+
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Save QuickSDF Asset"))
 	void SaveQuickSDFAsset();
 

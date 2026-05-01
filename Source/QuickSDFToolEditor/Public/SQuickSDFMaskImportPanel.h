@@ -10,8 +10,11 @@ struct FAssetData;
 
 struct FQuickSDFMaskImportSource
 {
+	FGuid ImportGuid = FGuid::NewGuid();
 	bool bExternalFile = false;
 	bool bHasForcedAngle = false;
+	bool bOverwriteExistingImport = false;
+	bool bAllowSourceTextureOverwrite = false;
 	FString SourcePath;
 	FString DisplayName;
 	TWeakObjectPtr<UTexture2D> Texture;
@@ -42,6 +45,7 @@ public:
 
 	void Construct(const FArguments& InArgs);
 	void RefreshValidation();
+	void SetRowWriteChecked(TSharedPtr<FQuickSDFMaskImportRowData> Row, bool bChecked);
 
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
@@ -80,10 +84,13 @@ private:
 	bool CanUndoPreviewChange() const;
 	bool HasImportableRows() const;
 	bool HasNewSlotImportRows() const;
+	bool HasWriteConflictRows() const;
 	bool CanApplyImport() const;
 	FText GetUndoToolTipText() const;
 	FText GetSelectedTargetText() const;
 	FText GetSummaryText() const;
+	FText GetWriteSummaryText() const;
+	FSlateColor GetWriteSummaryColor() const;
 	FText GetApplyToolTipText() const;
 	FText GetImportedFolderText() const;
 
