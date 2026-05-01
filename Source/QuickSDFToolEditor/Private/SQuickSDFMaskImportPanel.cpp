@@ -445,6 +445,19 @@ void SQuickSDFMaskImportPanel::Construct(const FArguments& InArgs)
 					[
 						MakeSmallButton(LOCTEXT("Even", "Even"), LOCTEXT("EvenTooltip", "Redistribute source angles evenly."), FOnClicked::CreateSP(this, &SQuickSDFMaskImportPanel::OnEvenClicked))
 					]
+					+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(SButton)
+						.IsEnabled(this, &SQuickSDFMaskImportPanel::CanUndoPreviewChange)
+						.ToolTipText(this, &SQuickSDFMaskImportPanel::GetUndoToolTipText)
+						.OnClicked(this, &SQuickSDFMaskImportPanel::OnUndoClicked)
+						.ContentPadding(FMargin(7.0f, 3.0f))
+						[
+							SNew(STextBlock)
+							.Text(LOCTEXT("UndoAdd", "Undo Add"))
+							.Font(FAppStyle::GetFontStyle("SmallFont"))
+						]
+					]
 					+ SHorizontalBox::Slot().FillWidth(1.0f)
 					[
 						SNew(SSpacer)
@@ -480,6 +493,7 @@ FReply SQuickSDFMaskImportPanel::OnMouseButtonDown(const FGeometry& MyGeometry, 
 		MouseEvent.GetEffectingButton() == EKeys::MiddleMouseButton ||
 		MouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
 	{
+		FSlateApplication::Get().SetKeyboardFocus(AsShared(), EFocusCause::Mouse);
 		return FReply::Handled().CaptureMouse(AsShared());
 	}
 
@@ -553,6 +567,21 @@ FReply SQuickSDFMaskImportPanel::OnDrop(const FGeometry& MyGeometry, const FDrag
 	return FReply::Handled();
 }
 
+bool SQuickSDFMaskImportPanel::SupportsKeyboardFocus() const
+{
+	return true;
+}
+
+FReply SQuickSDFMaskImportPanel::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
+{
+	if (InKeyEvent.GetKey() == EKeys::Z && (InKeyEvent.IsControlDown() || InKeyEvent.IsCommandDown()) && CanUndoPreviewChange())
+	{
+		return OnUndoClicked();
+	}
+
+	return FReply::Unhandled();
+}
+
 TSharedRef<ITableRow> SQuickSDFMaskImportPanel::GenerateRow(TSharedPtr<FQuickSDFMaskImportRowData> Item, const TSharedRef<STableViewBase>& OwnerTable)
 {
 	return SNew(SQuickSDFMaskImportRow, OwnerTable)
@@ -578,9 +607,15 @@ void SQuickSDFMaskImportPanel::AddSourcesFromUserAction(const TArray<FQuickSDFMa
 	}
 
 	const TSharedPtr<FQuickSDFMaskImportRowData> SelectedRow = GetSelectedRow();
+	PushUndoState();
 	if (NewSources.Num() == 1 && SelectedRow.IsValid())
 	{
 		AddSingleSourceToSelectedRow(NewSources[0], SelectedRow);
+		return;
+	}
+	if (NewSources.Num() > 1 && SelectedRow.IsValid())
+	{
+		AddMultipleSourcesFromSelectedRow(NewSources, SelectedRow);
 		return;
 	}
 
@@ -617,6 +652,61 @@ void SQuickSDFMaskImportPanel::AddSingleSourceToSelectedRow(FQuickSDFMaskImportS
 	}
 }
 
+void SQuickSDFMaskImportPanel::AddMultipleSourcesFromSelectedRow(TArray<FQuickSDFMaskImportSource> NewSources, const TSharedPtr<FQuickSDFMaskImportRowData>& SelectedRow)
+{
+	if (!SelectedRow.IsValid())
+	{
+		AddSources(NewSources);
+		return;
+	}
+
+	const int32 StartIndex = FMath::Clamp(SelectedRow->SlotIndex, 0, FMath::Max(Rows.Num() - 1, 0));
+	const float Step = GetFallbackAssignmentStep();
+	TArray<int32> SourceIndicesToRemove;
+	SourceIndicesToRemove.Reserve(NewSources.Num());
+
+	for (int32 SourceIndex = 0; SourceIndex < NewSources.Num(); ++SourceIndex)
+	{
+		const int32 TargetRowIndex = StartIndex + SourceIndex;
+		float TargetAngle = SelectedRow->Angle + Step * static_cast<float>(SourceIndex);
+		if (Rows.IsValidIndex(TargetRowIndex) && Rows[TargetRowIndex].IsValid())
+		{
+			TargetAngle = Rows[TargetRowIndex]->Angle;
+			if (Rows[TargetRowIndex]->bHasSource)
+			{
+				const int32 ExistingSourceIndex = FindSourceIndex(Rows[TargetRowIndex]->Source);
+				if (ExistingSourceIndex != INDEX_NONE)
+				{
+					SourceIndicesToRemove.AddUnique(ExistingSourceIndex);
+				}
+			}
+		}
+
+		NewSources[SourceIndex].bHasForcedAngle = true;
+		NewSources[SourceIndex].ForcedAngle = TargetAngle;
+	}
+
+	SourceIndicesToRemove.Sort(TGreater<int32>());
+	for (int32 ExistingSourceIndex : SourceIndicesToRemove)
+	{
+		if (Sources.IsValidIndex(ExistingSourceIndex))
+		{
+			Sources.RemoveAt(ExistingSourceIndex);
+		}
+	}
+
+	const int32 DesiredExpectedCount = StartIndex + NewSources.Num();
+	ExpectedCountOverride = FMath::Max(ExpectedCountOverride, DesiredExpectedCount);
+	Sources.Append(NewSources);
+
+	RebuildRows();
+	SelectRowClosestToAngle(NewSources[0].ForcedAngle);
+	if (RowListView.IsValid())
+	{
+		RowListView->RequestListRefresh();
+	}
+}
+
 int32 SQuickSDFMaskImportPanel::FindSourceIndex(const FQuickSDFMaskImportSource& Source) const
 {
 	for (int32 Index = 0; Index < Sources.Num(); ++Index)
@@ -627,6 +717,30 @@ int32 SQuickSDFMaskImportPanel::FindSourceIndex(const FQuickSDFMaskImportSource&
 		}
 	}
 	return INDEX_NONE;
+}
+
+float SQuickSDFMaskImportPanel::GetFallbackAssignmentStep() const
+{
+	if (Rows.Num() > 1)
+	{
+		for (int32 Index = 1; Index < Rows.Num(); ++Index)
+		{
+			if (Rows[Index].IsValid() && Rows[Index - 1].IsValid())
+			{
+				const float Step = Rows[Index]->Angle - Rows[Index - 1]->Angle;
+				if (Step > KINDA_SMALL_NUMBER)
+				{
+					return Step;
+				}
+			}
+		}
+	}
+
+	UQuickSDFPaintTool* Tool = PaintTool.Get();
+	const UQuickSDFToolProperties* Properties = Tool ? Tool->Properties.Get() : nullptr;
+	const bool bSymmetry = !Properties || Properties->bSymmetryMode;
+	const int32 DefaultCount = QuickSDFPaintToolPrivate::GetQuickSDFDefaultAngleCount(bSymmetry);
+	return (bSymmetry ? 90.0f : 180.0f) / static_cast<float>(FMath::Max(DefaultCount - 1, 1));
 }
 
 void SQuickSDFMaskImportPanel::RebuildRows()
@@ -747,6 +861,19 @@ void SQuickSDFMaskImportPanel::RebuildRows()
 	const int32 ExpectedCount = FMath::Max(ExpectedCountOverride != INDEX_NONE ? ExpectedCountOverride : CurrentCount, SourceRows.Num());
 
 	Rows = MoveTemp(SourceRows);
+	int32 ForcedSourceCount = 0;
+	float ForcedMinAngle = TNumericLimits<float>::Max();
+	float ForcedMaxAngle = TNumericLimits<float>::Lowest();
+	for (const TSharedPtr<FQuickSDFMaskImportRowData>& Row : Rows)
+	{
+		if (Row.IsValid() && Row->bHasSource && Row->Source.bHasForcedAngle)
+		{
+			++ForcedSourceCount;
+			ForcedMinAngle = FMath::Min(ForcedMinAngle, Row->Angle);
+			ForcedMaxAngle = FMath::Max(ForcedMaxAngle, Row->Angle);
+		}
+	}
+	const bool bHasForcedRun = ForcedSourceCount > 1;
 	const int32 MissingCount = ExpectedCount - Rows.Num();
 	int32 AddedMissingCount = 0;
 	for (int32 Index = 0; Index < ExpectedCount && AddedMissingCount < MissingCount; ++Index)
@@ -758,7 +885,10 @@ void SQuickSDFMaskImportPanel::RebuildRows()
 		{
 			return Row.IsValid() && Row->bHasSource && FMath::IsNearlyEqual(Row->Angle, ExpectedAngle, 0.05f);
 		});
-		if (bExpectedAngleOccupied)
+		const bool bExpectedAngleInsideForcedRun = bHasForcedRun &&
+			ExpectedAngle >= ForcedMinAngle - QuickSDFImportAngleMatchTolerance &&
+			ExpectedAngle <= ForcedMaxAngle + QuickSDFImportAngleMatchTolerance;
+		if (bExpectedAngleOccupied || bExpectedAngleInsideForcedRun)
 		{
 			continue;
 		}
@@ -977,6 +1107,58 @@ void SQuickSDFMaskImportPanel::SelectRowClosestToAngle(float Angle)
 	}
 }
 
+void SQuickSDFMaskImportPanel::PushUndoState()
+{
+	FQuickSDFMaskImportUndoState Snapshot;
+	Snapshot.Sources = Sources;
+	Snapshot.ExpectedCountOverride = ExpectedCountOverride;
+	if (const TSharedPtr<FQuickSDFMaskImportRowData> SelectedRow = GetSelectedRow())
+	{
+		Snapshot.bHasSelectionAngle = true;
+		Snapshot.SelectionAngle = SelectedRow->Angle;
+	}
+
+	UndoStack.Add(MoveTemp(Snapshot));
+	constexpr int32 MaxUndoStates = 16;
+	if (UndoStack.Num() > MaxUndoStates)
+	{
+		UndoStack.RemoveAt(0, UndoStack.Num() - MaxUndoStates);
+	}
+}
+
+bool SQuickSDFMaskImportPanel::RestoreLastUndoState()
+{
+	if (UndoStack.Num() == 0)
+	{
+		return false;
+	}
+
+	FQuickSDFMaskImportUndoState Snapshot = MoveTemp(UndoStack.Last());
+	UndoStack.Pop(EAllowShrinking::No);
+	Sources = MoveTemp(Snapshot.Sources);
+	ExpectedCountOverride = Snapshot.ExpectedCountOverride;
+
+	RebuildRows();
+	if (Snapshot.bHasSelectionAngle)
+	{
+		SelectRowClosestToAngle(Snapshot.SelectionAngle);
+	}
+	else
+	{
+		SelectDefaultRow();
+	}
+	if (RowListView.IsValid())
+	{
+		RowListView->RequestListRefresh();
+	}
+	return true;
+}
+
+bool SQuickSDFMaskImportPanel::CanUndoPreviewChange() const
+{
+	return UndoStack.Num() > 0;
+}
+
 bool SQuickSDFMaskImportPanel::HasImportableRows() const
 {
 	for (const TSharedPtr<FQuickSDFMaskImportRowData>& Row : Rows)
@@ -987,6 +1169,13 @@ bool SQuickSDFMaskImportPanel::HasImportableRows() const
 		}
 	}
 	return false;
+}
+
+FText SQuickSDFMaskImportPanel::GetUndoToolTipText() const
+{
+	return CanUndoPreviewChange()
+		? LOCTEXT("UndoAddTooltip", "Undo the last preview add or replacement. This does not affect imported assets.")
+		: LOCTEXT("UndoAddDisabledTooltip", "There is no preview add to undo.");
 }
 
 FText SQuickSDFMaskImportPanel::GetSelectedTargetText() const
@@ -1134,7 +1323,7 @@ FReply SQuickSDFMaskImportPanel::OnAddAssetsClicked()
 				.VAlign(VAlign_Center)
 				[
 					SNew(STextBlock)
-					.Text(LOCTEXT("AssetPickerHint", "Select one or more Texture2D assets. One selected asset replaces the selected target row."))
+					.Text(LOCTEXT("AssetPickerHint", "Select Texture2D assets. One asset replaces the selected row; multiple assets fill from that row downward."))
 					.Font(FAppStyle::GetFontStyle("SmallFont"))
 				]
 				+ SHorizontalBox::Slot()
@@ -1173,6 +1362,12 @@ FReply SQuickSDFMaskImportPanel::OnAddSelectedAssetsClicked()
 		AddAssetDataSelection(AssetPickerState->GetCurrentSelectionDelegate.Execute());
 	}
 	FSlateApplication::Get().DismissAllMenus();
+	return FReply::Handled();
+}
+
+FReply SQuickSDFMaskImportPanel::OnUndoClicked()
+{
+	RestoreLastUndoState();
 	return FReply::Handled();
 }
 
@@ -1293,12 +1488,25 @@ FReply SQuickSDFMaskImportPanel::OnApplyClicked()
 		return FReply::Handled();
 	}
 
-	if (Textures.Num() == 1 && ImportRows.Num() == 1 && ImportRows[0].IsValid() && ImportRows[0]->ExistingSlotIndex != INDEX_NONE)
+	bool bCanAssignExistingSlots = Textures.Num() == ImportRows.Num();
+	for (const TSharedPtr<FQuickSDFMaskImportRowData>& ImportRow : ImportRows)
 	{
-		if (Tool->AssignMaskTextureToAngle(ImportRows[0]->ExistingSlotIndex, Textures[0]))
+		bCanAssignExistingSlots &= ImportRow.IsValid() && ImportRow->ExistingSlotIndex != INDEX_NONE;
+	}
+
+	if (bCanAssignExistingSlots)
+	{
+		bool bAllAssigned = true;
+		for (int32 Index = 0; Index < Textures.Num(); ++Index)
+		{
+			bAllAssigned &= Tool->AssignMaskTextureToAngle(ImportRows[Index]->ExistingSlotIndex, Textures[Index]);
+		}
+
+		if (bAllAssigned)
 		{
 			FNotificationInfo Info(FText::Format(
-				LOCTEXT("SingleImportCompleteNotification", "Imported 1 mask / Created {0} textures in {1}"),
+				LOCTEXT("SlotImportCompleteNotification", "Imported {0} masks / Created {1} textures in {2}"),
+				FText::AsNumber(Textures.Num()),
 				FText::AsNumber(CreatedTextureCount),
 				FText::FromString(ImportFolder)));
 			Info.ExpireDuration = 4.0f;
