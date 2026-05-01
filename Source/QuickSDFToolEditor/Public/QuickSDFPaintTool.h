@@ -115,6 +115,8 @@ public:
 	virtual void DrawHUD( FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI ) override;
 	bool ApplyRenderTargetPixels(int32 AngleIndex, const TArray<FColor>& Pixels);
 	bool ApplyRenderTargetPixelsByGuid(const FGuid& AngleGuid, const TArray<FColor>& Pixels);
+	bool ApplyRenderTargetPixelsInRect(int32 AngleIndex, const FIntRect& Rect, const TArray<FColor>& Pixels);
+	bool ApplyRenderTargetPixelsInRectByGuid(const FGuid& AngleGuid, int32 FallbackIndex, const FIntRect& Rect, const TArray<FColor>& Pixels);
 	bool ApplyTextureSlotChange(const FGuid& AngleGuid, int32 FallbackIndex, class UTexture2D* Texture, const TArray<FColor>& Pixels);
 	void RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, const TArray<float>& Angles, const TArray<class UTexture2D*>& Textures, const TArray<TArray<FColor>>& PixelsByMask);
 	
@@ -181,7 +183,9 @@ protected:
 	void UpdateBrushResizeFromCursor();
 	void EndBrushResizeMode();
 	bool RestoreRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, const TArray<FColor>& Pixels) const;
+	bool RestoreRenderTargetPixelsInRect(class UTextureRenderTarget2D* RenderTarget, const FIntRect& Rect, const TArray<FColor>& Pixels) const;
 	bool RestoreRenderTargetTexture(class UTextureRenderTarget2D* RenderTarget, class UTexture2D* Texture) const;
+	bool CopyRenderTargetToRenderTarget(class UTextureRenderTarget2D* SourceRenderTarget, class UTextureRenderTarget2D* DestinationRenderTarget) const;
 	class UTexture2D* CreateTransientTextureFromPixels(const TArray<FColor>& Pixels, int32 Width, int32 Height) const;
 	bool ApplyPixelsWithUndo(int32 AngleIndex, const TArray<FColor>& Pixels, const FText& ChangeDescription);
 	bool CopyNearestMaskToAngle(int32 DestinationIndex);
@@ -194,6 +198,7 @@ protected:
 	void BeginStrokeTransaction();
 	void EndStrokeTransaction();
 	void ResetStrokeState();
+	void AddStrokeDirtyRect(class UTextureRenderTarget2D* RenderTarget, const FIntRect& Rect);
 	void InitializeRenderTargets();
 	double GetToolCurrentTime() const;
 	void UpdateQuickLineHoldState(const FVector2D& ScreenPosition);
@@ -260,8 +265,12 @@ protected:
 	FIntPoint CachedUVOverlaySize = FIntPoint::ZeroValue;
 	int32 StrokeTransactionAngleIndex = INDEX_NONE;
 	TArray<int32> StrokeTransactionAngleIndices;
-	TArray<FColor> StrokeBeforePixels;
-	TArray<TArray<FColor>> StrokeBeforePixelsByAngle;
+	TArray<FIntRect> StrokeDirtyRectsByAngle;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTextureRenderTarget2D>> StrokeBeforeRenderTargetsByAngle;
+	FIntRect StrokeDirtyRect;
+	bool bHasStrokeDirtyRect = false;
 
 	TArray<FQuickSDFStrokeSample> QuickLineSourceSamples;
 	FQuickSDFStrokeSample QuickLineStartSample;

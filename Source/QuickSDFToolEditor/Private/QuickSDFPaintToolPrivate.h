@@ -80,6 +80,7 @@ class FQuickSDFRenderTargetsChange : public FToolCommandChange
 public:
 	TArray<int32> AngleIndices;
 	TArray<FGuid> AngleGuids;
+	TArray<FIntRect> PixelRects;
 	TArray<TArray<FColor>> BeforePixelsByAngle;
 	TArray<TArray<FColor>> AfterPixelsByAngle;
 

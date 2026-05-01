@@ -865,8 +865,10 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 	const FVector2D RTSize(RT->SizeX, RT->SizeY);
 	const FLinearColor PaintColor = IsPaintingShadow() ? FLinearColor::Black : FLinearColor::White;
 	
-	FCanvas Canvas(RTResource, nullptr, GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(), GMaxRHIFeatureLevel);
-
+	TArray<FVector2D> PixelSizes;
+	PixelSizes.Reserve(Samples.Num());
+	FIntRect BatchDirtyRect;
+	bool bHasBatchDirtyRect = false;
 	for (const FQuickSDFStrokeSample& Sample : Samples)
 	{
 		FVector2D PixelSize;
@@ -884,6 +886,43 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 		}
 		const FVector2D PixelPos(Sample.UV.X * RTSize.X, Sample.UV.Y * RTSize.Y);
 		const FVector2D StampPos = PixelPos - (PixelSize * 0.5f);
+		if (bStrokeTransactionActive)
+		{
+			constexpr int32 DirtyPadding = 2;
+			const FIntRect StampRect(
+				FMath::FloorToInt(StampPos.X) - DirtyPadding,
+				FMath::FloorToInt(StampPos.Y) - DirtyPadding,
+				FMath::CeilToInt(StampPos.X + PixelSize.X) + DirtyPadding,
+				FMath::CeilToInt(StampPos.Y + PixelSize.Y) + DirtyPadding);
+			if (!bHasBatchDirtyRect)
+			{
+				BatchDirtyRect = StampRect;
+				bHasBatchDirtyRect = true;
+			}
+			else
+			{
+				BatchDirtyRect.Min.X = FMath::Min(BatchDirtyRect.Min.X, StampRect.Min.X);
+				BatchDirtyRect.Min.Y = FMath::Min(BatchDirtyRect.Min.Y, StampRect.Min.Y);
+				BatchDirtyRect.Max.X = FMath::Max(BatchDirtyRect.Max.X, StampRect.Max.X);
+				BatchDirtyRect.Max.Y = FMath::Max(BatchDirtyRect.Max.Y, StampRect.Max.Y);
+			}
+		}
+		PixelSizes.Add(PixelSize);
+	}
+
+	if (bHasBatchDirtyRect)
+	{
+		AddStrokeDirtyRect(RT, BatchDirtyRect);
+	}
+
+	FCanvas Canvas(RTResource, nullptr, GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(), GMaxRHIFeatureLevel);
+
+	for (int32 Index = 0; Index < Samples.Num(); ++Index)
+	{
+		const FQuickSDFStrokeSample& Sample = Samples[Index];
+		const FVector2D PixelSize = PixelSizes[Index];
+		const FVector2D PixelPos(Sample.UV.X * RTSize.X, Sample.UV.Y * RTSize.Y);
+		const FVector2D StampPos = PixelPos - (PixelSize * 0.5f);
 		FCanvasTileItem BrushItem(StampPos, BrushMaskTexture->GetResource(), PixelSize, PaintColor);
 		BrushItem.BlendMode = SE_BLEND_Translucent;
 		Canvas.DrawItem(BrushItem);
@@ -897,7 +936,10 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 			TransitionAndCopyTexture(RHICmdList, RTResource->GetRenderTargetTexture(), RTResource->TextureRHI, {});
 		});
 
-	RefreshPreviewMaterial();
+	if (!bStampingAllPaintTargets)
+	{
+		RefreshPreviewMaterial();
+	}
 }
 
 void UQuickSDFPaintTool::AppendStrokeSample(const FQuickSDFStrokeSample& Sample)

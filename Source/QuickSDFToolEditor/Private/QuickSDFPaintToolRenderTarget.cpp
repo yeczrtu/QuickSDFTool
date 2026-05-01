@@ -62,6 +62,37 @@
 
 using namespace QuickSDFPaintToolPrivate;
 
+namespace
+{
+bool CaptureRenderTargetPixelsInRect(UTextureRenderTarget2D* RenderTarget, const FIntRect& Rect, TArray<FColor>& OutPixels)
+{
+	if (!RenderTarget || Rect.Width() <= 0 || Rect.Height() <= 0 ||
+		Rect.Min.X < 0 || Rect.Min.Y < 0 || Rect.Max.X > RenderTarget->SizeX || Rect.Max.Y > RenderTarget->SizeY)
+	{
+		return false;
+	}
+
+	FTextureRenderTargetResource* RTResource = RenderTarget->GameThread_GetRenderTargetResource();
+	if (!RTResource)
+	{
+		return false;
+	}
+
+	FReadSurfaceDataFlags ReadFlags(RCM_UNorm);
+	ReadFlags.SetLinearToGamma(false);
+	return RTResource->ReadPixels(OutPixels, ReadFlags, Rect) && OutPixels.Num() == Rect.Width() * Rect.Height();
+}
+
+FIntRect UnionRects(const FIntRect& A, const FIntRect& B)
+{
+	return FIntRect(
+		FMath::Min(A.Min.X, B.Min.X),
+		FMath::Min(A.Min.Y, B.Min.Y),
+		FMath::Max(A.Max.X, B.Max.X),
+		FMath::Max(A.Max.Y, B.Max.Y));
+}
+}
+
 void UQuickSDFPaintTool::BuildBrushMaskTexture()
 {
 	if (BrushMaskTexture)
@@ -153,6 +184,35 @@ bool UQuickSDFPaintTool::RestoreRenderTargetPixels(UTextureRenderTarget2D* Rende
 	return RestoreRenderTargetTexture(RenderTarget, TempTexture);
 }
 
+bool UQuickSDFPaintTool::RestoreRenderTargetPixelsInRect(UTextureRenderTarget2D* RenderTarget, const FIntRect& Rect, const TArray<FColor>& Pixels) const
+{
+	if (!RenderTarget || Rect.Width() <= 0 || Rect.Height() <= 0 ||
+		Rect.Min.X < 0 || Rect.Min.Y < 0 || Rect.Max.X > RenderTarget->SizeX || Rect.Max.Y > RenderTarget->SizeY ||
+		Pixels.Num() != Rect.Width() * Rect.Height())
+	{
+		return false;
+	}
+
+	UTexture2D* TempTexture = CreateTransientTextureFromPixels(Pixels, Rect.Width(), Rect.Height());
+	if (!TempTexture)
+	{
+		return false;
+	}
+
+	FTextureRenderTargetResource* RTResource = RenderTarget->GameThread_GetRenderTargetResource();
+	if (!RTResource) return false;
+	FCanvas Canvas(RTResource, nullptr, GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(), GMaxRHIFeatureLevel);
+	FCanvasTileItem TileItem(FVector2D(Rect.Min.X, Rect.Min.Y), TempTexture->GetResource(), FVector2D(Rect.Width(), Rect.Height()), FLinearColor::White);
+	TileItem.BlendMode = SE_BLEND_Opaque;
+	Canvas.DrawItem(TileItem);
+	Canvas.Flush_GameThread(true);
+	ENQUEUE_RENDER_COMMAND(RestoreQuickSDFPaintRTRectCommand)(
+		[RTResource](FRHICommandListImmediate& RHICmdList) {
+			TransitionAndCopyTexture(RHICmdList, RTResource->GetRenderTargetTexture(), RTResource->TextureRHI, {});
+		});
+	return true;
+}
+
 UTexture2D* UQuickSDFPaintTool::CreateTransientTextureFromPixels(const TArray<FColor>& Pixels, int32 Width, int32 Height) const
 {
 	if (Pixels.Num() != Width * Height) return nullptr;
@@ -186,6 +246,35 @@ bool UQuickSDFPaintTool::RestoreRenderTargetTexture(UTextureRenderTarget2D* Rend
 	return true;
 }
 
+bool UQuickSDFPaintTool::CopyRenderTargetToRenderTarget(UTextureRenderTarget2D* SourceRenderTarget, UTextureRenderTarget2D* DestinationRenderTarget) const
+{
+	if (!SourceRenderTarget || !DestinationRenderTarget)
+	{
+		return false;
+	}
+
+	FTextureRenderTargetResource* DestinationResource = DestinationRenderTarget->GameThread_GetRenderTargetResource();
+	if (!DestinationResource)
+	{
+		return false;
+	}
+
+	FCanvas Canvas(DestinationResource, nullptr, GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(), GMaxRHIFeatureLevel);
+	FCanvasTileItem TileItem(
+		FVector2D::ZeroVector,
+		SourceRenderTarget->GetResource(),
+		FVector2D(DestinationRenderTarget->SizeX, DestinationRenderTarget->SizeY),
+		FLinearColor::White);
+	TileItem.BlendMode = SE_BLEND_Opaque;
+	Canvas.DrawItem(TileItem);
+	Canvas.Flush_GameThread(false);
+	ENQUEUE_RENDER_COMMAND(CopyQuickSDFPaintRTCommand)(
+		[DestinationResource](FRHICommandListImmediate& RHICmdList) {
+			TransitionAndCopyTexture(RHICmdList, DestinationResource->GetRenderTargetTexture(), DestinationResource->TextureRHI, {});
+		});
+	return true;
+}
+
 bool UQuickSDFPaintTool::RestoreStrokeStartPixels() const
 {
 	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
@@ -196,11 +285,15 @@ bool UQuickSDFPaintTool::RestoreStrokeStartPixels() const
 	}
 
 	bool bRestoredAny = false;
-	for (int32 Index = 0; Index < StrokeTransactionAngleIndices.Num() && Index < StrokeBeforePixelsByAngle.Num(); ++Index)
+	for (int32 Index = 0; Index < StrokeTransactionAngleIndices.Num() && Index < StrokeBeforeRenderTargetsByAngle.Num(); ++Index)
 	{
 		const int32 AngleIndex = StrokeTransactionAngleIndices[Index];
-		if (Asset->AngleDataList.IsValidIndex(AngleIndex) &&
-			RestoreRenderTargetPixels(Asset->AngleDataList[AngleIndex].PaintRenderTarget, StrokeBeforePixelsByAngle[Index]))
+		if (!Asset->AngleDataList.IsValidIndex(AngleIndex))
+		{
+			continue;
+		}
+
+		if (CopyRenderTargetToRenderTarget(StrokeBeforeRenderTargetsByAngle[Index], Asset->AngleDataList[AngleIndex].PaintRenderTarget))
 		{
 			bRestoredAny = true;
 		}
@@ -243,6 +336,41 @@ bool UQuickSDFPaintTool::ApplyRenderTargetPixelsByGuid(const FGuid& AngleGuid, c
 	}
 
 	return ApplyRenderTargetPixels(AngleIndex, Pixels);
+}
+
+bool UQuickSDFPaintTool::ApplyRenderTargetPixelsInRect(int32 AngleIndex, const FIntRect& Rect, const TArray<FColor>& Pixels)
+{
+	if (!Properties) return false;
+
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return false;
+
+	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
+	if (!Asset->AngleDataList.IsValidIndex(AngleIndex)) return false;
+
+	const bool bRestored = RestoreRenderTargetPixelsInRect(Asset->AngleDataList[AngleIndex].PaintRenderTarget, Rect, Pixels);
+	if (bRestored)
+	{
+		RefreshPreviewMaterial();
+		MarkMasksChanged();
+	}
+	return bRestored;
+}
+
+bool UQuickSDFPaintTool::ApplyRenderTargetPixelsInRectByGuid(const FGuid& AngleGuid, int32 FallbackIndex, const FIntRect& Rect, const TArray<FColor>& Pixels)
+{
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	const int32 AngleIndex = FindAngleIndexByGuid(Asset, AngleGuid);
+	if (AngleIndex != INDEX_NONE)
+	{
+		return ApplyRenderTargetPixelsInRect(AngleIndex, Rect, Pixels);
+	}
+	if (!AngleGuid.IsValid())
+	{
+		return ApplyRenderTargetPixelsInRect(FallbackIndex, Rect, Pixels);
+	}
+	return false;
 }
 
 bool UQuickSDFPaintTool::ApplyTextureSlotChange(const FGuid& AngleGuid, int32 FallbackIndex, UTexture2D* Texture, const TArray<FColor>& Pixels)
@@ -446,12 +574,73 @@ bool UQuickSDFPaintTool::CopyNearestMaskToAngle(int32 DestinationIndex)
 		LOCTEXT("FillMissingMaskWhiteChange", "Fill Missing Quick SDF Mask White"));
 }
 
+void UQuickSDFPaintTool::AddStrokeDirtyRect(UTextureRenderTarget2D* RenderTarget, const FIntRect& Rect)
+{
+	if (!bStrokeTransactionActive || !RenderTarget || Rect.Width() <= 0 || Rect.Height() <= 0)
+	{
+		return;
+	}
+
+	const FIntRect ClampedRect(
+		FMath::Clamp(Rect.Min.X, 0, RenderTarget->SizeX),
+		FMath::Clamp(Rect.Min.Y, 0, RenderTarget->SizeY),
+		FMath::Clamp(Rect.Max.X, 0, RenderTarget->SizeX),
+		FMath::Clamp(Rect.Max.Y, 0, RenderTarget->SizeY));
+
+	if (ClampedRect.Width() <= 0 || ClampedRect.Height() <= 0)
+	{
+		return;
+	}
+
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	int32 TransactionIndex = INDEX_NONE;
+	if (Asset)
+	{
+		for (int32 Index = 0; Index < StrokeTransactionAngleIndices.Num(); ++Index)
+		{
+			const int32 AngleIndex = StrokeTransactionAngleIndices[Index];
+			if (Asset->AngleDataList.IsValidIndex(AngleIndex) &&
+				Asset->AngleDataList[AngleIndex].PaintRenderTarget == RenderTarget)
+			{
+				TransactionIndex = Index;
+				break;
+			}
+		}
+	}
+
+	if (TransactionIndex == INDEX_NONE)
+	{
+		return;
+	}
+
+	StrokeDirtyRectsByAngle.SetNum(StrokeTransactionAngleIndices.Num());
+
+	const FIntRect ExistingRect = StrokeDirtyRectsByAngle[TransactionIndex];
+	const bool bHasExistingRect = ExistingRect.Width() > 0 && ExistingRect.Height() > 0;
+	StrokeDirtyRectsByAngle[TransactionIndex] = bHasExistingRect ? UnionRects(ExistingRect, ClampedRect) : ClampedRect;
+
+	if (!bHasStrokeDirtyRect)
+	{
+		StrokeDirtyRect = ClampedRect;
+		bHasStrokeDirtyRect = true;
+		return;
+	}
+
+	StrokeDirtyRect.Min.X = FMath::Min(StrokeDirtyRect.Min.X, ClampedRect.Min.X);
+	StrokeDirtyRect.Min.Y = FMath::Min(StrokeDirtyRect.Min.Y, ClampedRect.Min.Y);
+	StrokeDirtyRect.Max.X = FMath::Max(StrokeDirtyRect.Max.X, ClampedRect.Max.X);
+	StrokeDirtyRect.Max.Y = FMath::Max(StrokeDirtyRect.Max.Y, ClampedRect.Max.Y);
+}
+
 void UQuickSDFPaintTool::BeginStrokeTransaction()
 {
 	if (bStrokeTransactionActive) return;
 	
-	StrokeBeforePixels.Reset();
-	StrokeBeforePixelsByAngle.Reset();
+	StrokeDirtyRectsByAngle.Reset();
+	StrokeBeforeRenderTargetsByAngle.Reset();
+	StrokeDirtyRect = FIntRect();
+	bHasStrokeDirtyRect = false;
 	const TArray<int32> CandidateAngleIndices = GetPaintTargetAngleIndices();
 	StrokeTransactionAngleIndices.Reset();
 	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
@@ -466,20 +655,37 @@ void UQuickSDFPaintTool::BeginStrokeTransaction()
 			continue;
 		}
 
-		TArray<FColor> BeforePixels;
-		if (CaptureRenderTargetPixels(Asset->AngleDataList[AngleIndex].PaintRenderTarget, BeforePixels))
+		UTextureRenderTarget2D* PaintRenderTarget = Asset->AngleDataList[AngleIndex].PaintRenderTarget;
+		if (!PaintRenderTarget)
 		{
-			StrokeTransactionAngleIndices.Add(AngleIndex);
-			StrokeBeforePixelsByAngle.Add(MoveTemp(BeforePixels));
-			if (StrokeBeforePixelsByAngle.Num() == 1)
-			{
-				StrokeBeforePixels = StrokeBeforePixelsByAngle[0];
-				StrokeTransactionAngleIndex = AngleIndex;
-			}
+			continue;
+		}
+
+		UTextureRenderTarget2D* StrokeSnapshot = NewObject<UTextureRenderTarget2D>(this);
+		if (!StrokeSnapshot)
+		{
+			continue;
+		}
+		StrokeSnapshot->RenderTargetFormat = PaintRenderTarget->RenderTargetFormat;
+		StrokeSnapshot->ClearColor = PaintRenderTarget->ClearColor;
+		StrokeSnapshot->SRGB = PaintRenderTarget->SRGB;
+		StrokeSnapshot->InitAutoFormat(PaintRenderTarget->SizeX, PaintRenderTarget->SizeY);
+		StrokeSnapshot->UpdateResourceImmediate(true);
+		if (!CopyRenderTargetToRenderTarget(PaintRenderTarget, StrokeSnapshot))
+		{
+			continue;
+		}
+
+		StrokeTransactionAngleIndices.Add(AngleIndex);
+		StrokeBeforeRenderTargetsByAngle.Add(StrokeSnapshot);
+		if (StrokeTransactionAngleIndices.Num() == 1)
+		{
+			StrokeTransactionAngleIndex = AngleIndex;
 		}
 	}
 
-	bStrokeTransactionActive = StrokeBeforePixelsByAngle.Num() > 0;
+	StrokeDirtyRectsByAngle.SetNum(StrokeTransactionAngleIndices.Num());
+	bStrokeTransactionActive = StrokeTransactionAngleIndices.Num() > 0;
 }
 
 void UQuickSDFPaintTool::EndStrokeTransaction()
@@ -493,7 +699,7 @@ void UQuickSDFPaintTool::EndStrokeTransaction()
 		EnsureMaskGuids(Asset);
 		TUniquePtr<FQuickSDFRenderTargetsChange> Change = MakeUnique<FQuickSDFRenderTargetsChange>();
 
-		for (int32 Index = 0; Index < StrokeTransactionAngleIndices.Num() && Index < StrokeBeforePixelsByAngle.Num(); ++Index)
+		for (int32 Index = 0; Index < StrokeTransactionAngleIndices.Num() && Index < StrokeBeforeRenderTargetsByAngle.Num(); ++Index)
 		{
 			const int32 AngleIndex = StrokeTransactionAngleIndices[Index];
 			if (!Asset->AngleDataList.IsValidIndex(AngleIndex))
@@ -501,15 +707,41 @@ void UQuickSDFPaintTool::EndStrokeTransaction()
 				continue;
 			}
 
-			TArray<FColor> AfterPixels;
-			if (CaptureRenderTargetPixels(Asset->AngleDataList[AngleIndex].PaintRenderTarget, AfterPixels) &&
-				AfterPixels.Num() == StrokeBeforePixelsByAngle[Index].Num() &&
-				AfterPixels != StrokeBeforePixelsByAngle[Index])
+			UTextureRenderTarget2D* PaintRenderTarget = Asset->AngleDataList[AngleIndex].PaintRenderTarget;
+			if (!PaintRenderTarget)
 			{
-				Change->AngleIndices.Add(AngleIndex);
-				Change->AngleGuids.Add(Asset->AngleDataList[AngleIndex].MaskGuid);
-				Change->BeforePixelsByAngle.Add(MoveTemp(StrokeBeforePixelsByAngle[Index]));
-				Change->AfterPixelsByAngle.Add(MoveTemp(AfterPixels));
+				continue;
+			}
+
+			UTextureRenderTarget2D* BeforeRenderTarget = StrokeBeforeRenderTargetsByAngle[Index];
+			if (!BeforeRenderTarget)
+			{
+				continue;
+			}
+
+			const FIntRect DirtyRect = StrokeDirtyRectsByAngle.IsValidIndex(Index) ? StrokeDirtyRectsByAngle[Index] : FIntRect();
+			if (DirtyRect.Width() > 0 && DirtyRect.Height() > 0)
+			{
+				const FIntRect ClampedRect(
+					FMath::Clamp(DirtyRect.Min.X, 0, PaintRenderTarget->SizeX),
+					FMath::Clamp(DirtyRect.Min.Y, 0, PaintRenderTarget->SizeY),
+					FMath::Clamp(DirtyRect.Max.X, 0, PaintRenderTarget->SizeX),
+					FMath::Clamp(DirtyRect.Max.Y, 0, PaintRenderTarget->SizeY));
+
+				TArray<FColor> BeforePixels;
+				TArray<FColor> AfterPixels;
+				if (ClampedRect.Width() > 0 && ClampedRect.Height() > 0 &&
+					CaptureRenderTargetPixelsInRect(BeforeRenderTarget, ClampedRect, BeforePixels) &&
+					CaptureRenderTargetPixelsInRect(PaintRenderTarget, ClampedRect, AfterPixels) &&
+					AfterPixels != BeforePixels)
+				{
+					Change->AngleIndices.Add(AngleIndex);
+					Change->AngleGuids.Add(Asset->AngleDataList[AngleIndex].MaskGuid);
+					Change->PixelRects.Add(ClampedRect);
+					Change->BeforePixelsByAngle.Add(MoveTemp(BeforePixels));
+					Change->AfterPixelsByAngle.Add(MoveTemp(AfterPixels));
+				}
+				continue;
 			}
 		}
 
@@ -523,8 +755,10 @@ void UQuickSDFPaintTool::EndStrokeTransaction()
 	bStrokeTransactionActive = false;
 	StrokeTransactionAngleIndex = INDEX_NONE;
 	StrokeTransactionAngleIndices.Reset();
-	StrokeBeforePixels.Reset();
-	StrokeBeforePixelsByAngle.Reset();
+	StrokeDirtyRectsByAngle.Reset();
+	StrokeBeforeRenderTargetsByAngle.Reset();
+	StrokeDirtyRect = FIntRect();
+	bHasStrokeDirtyRect = false;
 }
 
 UTextureRenderTarget2D* UQuickSDFPaintTool::GetActiveRenderTarget() const
@@ -642,6 +876,11 @@ void FQuickSDFRenderTargetsChange::Apply(UObject* Object)
 		for (int32 Index = 0; Index < AngleIndices.Num() && Index < AfterPixelsByAngle.Num(); ++Index)
 		{
 			const FGuid AngleGuid = AngleGuids.IsValidIndex(Index) ? AngleGuids[Index] : FGuid();
+			if (PixelRects.IsValidIndex(Index) && PixelRects[Index].Width() > 0 && PixelRects[Index].Height() > 0)
+			{
+				Tool->ApplyRenderTargetPixelsInRectByGuid(AngleGuid, AngleIndices[Index], PixelRects[Index], AfterPixelsByAngle[Index]);
+				continue;
+			}
 			if (!AngleGuid.IsValid() || !Tool->ApplyRenderTargetPixelsByGuid(AngleGuid, AfterPixelsByAngle[Index]))
 			{
 				if (!AngleGuid.IsValid())
@@ -660,6 +899,11 @@ void FQuickSDFRenderTargetsChange::Revert(UObject* Object)
 		for (int32 Index = 0; Index < AngleIndices.Num() && Index < BeforePixelsByAngle.Num(); ++Index)
 		{
 			const FGuid AngleGuid = AngleGuids.IsValidIndex(Index) ? AngleGuids[Index] : FGuid();
+			if (PixelRects.IsValidIndex(Index) && PixelRects[Index].Width() > 0 && PixelRects[Index].Height() > 0)
+			{
+				Tool->ApplyRenderTargetPixelsInRectByGuid(AngleGuid, AngleIndices[Index], PixelRects[Index], BeforePixelsByAngle[Index]);
+				continue;
+			}
 			if (!AngleGuid.IsValid() || !Tool->ApplyRenderTargetPixelsByGuid(AngleGuid, BeforePixelsByAngle[Index]))
 			{
 				if (!AngleGuid.IsValid())

@@ -17,6 +17,9 @@
 #include "Styling/AppStyle.h"
 #include "Editor.h"
 #include "QuickSDFToolSubsystem.h"
+#include "CanvasItem.h"
+#include "CanvasTypes.h"
+#include "Engine/Canvas.h"
 #include "Engine/Texture2D.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "EngineUtils.h"
@@ -133,30 +136,44 @@ UTexture2D* CreateTimelineThumbnailTexture(UQuickSDFPaintTool* Tool, UTextureRen
 		return nullptr;
 	}
 
-	TArray<FColor> SourcePixels;
-	if (!Tool->CaptureRenderTargetPixels(RenderTarget, SourcePixels) ||
-		SourcePixels.Num() != RenderTarget->SizeX * RenderTarget->SizeY)
+	UTextureRenderTarget2D* ThumbnailRenderTarget = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), NAME_None, RF_Transient);
+	if (!ThumbnailRenderTarget)
+	{
+		return nullptr;
+	}
+	ThumbnailRenderTarget->RenderTargetFormat = RTF_RGBA8;
+	ThumbnailRenderTarget->ClearColor = FLinearColor::Black;
+	ThumbnailRenderTarget->SRGB = false;
+	ThumbnailRenderTarget->InitAutoFormat(QuickSDFTimelineThumbnailSize, QuickSDFTimelineThumbnailSize);
+	ThumbnailRenderTarget->UpdateResourceImmediate(true);
+
+	TArray<FColor> ThumbnailPixels;
+	FTextureRenderTargetResource* ThumbnailResource = ThumbnailRenderTarget->GameThread_GetRenderTargetResource();
+	if (!ThumbnailResource)
 	{
 		return nullptr;
 	}
 
-	TArray<FColor> ThumbnailPixels;
-	ThumbnailPixels.SetNum(QuickSDFTimelineThumbnailSize * QuickSDFTimelineThumbnailSize);
-	for (int32 Y = 0; Y < QuickSDFTimelineThumbnailSize; ++Y)
+	FCanvas Canvas(ThumbnailResource, nullptr, GEditor ? GEditor->GetEditorWorldContext().World() : nullptr, GMaxRHIFeatureLevel);
+	FCanvasTileItem TileItem(
+		FVector2D::ZeroVector,
+		RenderTarget->GetResource(),
+		FVector2D(QuickSDFTimelineThumbnailSize, QuickSDFTimelineThumbnailSize),
+		FLinearColor::White);
+	TileItem.BlendMode = SE_BLEND_Opaque;
+	Canvas.DrawItem(TileItem);
+	Canvas.Flush_GameThread(true);
+
+	if (!Tool->CaptureRenderTargetPixels(ThumbnailRenderTarget, ThumbnailPixels) ||
+		ThumbnailPixels.Num() != QuickSDFTimelineThumbnailSize * QuickSDFTimelineThumbnailSize)
 	{
-		const int32 SourceY = FMath::Clamp(
-			FMath::RoundToInt((static_cast<float>(Y) + 0.5f) / QuickSDFTimelineThumbnailSize * RenderTarget->SizeY - 0.5f),
-			0,
-			RenderTarget->SizeY - 1);
-		for (int32 X = 0; X < QuickSDFTimelineThumbnailSize; ++X)
-		{
-			const int32 SourceX = FMath::Clamp(
-				FMath::RoundToInt((static_cast<float>(X) + 0.5f) / QuickSDFTimelineThumbnailSize * RenderTarget->SizeX - 0.5f),
-				0,
-				RenderTarget->SizeX - 1);
-			ThumbnailPixels[Y * QuickSDFTimelineThumbnailSize + X] = SourcePixels[SourceY * RenderTarget->SizeX + SourceX];
-			ThumbnailPixels[Y * QuickSDFTimelineThumbnailSize + X].A = 255;
-		}
+		return nullptr;
+	}
+
+	for (FColor& Pixel : ThumbnailPixels)
+	{
+		const uint8 Value = FMath::Max3(Pixel.R, Pixel.G, Pixel.B);
+		Pixel = FColor(Value, Value, Value, 255);
 	}
 
 	UTexture2D* Thumbnail = UTexture2D::CreateTransient(QuickSDFTimelineThumbnailSize, QuickSDFTimelineThumbnailSize, PF_B8G8R8A8);
