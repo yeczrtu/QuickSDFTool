@@ -247,5 +247,5 @@ QuickSDFTool は UE 5.7 以降のみ対応です。エディターツールは U
 - [Unreal Engine Interactive Tools Framework](https://docs.unrealengine.com/5.0/en-US/interactive-tools-framework-in-unreal-engine/) — エディターペイントワークフローの基盤。
 - Felzenszwalb & Huttenlocher — *Distance Transforms of Sampled Functions* (2012)。
 - Jump Flooding Algorithm (JFA) — GPU 距離場生成の参考。
-- [UE5 SDF Face Shadow Mapping article](https://unrealengine.hatenablog.com/entry/2024/02/28/222220)。
-- [SDF Texture and LilToon note](https://note.com/ca__mocha/n/n9289fbbc4c8b)。
+- [UE5 SDF Face Shadowマッピングでアニメ顔用の影を作ろう](https://unrealengine.hatenablog.com/entry/2024/02/28/222220)。
+- [SDF TextureとLiltoonでセルルックの影を再現しよう！](https://note.com/ca__mocha/n/n9289fbbc4c8b)。
