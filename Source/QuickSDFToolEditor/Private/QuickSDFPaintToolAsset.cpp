@@ -66,6 +66,13 @@ using namespace QuickSDFPaintToolPrivate;
 
 namespace
 {
+bool IsEngineTexture(const UTexture2D* Texture)
+{
+	return Texture &&
+		(Texture->GetPathName().Equals(TEXT("/Engine"), ESearchCase::IgnoreCase) ||
+			Texture->GetPathName().StartsWith(TEXT("/Engine/"), ESearchCase::IgnoreCase));
+}
+
 bool ResizeMaskPixelsBilinear(
 	const TArray<FColor>& SourcePixels,
 	int32 SourceWidth,
@@ -313,6 +320,11 @@ bool UQuickSDFPaintTool::AssignMaskTextureToAngle(int32 AngleIndex, UTexture2D* 
 	Properties->TargetTextures.SetNum(Asset->AngleDataList.Num());
 	Properties->TargetAngles.SetNum(Asset->AngleDataList.Num());
 	Properties->NumAngles = Asset->AngleDataList.Num();
+	for (int32 Index = 0; Index < Asset->AngleDataList.Num(); ++Index)
+	{
+		Properties->TargetAngles[Index] = Asset->AngleDataList[Index].Angle;
+		Properties->TargetTextures[Index] = Asset->AngleDataList[Index].TextureMask;
+	}
 	Properties->EditAngleIndex = FMath::Clamp(AngleIndex, 0, Asset->AngleDataList.Num() - 1);
 	Properties->TargetTextures[AngleIndex] = Texture;
 	AngleData.TextureMask = Texture;
@@ -388,6 +400,15 @@ void UQuickSDFPaintTool::OverwriteSourceTextures()
 		if (!AngleData.TextureMask || !AngleData.PaintRenderTarget)
 		{
 			continue;
+		}
+		if (IsEngineTexture(AngleData.TextureMask))
+		{
+			FMessageDialog::Open(
+				EAppMsgType::Ok,
+				FText::Format(
+					LOCTEXT("OverwriteEngineTextureBlocked", "Cannot overwrite {0}. Engine Texture2D assets are protected."),
+					FText::FromString(AngleData.TextureMask->GetPathName())));
+			return;
 		}
 
 		if (const int32* ExistingIndex = TextureToFirstIndex.Find(AngleData.TextureMask))

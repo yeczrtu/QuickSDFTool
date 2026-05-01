@@ -33,7 +33,6 @@
 #include "Widgets/Layout/SExpandableArea.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SScaleBox.h"
-#include "Misc/Paths.h"
 
 #define LOCTEXT_NAMESPACE "SQuickSDFTimeline"
 
@@ -53,17 +52,6 @@ constexpr float QuickSDFTimelineAccentB = 1.0f;
 FLinearColor GetQuickSDFTimelineAccentColor(float Alpha = 1.0f)
 {
 	return FLinearColor(QuickSDFTimelineAccentR, QuickSDFTimelineAccentG, QuickSDFTimelineAccentB, Alpha);
-}
-
-bool IsQuickSDFSupportedImageFile(const FString& Filename)
-{
-	const FString Extension = FPaths::GetExtension(Filename).ToLower();
-	return Extension == TEXT("png") ||
-		Extension == TEXT("jpg") ||
-		Extension == TEXT("jpeg") ||
-		Extension == TEXT("bmp") ||
-		Extension == TEXT("tga") ||
-		Extension == TEXT("exr");
 }
 
 TSharedRef<SWidget> MakeTimelineIconButton(const FName IconName, const FText& ToolTip, FOnClicked OnClicked)
@@ -233,7 +221,7 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 	{
 		return bAllowSourceTextureOverwrite.Get()
 			? LOCTEXT("WritableSourceKeyframeTooltip", "Writable source: Overwrite Source Textures can write this mask back to its Texture2D.")
-			: LOCTEXT("ReadOnlySourceKeyframeTooltip", "Read-only source: this mask will not overwrite its Texture2D.");
+			: LOCTEXT("AssignedOnlySourceKeyframeTooltip", "Assigned only: this mask will not overwrite its Texture2D.");
 	}));
 
 	ChildSlot
@@ -542,7 +530,7 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 						[
 							MakeTimelineIconButton(
 								"QuickSDF.Action.ImportMasks",
-								LOCTEXT("ImportMasksTooltip", "Preview mask texture import assignments"),
+								LOCTEXT("ImportMasksTooltip", "Assign selected or dragged Texture2D assets to mask slots"),
 								FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnImportClicked))
 						]
 
@@ -729,18 +717,6 @@ FReply SQuickSDFTimeline::OnDragOver(const FGeometry& MyGeometry, const FDragDro
 		}
 	}
 
-	TSharedPtr<FExternalDragOperation> ExternalDragDropOp = DragDropEvent.GetOperationAs<FExternalDragOperation>();
-	if (ExternalDragDropOp.IsValid() && ExternalDragDropOp->HasFiles())
-	{
-		for (const FString& Filename : ExternalDragDropOp->GetFiles())
-		{
-			if (IsQuickSDFSupportedImageFile(Filename))
-			{
-				return FReply::Handled();
-			}
-		}
-	}
-
 	return FReply::Unhandled();
 }
 
@@ -777,13 +753,6 @@ FReply SQuickSDFTimeline::OnDrop(const FGeometry& MyGeometry, const FDragDropEve
 		}
 
 		OpenImportPanel(MakeImportSourcesFromTextures(Textures));
-		return FReply::Handled();
-	}
-
-	TSharedPtr<FExternalDragOperation> ExternalDragDropOp = DragDropEvent.GetOperationAs<FExternalDragOperation>();
-	if (ExternalDragDropOp.IsValid() && ExternalDragDropOp->HasFiles())
-	{
-		OpenImportPanel(MakeImportSourcesFromFiles(ExternalDragDropOp->GetFiles()));
 		return FReply::Handled();
 	}
 
@@ -1210,26 +1179,6 @@ TArray<FQuickSDFMaskImportSource> SQuickSDFTimeline::MakeImportSourcesFromTextur
 		Source.DisplayName = Texture->GetName();
 		Source.Width = Texture->GetSizeX();
 		Source.Height = Texture->GetSizeY();
-		Sources.Add(Source);
-	}
-	return Sources;
-}
-
-TArray<FQuickSDFMaskImportSource> SQuickSDFTimeline::MakeImportSourcesFromFiles(const TArray<FString>& Filenames) const
-{
-	TArray<FQuickSDFMaskImportSource> Sources;
-	Sources.Reserve(Filenames.Num());
-	for (const FString& Filename : Filenames)
-	{
-		if (!IsQuickSDFSupportedImageFile(Filename))
-		{
-			continue;
-		}
-
-		FQuickSDFMaskImportSource Source;
-		Source.bExternalFile = true;
-		Source.SourcePath = Filename;
-		Source.DisplayName = FPaths::GetBaseFilename(Filename);
 		Sources.Add(Source);
 	}
 	return Sources;

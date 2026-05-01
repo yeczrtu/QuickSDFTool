@@ -33,6 +33,7 @@
 #include "CanvasTypes.h"
 #include "TextureResource.h"
 #include "RenderResource.h"
+#include "RenderingThread.h"
 #include "Math/UnrealMathUtility.h"
 #include "InputCoreTypes.h"
 #include "HAL/PlatformApplicationMisc.h"
@@ -210,6 +211,7 @@ bool UQuickSDFPaintTool::RestoreRenderTargetPixelsInRect(UTextureRenderTarget2D*
 		[RTResource](FRHICommandListImmediate& RHICmdList) {
 			TransitionAndCopyTexture(RHICmdList, RTResource->GetRenderTargetTexture(), RTResource->TextureRHI, {});
 		});
+	FlushRenderingCommands();
 	return true;
 }
 
@@ -226,6 +228,7 @@ UTexture2D* UQuickSDFPaintTool::CreateTransientTextureFromPixels(const TArray<FC
 	FMemory::Memcpy(Data, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
 	Mip.BulkData.Unlock();
 	TempTexture->UpdateResource();
+	FlushRenderingCommands();
 	return TempTexture;
 }
 
@@ -243,6 +246,7 @@ bool UQuickSDFPaintTool::RestoreRenderTargetTexture(UTextureRenderTarget2D* Rend
 		[RTResource](FRHICommandListImmediate& RHICmdList) {
 			TransitionAndCopyTexture(RHICmdList, RTResource->GetRenderTargetTexture(), RTResource->TextureRHI, {});
 		});
+	FlushRenderingCommands();
 	return true;
 }
 
@@ -272,6 +276,7 @@ bool UQuickSDFPaintTool::CopyRenderTargetToRenderTarget(UTextureRenderTarget2D* 
 		[DestinationResource](FRHICommandListImmediate& RHICmdList) {
 			TransitionAndCopyTexture(RHICmdList, DestinationResource->GetRenderTargetTexture(), DestinationResource->TextureRHI, {});
 		});
+	FlushRenderingCommands();
 	return true;
 }
 

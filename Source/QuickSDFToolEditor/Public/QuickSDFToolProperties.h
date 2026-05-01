@@ -37,9 +37,6 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Quick Start", meta = (DisplayName = "Refine Masks", HideInDetailPanel))
 	bool bRefineMasks = false;
 
-	UPROPERTY(EditAnywhere, Category = "Quick Start", meta = (DisplayName = "Imported Mask Folder", ContentDir))
-	FString ImportedMaskFolder = TEXT("/Game/QuickSDF_Imports");
-
 	UPROPERTY(EditAnywhere, Category = "Asset Settings")
 	UQuickSDFAsset* TargetAsset = nullptr;
 
@@ -157,7 +154,7 @@ public:
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Create Threshold Map"))
 	void CreateQuickThresholdMap();
 
-	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Import Edited Masks"))
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Import Mask Assets"))
 	void ImportEditedMasks();
 
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Overwrite Source Textures"))

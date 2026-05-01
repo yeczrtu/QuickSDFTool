@@ -46,10 +46,8 @@ public class QuickSDFToolEditor : ModuleRules
 				"EditorStyle",
 				"MaterialBaking",
 				"DesktopPlatform",
-				"ImageWrapper",
 				"AssetRegistry",
-				"AssetTools",
-				"ContentBrowser"
+				"AssetTools"
 			}
 		);
 	}

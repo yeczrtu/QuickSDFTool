@@ -33,9 +33,7 @@ public:
 	
 	class UTexture2D* CreateMaskTexture(class UTextureRenderTarget2D* RT, const FString& FolderPath, const FString& TextureName, bool bOverwriteExisting, FText* OutError = nullptr);
 	class UTexture2D* CreateSDFTexture(const TArray<FFloat16Color>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName, ESDFOutputFormat Format, bool bOverwriteExisting, FText* OutError = nullptr);
-	class UTexture2D* ImportMaskFileAsTexture(const FString& SourceFilename, const FString& FolderPath, bool bOverwriteExisting, FText* OutError = nullptr);
 	bool OverwriteTextureWithRenderTarget(class UTexture2D* Texture, class UTextureRenderTarget2D* RT, FText* OutError = nullptr);
-	bool ImportMaskFilesAsTextures(const TArray<FString>& SourceFilenames, const FString& FolderPath, TArray<class UTexture2D*>& OutTextures, FText* OutError = nullptr);
 	
 	UPROPERTY()
 	TObjectPtr<class UQuickSDFAsset> ActiveSDFAsset;

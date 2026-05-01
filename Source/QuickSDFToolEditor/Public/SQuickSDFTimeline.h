@@ -103,7 +103,6 @@ private:
 	void OpenImportPanel(const TArray<FQuickSDFMaskImportSource>& Sources);
 	void CloseImportPanel();
 	TArray<FQuickSDFMaskImportSource> MakeImportSourcesFromTextures(const TArray<UTexture2D*>& Textures) const;
-	TArray<FQuickSDFMaskImportSource> MakeImportSourcesFromFiles(const TArray<FString>& Filenames) const;
 	float GetCurrentSeekAngle() const;
 	float ResolveTimelineActionAngle() const;
 	EVisibility GetRefineVisibility() const;

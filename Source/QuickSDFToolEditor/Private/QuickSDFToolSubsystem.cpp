@@ -10,18 +10,22 @@
 #include "IAssetTools.h"
 #include "TextureResource.h"
 #include "Editor.h"
-#include "IImageWrapper.h"
-#include "IImageWrapperModule.h"
-#include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "ObjectTools.h"
+#include "RenderingThread.h"
 
 #define LOCTEXT_NAMESPACE "QuickSDFToolSubsystem"
 
 namespace
 {
 constexpr int32 QuickSDFSubsystemDefaultAngleCount = 8;
+
+bool IsEngineContentPath(const FString& AssetPath)
+{
+	return AssetPath.Equals(TEXT("/Engine"), ESearchCase::IgnoreCase) ||
+		AssetPath.StartsWith(TEXT("/Engine/"), ESearchCase::IgnoreCase);
+}
 
 bool ValidateTextureAssetPath(const FString& FolderPath, const FString& TextureName, FText* OutError)
 {
@@ -36,6 +40,15 @@ bool ValidateTextureAssetPath(const FString& FolderPath, const FString& TextureN
 		if (OutError)
 		{
 			*OutError = FText::Format(LOCTEXT("InvalidOutputFolder", "Invalid output folder: {0}\nUse a content path such as /Game/QuickSDF_GENERATED."), FText::FromString(CleanFolder));
+		}
+		return false;
+	}
+
+	if (IsEngineContentPath(CleanFolder))
+	{
+		if (OutError)
+		{
+			*OutError = FText::Format(LOCTEXT("EngineOutputFolderProtected", "Cannot write textures to engine content: {0}"), FText::FromString(CleanFolder));
 		}
 		return false;
 	}
@@ -119,71 +132,14 @@ void FinalizeTextureAsset(UTexture2D* Texture)
 	}
 
 	Texture->PostEditChange();
+	Texture->UpdateResource();
+	FlushRenderingCommands();
 	Texture->GetPackage()->MarkPackageDirty();
 
 	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
 	TArray<UObject*> Assets;
 	Assets.Add(Texture);
 	AssetTools.SyncBrowserToAssets(Assets);
-}
-
-bool LoadImageFileAsBGRA8(const FString& SourceFilename, TArray<FColor>& OutPixels, int32& OutWidth, int32& OutHeight, FText* OutError)
-{
-	TArray<uint8> CompressedData;
-	if (!FFileHelper::LoadFileToArray(CompressedData, *SourceFilename))
-	{
-		if (OutError)
-		{
-			*OutError = FText::Format(LOCTEXT("ImportMaskReadFailed", "Failed to read image file: {0}"), FText::FromString(SourceFilename));
-		}
-		return false;
-	}
-
-	IImageWrapperModule& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>("ImageWrapper");
-	const EImageFormat ImageFormat = ImageWrapperModule.DetectImageFormat(CompressedData.GetData(), CompressedData.Num());
-	if (ImageFormat == EImageFormat::Invalid)
-	{
-		if (OutError)
-		{
-			*OutError = FText::Format(LOCTEXT("ImportMaskUnsupportedFormat", "Unsupported image format: {0}"), FText::FromString(SourceFilename));
-		}
-		return false;
-	}
-
-	TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(ImageFormat, *SourceFilename);
-	if (!ImageWrapper.IsValid() || !ImageWrapper->SetCompressed(CompressedData.GetData(), CompressedData.Num()))
-	{
-		if (OutError)
-		{
-			*OutError = FText::Format(LOCTEXT("ImportMaskDecodeSetupFailed", "Failed to prepare image decoder: {0}"), FText::FromString(SourceFilename));
-		}
-		return false;
-	}
-
-	TArray64<uint8> RawData;
-	if (!ImageWrapper->GetRaw(ERGBFormat::BGRA, 8, RawData))
-	{
-		if (OutError)
-		{
-			*OutError = FText::Format(LOCTEXT("ImportMaskDecodeFailed", "Failed to decode image file: {0}"), FText::FromString(SourceFilename));
-		}
-		return false;
-	}
-
-	OutWidth = static_cast<int32>(ImageWrapper->GetWidth());
-	OutHeight = static_cast<int32>(ImageWrapper->GetHeight());
-	if (OutWidth <= 0 || OutHeight <= 0 || RawData.Num() != static_cast<int64>(OutWidth) * OutHeight * 4)
-	{
-		if (OutError)
-		{
-			*OutError = FText::Format(LOCTEXT("ImportMaskInvalidImageSize", "Invalid image dimensions: {0}"), FText::FromString(SourceFilename));
-		}
-		return false;
-	}
-
-	OutPixels.SetNum(OutWidth * OutHeight);
-	FMemory::Memcpy(OutPixels.GetData(), RawData.GetData(), OutPixels.Num() * sizeof(FColor));
-	return true;
 }
 
 UQuickSDFAsset* CreateDefaultQuickSDFAsset(UObject* Outer)
@@ -285,6 +241,7 @@ bool UQuickSDFToolSubsystem::RestoreRenderTargetPixels(class UTextureRenderTarge
 	FMemory::Memcpy(Data, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
 	Mip.BulkData.Unlock();
 	TempTexture->UpdateResource();
+	FlushRenderingCommands();
 	FTextureRenderTargetResource* RTResource = RenderTarget->GameThread_GetRenderTargetResource();
 	if (!RTResource) return false;
 	FCanvas Canvas(RTResource, nullptr, GEditor->GetEditorWorldContext().World(), GMaxRHIFeatureLevel);
@@ -296,6 +253,7 @@ bool UQuickSDFToolSubsystem::RestoreRenderTargetPixels(class UTextureRenderTarge
 		[RTResource](FRHICommandListImmediate& RHICmdList) {
 			TransitionAndCopyTexture(RHICmdList, RTResource->GetRenderTargetTexture(), RTResource->TextureRHI, {});
 		});
+	FlushRenderingCommands();
 	return true;
 }
 
@@ -377,6 +335,14 @@ bool UQuickSDFToolSubsystem::OverwriteTextureWithRenderTarget(UTexture2D* Textur
 		}
 		return false;
 	}
+	if (IsEngineContentPath(Texture->GetPathName()))
+	{
+		if (OutError)
+		{
+			*OutError = FText::Format(LOCTEXT("OverwriteEngineTextureProtected", "Cannot overwrite {0}. Engine Texture2D assets are protected."), FText::FromString(Texture->GetPathName()));
+		}
+		return false;
+	}
 	if (!RT)
 	{
 		if (OutError)
@@ -455,54 +421,6 @@ UTexture2D* UQuickSDFToolSubsystem::CreateSDFTexture(const TArray<FFloat16Color>
 	return NewTex;
 }
 
-UTexture2D* UQuickSDFToolSubsystem::ImportMaskFileAsTexture(const FString& SourceFilename, const FString& FolderPath, bool bOverwriteExisting, FText* OutError)
-{
-	TArray<FColor> Pixels;
-	int32 Width = 0;
-	int32 Height = 0;
-	if (!LoadImageFileAsBGRA8(SourceFilename, Pixels, Width, Height, OutError))
-	{
-		return nullptr;
-	}
-
-	const FString TextureName = ObjectTools::SanitizeObjectName(FPaths::GetBaseFilename(SourceFilename));
-	UTexture2D* Texture = FindOrCreateTextureAsset(FolderPath, TextureName, bOverwriteExisting, OutError);
-	if (!Texture)
-	{
-		return nullptr;
-	}
-
-	Texture->Source.Init(Width, Height, 1, 1, TSF_BGRA8);
-	void* MipData = Texture->Source.LockMip(0);
-	FMemory::Memcpy(MipData, Pixels.GetData(), Pixels.Num() * sizeof(FColor));
-	Texture->Source.UnlockMip(0);
-
-	Texture->SRGB = false;
-	Texture->CompressionSettings = TC_Default;
-	Texture->MipGenSettings = TMGS_NoMipmaps;
-	Texture->Filter = TF_Nearest;
-
-	FinalizeTextureAsset(Texture);
-	return Texture;
-}
-
-bool UQuickSDFToolSubsystem::ImportMaskFilesAsTextures(const TArray<FString>& SourceFilenames, const FString& FolderPath, TArray<UTexture2D*>& OutTextures, FText* OutError)
-{
-	OutTextures.Reset();
-	for (const FString& SourceFilename : SourceFilenames)
-	{
-		if (UTexture2D* Texture = ImportMaskFileAsTexture(SourceFilename, FolderPath, false, OutError))
-		{
-			OutTextures.Add(Texture);
-		}
-		else
-		{
-			return false;
-		}
-	}
-	return OutTextures.Num() > 0;
-}
-
 void UQuickSDFToolSubsystem::DrawTextureToRenderTarget(UTexture2D* SourceTex, UTextureRenderTarget2D* TargetRT)
 {
 	if (!SourceTex || !TargetRT) return;
@@ -521,6 +439,7 @@ void UQuickSDFToolSubsystem::DrawTextureToRenderTarget(UTexture2D* SourceTex, UT
 		[RTResource](FRHICommandListImmediate& RHICmdList) {
 			TransitionAndCopyTexture(RHICmdList, RTResource->GetRenderTargetTexture(), RTResource->TextureRHI, {});
 		});
+	FlushRenderingCommands();
 }
 
 void UQuickSDFToolSubsystem::ClearRenderTarget(UTextureRenderTarget2D* TargetRT, FLinearColor ClearColor)
@@ -537,6 +456,7 @@ void UQuickSDFToolSubsystem::ClearRenderTarget(UTextureRenderTarget2D* TargetRT,
 		[RTResource](FRHICommandListImmediate& RHICmdList) {
 			TransitionAndCopyTexture(RHICmdList, RTResource->GetRenderTargetTexture(), RTResource->TextureRHI, {});
 		});
+	FlushRenderingCommands();
 }
 
 #undef LOCTEXT_NAMESPACE

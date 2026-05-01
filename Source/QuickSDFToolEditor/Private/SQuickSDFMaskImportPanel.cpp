@@ -1,30 +1,18 @@
 #include "SQuickSDFMaskImportPanel.h"
 
 #include "AssetRegistry/AssetData.h"
-#include "AssetToolsModule.h"
-#include "ContentBrowserModule.h"
 #include "DragAndDrop/AssetDragDropOp.h"
-#include "DesktopPlatformModule.h"
 #include "Editor.h"
 #include "Engine/Texture2D.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Notifications/NotificationManager.h"
-#include "IAssetTools.h"
-#include "IContentBrowserSingleton.h"
-#include "IDesktopPlatform.h"
-#include "IImageWrapper.h"
-#include "IImageWrapperModule.h"
 #include "InputCoreTypes.h"
-#include "Misc/FileHelper.h"
 #include "Misc/MessageDialog.h"
-#include "Misc/PackageName.h"
-#include "Misc/Paths.h"
-#include "ObjectTools.h"
+#include "PropertyCustomizationHelpers.h"
 #include "QuickSDFPaintTool.h"
 #include "QuickSDFPaintToolPrivate.h"
 #include "QuickSDFToolProperties.h"
 #include "QuickSDFToolStyle.h"
-#include "QuickSDFToolSubsystem.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
@@ -32,7 +20,6 @@
 #include "Widgets/Input/SNumericEntryBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Notifications/SNotificationList.h"
@@ -47,52 +34,6 @@ constexpr float QuickSDFImportPanelWidth = 920.0f;
 constexpr float QuickSDFImportPanelListHeight = 210.0f;
 constexpr float QuickSDFImportAngleMatchTolerance = 0.05f;
 
-bool IsSupportedImageFile(const FString& Filename)
-{
-	const FString Extension = FPaths::GetExtension(Filename).ToLower();
-	return Extension == TEXT("png") ||
-		Extension == TEXT("jpg") ||
-		Extension == TEXT("jpeg") ||
-		Extension == TEXT("bmp") ||
-		Extension == TEXT("tga") ||
-		Extension == TEXT("exr");
-}
-
-bool ReadImageDimensions(const FString& Filename, int32& OutWidth, int32& OutHeight)
-{
-	TArray<uint8> CompressedData;
-	if (!FFileHelper::LoadFileToArray(CompressedData, *Filename))
-	{
-		return false;
-	}
-
-	IImageWrapperModule& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>("ImageWrapper");
-	const EImageFormat ImageFormat = ImageWrapperModule.DetectImageFormat(CompressedData.GetData(), CompressedData.Num());
-	if (ImageFormat == EImageFormat::Invalid)
-	{
-		return false;
-	}
-
-	TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(ImageFormat, *Filename);
-	if (!ImageWrapper.IsValid() || !ImageWrapper->SetCompressed(CompressedData.GetData(), CompressedData.Num()))
-	{
-		return false;
-	}
-
-	OutWidth = static_cast<int32>(ImageWrapper->GetWidth());
-	OutHeight = static_cast<int32>(ImageWrapper->GetHeight());
-	return OutWidth > 0 && OutHeight > 0;
-}
-
-FString CleanContentFolder(FString Folder)
-{
-	while (Folder.EndsWith(TEXT("/")))
-	{
-		Folder.LeftChopInline(1);
-	}
-	return Folder.IsEmpty() ? FString(TEXT("/Game/QuickSDF_Imports")) : Folder;
-}
-
 FString GetSourceName(const FQuickSDFMaskImportSource& Source)
 {
 	if (!Source.DisplayName.IsEmpty())
@@ -100,17 +41,12 @@ FString GetSourceName(const FQuickSDFMaskImportSource& Source)
 		return Source.DisplayName;
 	}
 
-	if (Source.bExternalFile)
-	{
-		return FPaths::GetBaseFilename(Source.SourcePath);
-	}
-
 	return Source.Texture.IsValid() ? Source.Texture->GetName() : FString(TEXT("Missing mask"));
 }
 
 FString GetSourceKey(const FQuickSDFMaskImportSource& Source)
 {
-	return Source.bExternalFile ? Source.SourcePath : (Source.Texture.IsValid() ? Source.Texture->GetPathName() : GetSourceName(Source));
+	return Source.Texture.IsValid() ? Source.Texture->GetPathName() : GetSourceName(Source);
 }
 
 bool DoSourcesReferToSameContent(const FQuickSDFMaskImportSource& A, const FQuickSDFMaskImportSource& B)
@@ -120,100 +56,31 @@ bool DoSourcesReferToSameContent(const FQuickSDFMaskImportSource& A, const FQuic
 		return A.ImportGuid == B.ImportGuid;
 	}
 
-	if (A.bExternalFile != B.bExternalFile)
-	{
-		return false;
-	}
-
-	return A.bExternalFile
-		? A.SourcePath.Equals(B.SourcePath, ESearchCase::IgnoreCase)
-		: A.Texture == B.Texture;
+	return A.Texture == B.Texture;
 }
 
-bool DoesAssetPathExist(const FString& AssetPath)
+bool IsEngineContentPath(const FString& AssetPath)
 {
-	return StaticLoadObject(UObject::StaticClass(), nullptr, *AssetPath) != nullptr;
+	return AssetPath.Equals(TEXT("/Engine"), ESearchCase::IgnoreCase) ||
+		AssetPath.StartsWith(TEXT("/Engine/"), ESearchCase::IgnoreCase);
 }
 
-struct FQuickSDFExternalDestinationInfo
+bool IsEngineTexture(const UTexture2D* Texture)
 {
-	FString DesiredPath;
-	FString UniquePath;
-	FString DestinationPath;
-	bool bExistingAsset = false;
-	bool bExistingAssetIsTexture = false;
-	bool bWillOverwrite = false;
-};
-
-FString BuildUniqueExternalDestination(const FString& TextureName, const FString& FolderPath, TSet<FString>* ReservedDestinations)
-{
-	if (TextureName.IsEmpty())
-	{
-		return FolderPath / TEXT("T_QuickSDF_Mask");
-	}
-
-	if (!FPackageName::IsValidLongPackageName(FolderPath))
-	{
-		return FolderPath / TextureName;
-	}
-
-	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
-	FString UniquePackageName;
-	FString UniqueAssetName;
-	AssetTools.CreateUniqueAssetName(FolderPath / TextureName, TEXT(""), UniquePackageName, UniqueAssetName);
-	const FString UniqueFolder = FPackageName::GetLongPackagePath(UniquePackageName);
-	FString CandidatePath = UniqueFolder / UniqueAssetName;
-	if (!ReservedDestinations)
-	{
-		return CandidatePath;
-	}
-
-	if (!ReservedDestinations->Contains(CandidatePath))
-	{
-		ReservedDestinations->Add(CandidatePath);
-		return CandidatePath;
-	}
-
-	for (int32 Suffix = 1; Suffix < TNumericLimits<int32>::Max(); ++Suffix)
-	{
-		CandidatePath = UniqueFolder / FString::Printf(TEXT("%s_%d"), *TextureName, Suffix);
-		if (!ReservedDestinations->Contains(CandidatePath) && !DoesAssetPathExist(CandidatePath))
-		{
-			ReservedDestinations->Add(CandidatePath);
-			return CandidatePath;
-		}
-	}
-
-	return UniqueFolder / UniqueAssetName;
+	return Texture && IsEngineContentPath(Texture->GetPathName());
 }
 
-FQuickSDFExternalDestinationInfo ResolveExternalDestination(const FQuickSDFMaskImportSource& Source, const FString& FolderPath, TSet<FString>* ReservedDestinations = nullptr)
+FQuickSDFMaskImportSource MakeImportSourceFromTexture(UTexture2D* Texture)
 {
-	FQuickSDFExternalDestinationInfo Result;
-	const FString TextureName = ObjectTools::SanitizeObjectName(FPaths::GetBaseFilename(Source.SourcePath));
-	Result.DesiredPath = TextureName.IsEmpty() ? FolderPath / TEXT("T_QuickSDF_Mask") : FolderPath / TextureName;
-
-	if (FPackageName::IsValidLongPackageName(Result.DesiredPath))
+	FQuickSDFMaskImportSource Source;
+	if (Texture)
 	{
-		if (UObject* ExistingObject = StaticLoadObject(UObject::StaticClass(), nullptr, *Result.DesiredPath))
-		{
-			Result.bExistingAsset = true;
-			Result.bExistingAssetIsTexture = ExistingObject->IsA<UTexture2D>();
-		}
+		Source.Texture = Texture;
+		Source.DisplayName = Texture->GetName();
+		Source.Width = Texture->GetSizeX();
+		Source.Height = Texture->GetSizeY();
 	}
-
-	if (Source.bOverwriteExistingImport && Result.bExistingAssetIsTexture)
-	{
-		Result.DestinationPath = Result.DesiredPath;
-		Result.bWillOverwrite = true;
-	}
-	else
-	{
-		Result.UniquePath = BuildUniqueExternalDestination(TextureName, FolderPath, ReservedDestinations);
-		Result.DestinationPath = Result.UniquePath;
-	}
-
-	return Result;
+	return Source;
 }
 
 FText FormatSize(int32 Width, int32 Height)
@@ -250,11 +117,6 @@ TSharedRef<SWidget> MakeSmallButton(const FText& Label, const FText& ToolTip, FO
 }
 }
 
-struct FQuickSDFAssetPickerState
-{
-	FGetCurrentSelectionDelegate GetCurrentSelectionDelegate;
-};
-
 struct FQuickSDFMaskImportRowData
 {
 	FQuickSDFMaskImportSource Source;
@@ -271,14 +133,17 @@ struct FQuickSDFMaskImportRowData
 	FText AssignmentToolTipText;
 	FText WriteText;
 	FText WriteToolTipText;
-	FString Destination;
 	FString WriteTargetPath;
 	FText WarningText;
 	bool bCanToggleWrite = false;
-	bool bWillOverwriteExistingTexture = false;
 	bool bAllowSourceTextureOverwrite = false;
 	bool bWriteConflict = false;
 };
+
+bool IsApplicableImportRow(const TSharedPtr<FQuickSDFMaskImportRowData>& Row)
+{
+	return Row.IsValid() && Row->bHasSource && Row->ExistingSlotIndex != INDEX_NONE;
+}
 
 class SQuickSDFMaskImportRow : public SMultiColumnTableRow<TSharedPtr<FQuickSDFMaskImportRowData>>
 {
@@ -317,11 +182,29 @@ public:
 
 		if (ColumnName == TEXT("Source"))
 		{
-			return SNew(STextBlock)
-				.Text(Item->bHasSource ? FText::FromString(GetSourceName(Item->Source)) : LOCTEXT("MissingMaskSource", "Missing mask"))
-				.ToolTipText(Item->bHasSource ? FText::FromString(GetSourceKey(Item->Source)) : LOCTEXT("MissingMaskTooltip", "This expected slot has no source texture."))
-				.ColorAndOpacity(Item->bHasSource ? FSlateColor::UseForeground() : MutedColor)
-				.Font(FAppStyle::GetFontStyle("SmallFont"));
+			return SNew(SObjectPropertyEntryBox)
+				.AllowedClass(UTexture2D::StaticClass())
+				.AllowClear(true)
+				.DisplayBrowse(true)
+				.DisplayUseSelected(true)
+				.DisplayCompactSize(true)
+				.DisplayThumbnail(false)
+				.ObjectPath_Lambda([Item = Item]() -> FString
+				{
+					return Item.IsValid() && Item->Source.Texture.IsValid()
+						? Item->Source.Texture->GetPathName()
+						: FString();
+				})
+				.OnObjectChanged_Lambda([Item = Item, Panel = Panel](const FAssetData& AssetData)
+				{
+					if (TSharedPtr<SQuickSDFMaskImportPanel> PinnedPanel = Panel.Pin())
+					{
+						PinnedPanel->SetRowTexture(Item, AssetData);
+					}
+				})
+				.ToolTipText(Item->bHasSource
+					? FText::FromString(GetSourceKey(Item->Source))
+					: LOCTEXT("MissingMaskTooltip", "Choose a Texture2D asset for this slot, use the selected Content Browser asset, or drag a Texture2D here."));
 		}
 
 		if (ColumnName == TEXT("Angle"))
@@ -380,9 +263,7 @@ public:
 				return SNew(SCheckBox)
 					.IsChecked_Lambda([Item = Item]()
 					{
-						const bool bChecked = Item.IsValid() && (Item->Source.bExternalFile
-							? Item->Source.bOverwriteExistingImport
-							: Item->Source.bAllowSourceTextureOverwrite);
+						const bool bChecked = Item.IsValid() && Item->Source.bAllowSourceTextureOverwrite;
 						return bChecked ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 					})
 					.OnCheckStateChanged_Lambda([Item = Item, Panel = Panel](ECheckBoxState NewState)
@@ -403,15 +284,6 @@ public:
 			return SNew(STextBlock)
 				.Text(Item->WriteText)
 				.ToolTipText(Item->WriteToolTipText)
-				.ColorAndOpacity(MutedColor)
-				.Font(FAppStyle::GetFontStyle("SmallFont"));
-		}
-
-		if (ColumnName == TEXT("Destination"))
-		{
-			return SNew(STextBlock)
-				.Text(Item->bHasSource ? FText::FromString(Item->Destination) : FText::GetEmpty())
-				.ToolTipText(Item->bHasSource ? FText::FromString(Item->Destination) : FText::GetEmpty())
 				.ColorAndOpacity(MutedColor)
 				.Font(FAppStyle::GetFontStyle("SmallFont"));
 		}
@@ -484,17 +356,7 @@ void SQuickSDFMaskImportPanel::Construct(const FArguments& InArgs)
 
 				+ SVerticalBox::Slot()
 				.AutoHeight()
-				.Padding(0.0f, 6.0f, 0.0f, 4.0f)
-				[
-					SNew(STextBlock)
-					.Text(this, &SQuickSDFMaskImportPanel::GetImportedFolderText)
-					.ColorAndOpacity(FLinearColor(0.58f, 0.58f, 0.58f, 1.0f))
-					.Font(FAppStyle::GetFontStyle("SmallFont"))
-				]
-
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				.Padding(0.0f, 0.0f, 0.0f, 6.0f)
+				.Padding(0.0f, 6.0f, 0.0f, 6.0f)
 				[
 					SNew(STextBlock)
 					.Text(this, &SQuickSDFMaskImportPanel::GetSelectedTargetText)
@@ -527,12 +389,11 @@ void SQuickSDFMaskImportPanel::Construct(const FArguments& InArgs)
 						(
 							SNew(SHeaderRow)
 							+ SHeaderRow::Column(TEXT("Slot")).FixedWidth(38.0f).DefaultLabel(LOCTEXT("SlotColumn", "#"))
-							+ SHeaderRow::Column(TEXT("Source")).FillWidth(0.9f).DefaultLabel(LOCTEXT("SourceColumn", "Source"))
+							+ SHeaderRow::Column(TEXT("Source")).FillWidth(1.35f).DefaultLabel(LOCTEXT("SourceColumn", "Texture"))
 							+ SHeaderRow::Column(TEXT("Angle")).FixedWidth(112.0f).DefaultLabel(LOCTEXT("AngleColumn", "Angle"))
 							+ SHeaderRow::Column(TEXT("Assignment")).FixedWidth(132.0f).DefaultLabel(LOCTEXT("AssignmentColumn", "Assignment"))
 							+ SHeaderRow::Column(TEXT("Size")).FixedWidth(96.0f).DefaultLabel(LOCTEXT("SizeColumn", "Size"))
 							+ SHeaderRow::Column(TEXT("Write")).FixedWidth(148.0f).DefaultLabel(LOCTEXT("WriteColumn", "Write"))
-							+ SHeaderRow::Column(TEXT("Destination")).FillWidth(1.0f).DefaultLabel(LOCTEXT("DestinationColumn", "Destination"))
 							+ SHeaderRow::Column(TEXT("Warning")).FillWidth(1.0f).DefaultLabel(LOCTEXT("WarningColumn", "Warning"))
 						)
 					]
@@ -543,14 +404,6 @@ void SQuickSDFMaskImportPanel::Construct(const FArguments& InArgs)
 				.Padding(0.0f, 8.0f, 0.0f, 0.0f)
 				[
 					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 4.0f, 0.0f)
-					[
-						MakeSmallButton(LOCTEXT("AddFiles", "Add Files"), LOCTEXT("AddFilesTooltip", "Add external image files to the import preview."), FOnClicked::CreateSP(this, &SQuickSDFMaskImportPanel::OnAddFilesClicked))
-					]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 4.0f, 0.0f)
-					[
-						MakeSmallButton(LOCTEXT("AddAssets", "Add Assets"), LOCTEXT("AddAssetsTooltip", "Pick Texture2D assets from the Content Browser."), FOnClicked::CreateSP(this, &SQuickSDFMaskImportPanel::OnAddAssetsClicked))
-					]
 					+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 4.0f, 0.0f)
 					[
 						MakeSmallButton(LOCTEXT("Complete", "Complete"), LOCTEXT("CompleteTooltip", "Show the default expected mask slots for the current symmetry mode."), FOnClicked::CreateSP(this, &SQuickSDFMaskImportPanel::OnCompleteClicked))
@@ -568,7 +421,7 @@ void SQuickSDFMaskImportPanel::Construct(const FArguments& InArgs)
 						.ContentPadding(FMargin(7.0f, 3.0f))
 						[
 							SNew(STextBlock)
-							.Text(LOCTEXT("UndoAdd", "Undo Add"))
+							.Text(LOCTEXT("UndoPreviewEdit", "Undo"))
 							.Font(FAppStyle::GetFontStyle("SmallFont"))
 						]
 					]
@@ -645,34 +498,8 @@ FReply SQuickSDFMaskImportPanel::OnDrop(const FGeometry& MyGeometry, const FDrag
 		{
 			if (UTexture2D* Texture = Cast<UTexture2D>(AssetData.GetAsset()))
 			{
-				FQuickSDFMaskImportSource Source;
-				Source.Texture = Texture;
-				Source.DisplayName = Texture->GetName();
-				Source.Width = Texture->GetSizeX();
-				Source.Height = Texture->GetSizeY();
-				NewSources.Add(Source);
+				NewSources.Add(MakeImportSourceFromTexture(Texture));
 			}
-		}
-		AddSourcesFromUserAction(NewSources);
-		return FReply::Handled();
-	}
-
-	if (TSharedPtr<FExternalDragOperation> ExternalDragDropOp = DragDropEvent.GetOperationAs<FExternalDragOperation>())
-	{
-		TArray<FQuickSDFMaskImportSource> NewSources;
-		for (const FString& Filename : ExternalDragDropOp->GetFiles())
-		{
-			if (!IsSupportedImageFile(Filename))
-			{
-				continue;
-			}
-
-			FQuickSDFMaskImportSource Source;
-			Source.bExternalFile = true;
-			Source.SourcePath = Filename;
-			Source.DisplayName = FPaths::GetBaseFilename(Filename);
-			ReadImageDimensions(Filename, Source.Width, Source.Height);
-			NewSources.Add(Source);
 		}
 		AddSourcesFromUserAction(NewSources);
 		return FReply::Handled();
@@ -703,6 +530,29 @@ TSharedRef<ITableRow> SQuickSDFMaskImportPanel::GenerateRow(TSharedPtr<FQuickSDF
 		.Panel(SharedThis(this));
 }
 
+void SQuickSDFMaskImportPanel::SetRowTexture(TSharedPtr<FQuickSDFMaskImportRowData> Row, const FAssetData& AssetData)
+{
+	if (!Row.IsValid())
+	{
+		return;
+	}
+
+	UTexture2D* Texture = AssetData.IsValid() ? Cast<UTexture2D>(AssetData.GetAsset()) : nullptr;
+	if (!Texture)
+	{
+		ClearSourceFromRow(Row);
+		return;
+	}
+
+	if (Row->bHasSource && Row->Source.Texture.Get() == Texture)
+	{
+		return;
+	}
+
+	PushUndoState();
+	AddSingleSourceToSelectedRow(MakeImportSourceFromTexture(Texture), Row);
+}
+
 void SQuickSDFMaskImportPanel::SetRowWriteChecked(TSharedPtr<FQuickSDFMaskImportRowData> Row, bool bChecked)
 {
 	if (!Row.IsValid() || !Row->bHasSource || !Row->bCanToggleWrite)
@@ -717,14 +567,7 @@ void SQuickSDFMaskImportPanel::SetRowWriteChecked(TSharedPtr<FQuickSDFMaskImport
 	}
 
 	PushUndoState();
-	if (Sources[SourceIndex].bExternalFile)
-	{
-		Sources[SourceIndex].bOverwriteExistingImport = bChecked;
-	}
-	else
-	{
-		Sources[SourceIndex].bAllowSourceTextureOverwrite = bChecked;
-	}
+	Sources[SourceIndex].bAllowSourceTextureOverwrite = bChecked;
 
 	RebuildRows();
 	SelectRowClosestToAngle(Row->Angle);
@@ -850,6 +693,30 @@ void SQuickSDFMaskImportPanel::AddMultipleSourcesFromSelectedRow(TArray<FQuickSD
 	}
 }
 
+void SQuickSDFMaskImportPanel::ClearSourceFromRow(const TSharedPtr<FQuickSDFMaskImportRowData>& Row)
+{
+	if (!Row.IsValid() || !Row->bHasSource)
+	{
+		return;
+	}
+
+	const int32 ExistingSourceIndex = FindSourceIndex(Row->Source);
+	if (ExistingSourceIndex == INDEX_NONE)
+	{
+		return;
+	}
+
+	const float TargetAngle = Row->Angle;
+	PushUndoState();
+	Sources.RemoveAt(ExistingSourceIndex);
+	RebuildRows();
+	SelectRowClosestToAngle(TargetAngle);
+	if (RowListView.IsValid())
+	{
+		RowListView->RequestListRefresh();
+	}
+}
+
 int32 SQuickSDFMaskImportPanel::FindSourceIndex(const FQuickSDFMaskImportSource& Source) const
 {
 	for (int32 Index = 0; Index < Sources.Num(); ++Index)
@@ -900,7 +767,7 @@ void SQuickSDFMaskImportPanel::RebuildRows()
 
 	for (const FQuickSDFMaskImportSource& Source : Sources)
 	{
-		if (!Source.bExternalFile && !Source.Texture.IsValid())
+		if (!Source.Texture.IsValid())
 		{
 			continue;
 		}
@@ -910,10 +777,6 @@ void SQuickSDFMaskImportPanel::RebuildRows()
 		Row->bHasSource = true;
 		Row->Width = Source.Width;
 		Row->Height = Source.Height;
-		if (Source.bExternalFile && (Row->Width <= 0 || Row->Height <= 0))
-		{
-			ReadImageDimensions(Source.SourcePath, Row->Width, Row->Height);
-		}
 		if (Source.bHasForcedAngle)
 		{
 			Row->Angle = Source.ForcedAngle;
@@ -1067,7 +930,6 @@ void SQuickSDFMaskImportPanel::RefreshValidation()
 {
 	UQuickSDFPaintTool* Tool = PaintTool.Get();
 	UQuickSDFToolProperties* Properties = Tool ? Tool->Properties.Get() : nullptr;
-	const FString ImportFolder = CleanContentFolder(Properties ? Properties->ImportedMaskFolder : FString(TEXT("/Game/QuickSDF_Imports")));
 	const bool bBaseSymmetry = !Properties || Properties->bSymmetryMode;
 	const bool bNeedsFullRange = Rows.ContainsByPredicate([](const TSharedPtr<FQuickSDFMaskImportRowData>& Row)
 	{
@@ -1086,8 +948,6 @@ void SQuickSDFMaskImportPanel::RefreshValidation()
 		}
 	}
 
-	TSet<FString> ReservedExternalDestinations;
-	TMap<FString, int32> ExternalOverwriteTargetCounts;
 	TMap<FString, int32> WritableSourceTargetCounts;
 	for (int32 RowIndex = 0; RowIndex < Rows.Num(); ++RowIndex)
 	{
@@ -1101,10 +961,8 @@ void SQuickSDFMaskImportPanel::RefreshValidation()
 		Row->ExistingSlotIndex = INDEX_NONE;
 		Row->WriteText = FText::GetEmpty();
 		Row->WriteToolTipText = FText::GetEmpty();
-		Row->Destination.Empty();
 		Row->WriteTargetPath.Empty();
 		Row->bCanToggleWrite = false;
-		Row->bWillOverwriteExistingTexture = false;
 		Row->bAllowSourceTextureOverwrite = false;
 		Row->bWriteConflict = false;
 		if (Properties)
@@ -1124,7 +982,7 @@ void SQuickSDFMaskImportPanel::RefreshValidation()
 		{
 			Row->AssignmentText = LOCTEXT("EmptyAssignment", "No source");
 			Row->AssignmentToolTipText = FText::Format(
-				LOCTEXT("EmptyAssignmentTooltip", "This is an expected {0} deg slot, but no source will be imported for it."),
+				LOCTEXT("EmptyAssignmentTooltip", "This is an expected {0} deg slot, but no Texture2D asset will be assigned to it."),
 				AngleText);
 		}
 		else if (Row->ExistingSlotIndex != INDEX_NONE)
@@ -1134,25 +992,21 @@ void SQuickSDFMaskImportPanel::RefreshValidation()
 				? FText::Format(LOCTEXT("CurrentSlotAssignment", "Current slot {0}"), FText::AsNumber(Row->ExistingSlotIndex + 1))
 				: FText::Format(LOCTEXT("ExistingSlotAssignment", "Slot {0}"), FText::AsNumber(Row->ExistingSlotIndex + 1));
 			Row->AssignmentToolTipText = FText::Format(
-				bCurrentSlot ? LOCTEXT("CurrentSlotAssignmentTooltip", "Apply Import will assign this source to the current timeline slot at {0} deg.")
-							 : LOCTEXT("ExistingSlotAssignmentTooltip", "Apply Import will assign this source to existing timeline slot {1} at {0} deg."),
+				bCurrentSlot ? LOCTEXT("CurrentSlotAssignmentTooltip", "Apply Import will assign this asset to the current timeline slot at {0} deg.")
+							 : LOCTEXT("ExistingSlotAssignmentTooltip", "Apply Import will assign this asset to existing timeline slot {1} at {0} deg."),
 				AngleText,
 				FText::AsNumber(Row->ExistingSlotIndex + 1));
 		}
 		else
 		{
-			Row->AssignmentText = LOCTEXT("NewSlotAssignment", "New slot");
+			Row->AssignmentText = LOCTEXT("SkippedSlotAssignment", "Skipped");
 			Row->AssignmentToolTipText = FText::Format(
-				LOCTEXT("NewSlotAssignmentTooltip", "This source is not assigned to an existing timeline slot at {0} deg."),
+				LOCTEXT("SkippedSlotAssignmentTooltip", "This asset is not assigned to an existing timeline slot at {0} deg and will be skipped by Apply Import."),
 				AngleText);
 		}
 
 		TArray<FText> Warnings;
-		if (!Row->bHasSource)
-		{
-			Warnings.Add(LOCTEXT("MissingSourceWarning", "Missing source"));
-		}
-		else
+		if (Row->bHasSource)
 		{
 			if (Row->bAngleInferred)
 			{
@@ -1160,15 +1014,11 @@ void SQuickSDFMaskImportPanel::RefreshValidation()
 			}
 			if (Row->ExistingSlotIndex == INDEX_NONE)
 			{
-				Warnings.Add(LOCTEXT("NoExistingSlotWarning", "No existing slot"));
+				Warnings.Add(LOCTEXT("NoExistingSlotWarning", "No existing slot; skipped"));
 			}
 			if (bBaseSymmetry && Row->Angle > 90.01f)
 			{
 				Warnings.Add(LOCTEXT("FullRangeWarning", "Switches to 0-180"));
-			}
-			if ((Row->Width <= 0 || Row->Height <= 0) && Row->Source.bExternalFile)
-			{
-				Warnings.Add(LOCTEXT("UnknownSizeWarning", "Size checked on import"));
 			}
 			if (FirstWidth > 0 && FirstHeight > 0 && Row->Width > 0 && Row->Height > 0 &&
 				(Row->Width != FirstWidth || Row->Height != FirstHeight))
@@ -1185,61 +1035,25 @@ void SQuickSDFMaskImportPanel::RefreshValidation()
 				}
 			}
 
-			if (Row->Source.bExternalFile)
+			Row->WriteTargetPath = Row->Source.Texture.IsValid() ? Row->Source.Texture->GetPathName() : FString();
+			const bool bProtectedEngineTexture = IsEngineTexture(Row->Source.Texture.Get());
+			Row->bCanToggleWrite = Row->Source.Texture.IsValid() && !bProtectedEngineTexture;
+			Row->bAllowSourceTextureOverwrite = Row->Source.bAllowSourceTextureOverwrite && Row->Source.Texture.IsValid() && !bProtectedEngineTexture;
+			Row->WriteText = bProtectedEngineTexture
+				? LOCTEXT("WriteProtectedEngineSource", "Protected")
+				: LOCTEXT("WriteAllowWriteBack", "Allow write-back");
+			Row->WriteToolTipText = bProtectedEngineTexture
+				? LOCTEXT("WriteProtectedEngineSourceTooltip", "Engine Texture2D assets cannot be overwritten by QuickSDFTool.")
+				: (Row->bAllowSourceTextureOverwrite
+					? LOCTEXT("WriteAllowWriteBackCheckedTooltip", "This Texture2D is allowed to be overwritten later by Overwrite Source Textures.")
+					: LOCTEXT("WriteAllowWriteBackTooltip", "Check this to allow Overwrite Source Textures to write the edited mask back to this Texture2D later."));
+			if (bProtectedEngineTexture)
 			{
-				const FQuickSDFExternalDestinationInfo DestinationInfo = ResolveExternalDestination(Row->Source, ImportFolder, &ReservedExternalDestinations);
-				Row->Destination = DestinationInfo.DestinationPath;
-				Row->WriteTargetPath = DestinationInfo.DesiredPath;
-				Row->bCanToggleWrite = DestinationInfo.bExistingAssetIsTexture;
-				Row->bWillOverwriteExistingTexture = DestinationInfo.bWillOverwrite;
-
-				if (DestinationInfo.bWillOverwrite)
-				{
-					Row->WriteText = LOCTEXT("WriteOverwrite", "Overwrite");
-					Row->WriteToolTipText = FText::Format(
-						LOCTEXT("WriteOverwriteTooltip", "Apply Import will overwrite the existing Texture2D at {0}."),
-						FText::FromString(DestinationInfo.DesiredPath));
-					Warnings.Add(LOCTEXT("WillOverwriteTextureWarning", "Will overwrite Texture2D"));
-					ExternalOverwriteTargetCounts.FindOrAdd(DestinationInfo.DesiredPath)++;
-				}
-				else if (DestinationInfo.bExistingAssetIsTexture)
-				{
-					Row->WriteText = LOCTEXT("WriteNewCopy", "New copy");
-					Row->WriteToolTipText = FText::Format(
-						LOCTEXT("WriteNewCopyTooltip", "A Texture2D already exists at {0}. Leave unchecked to import as a unique copy."),
-						FText::FromString(DestinationInfo.DesiredPath));
-					Warnings.Add(LOCTEXT("ExistingTextureNewCopyWarning", "Existing Texture2D; importing as new copy"));
-				}
-				else if (DestinationInfo.bExistingAsset)
-				{
-					Row->WriteText = LOCTEXT("WriteNewCopyBlocked", "New copy");
-					Row->WriteToolTipText = FText::Format(
-						LOCTEXT("WriteNonTextureCollisionTooltip", "An asset already exists at {0}, but it is not a Texture2D. This source will be imported as a unique copy."),
-						FText::FromString(DestinationInfo.DesiredPath));
-					Warnings.Add(LOCTEXT("ExistingNonTextureWarning", "Name collides with non-Texture2D"));
-				}
-				else
-				{
-					Row->WriteText = LOCTEXT("WriteNewTexture", "New");
-					Row->WriteToolTipText = LOCTEXT("WriteNewTextureTooltip", "Apply Import will create a new Texture2D.");
-				}
+				Warnings.Add(LOCTEXT("EngineSourceProtectedWarning", "Engine texture protected"));
 			}
-			else
+			if (Row->bAllowSourceTextureOverwrite && Row->ExistingSlotIndex != INDEX_NONE)
 			{
-				Row->Destination = Row->Source.Texture.IsValid() ? Row->Source.Texture->GetPathName() : FString();
-				Row->WriteTargetPath = Row->Destination;
-				Row->bCanToggleWrite = Row->Source.Texture.IsValid();
-				Row->bAllowSourceTextureOverwrite = Row->Source.bAllowSourceTextureOverwrite && Row->Source.Texture.IsValid();
-				Row->WriteText = Row->bAllowSourceTextureOverwrite
-					? LOCTEXT("WriteWritableSource", "Writable source")
-					: LOCTEXT("WriteReadOnlySource", "Read-only source");
-				Row->WriteToolTipText = Row->bAllowSourceTextureOverwrite
-					? LOCTEXT("WriteWritableSourceTooltip", "This Texture2D can be overwritten later with Overwrite Source Textures.")
-					: LOCTEXT("WriteReadOnlySourceTooltip", "This Texture2D will be assigned only. Check this to allow explicit write-back later.");
-				if (Row->bAllowSourceTextureOverwrite)
-				{
-					WritableSourceTargetCounts.FindOrAdd(Row->WriteTargetPath)++;
-				}
+				WritableSourceTargetCounts.FindOrAdd(Row->WriteTargetPath)++;
 			}
 		}
 
@@ -1253,13 +1067,9 @@ void SQuickSDFMaskImportPanel::RefreshValidation()
 			continue;
 		}
 
-		if (Row->bWillOverwriteExistingTexture && ExternalOverwriteTargetCounts.FindRef(Row->WriteTargetPath) > 1)
+		if (Row->ExistingSlotIndex != INDEX_NONE && Row->bAllowSourceTextureOverwrite && WritableSourceTargetCounts.FindRef(Row->WriteTargetPath) > 1)
 		{
 			Row->bWriteConflict = true;
-			Row->WarningText = AppendWarningText(Row->WarningText, LOCTEXT("DuplicateImmediateOverwriteWarning", "Duplicate overwrite target"));
-		}
-		if (Row->bAllowSourceTextureOverwrite && WritableSourceTargetCounts.FindRef(Row->WriteTargetPath) > 1)
-		{
 			Row->WarningText = AppendWarningText(Row->WarningText, LOCTEXT("SharedWritableSourceWarning", "Shared writable source"));
 		}
 	}
@@ -1415,7 +1225,7 @@ bool SQuickSDFMaskImportPanel::HasWriteConflictRows() const
 {
 	for (const TSharedPtr<FQuickSDFMaskImportRowData>& Row : Rows)
 	{
-		if (Row.IsValid() && Row->bHasSource && Row->bWriteConflict)
+		if (IsApplicableImportRow(Row) && Row->bWriteConflict)
 		{
 			return true;
 		}
@@ -1425,14 +1235,14 @@ bool SQuickSDFMaskImportPanel::HasWriteConflictRows() const
 
 bool SQuickSDFMaskImportPanel::CanApplyImport() const
 {
-	return HasImportableRows() && !HasNewSlotImportRows() && !HasWriteConflictRows();
+	return HasImportableRows() && Rows.ContainsByPredicate(IsApplicableImportRow) && !HasWriteConflictRows();
 }
 
 FText SQuickSDFMaskImportPanel::GetUndoToolTipText() const
 {
 	return CanUndoPreviewChange()
-		? LOCTEXT("UndoAddTooltip", "Undo the last preview add or replacement. This does not affect imported assets.")
-		: LOCTEXT("UndoAddDisabledTooltip", "There is no preview add to undo.");
+		? LOCTEXT("UndoAddTooltip", "Undo the last preview edit. This does not affect imported assets.")
+		: LOCTEXT("UndoAddDisabledTooltip", "There is no preview edit to undo.");
 }
 
 FText SQuickSDFMaskImportPanel::GetSelectedTargetText() const
@@ -1440,7 +1250,7 @@ FText SQuickSDFMaskImportPanel::GetSelectedTargetText() const
 	const TSharedPtr<FQuickSDFMaskImportRowData> SelectedRow = GetSelectedRow();
 	if (!SelectedRow.IsValid())
 	{
-		return LOCTEXT("NoSelectedTarget", "Select a row, then add one file or asset to place it in that slot.");
+		return LOCTEXT("NoSelectedTarget", "Select a row, then choose a Texture2D in its Texture field.");
 	}
 
 	const FText AngleText = FText::AsNumber(SelectedRow->Angle, &FNumberFormattingOptions::DefaultNoGrouping());
@@ -1481,33 +1291,25 @@ FText SQuickSDFMaskImportPanel::GetSummaryText() const
 
 FText SQuickSDFMaskImportPanel::GetWriteSummaryText() const
 {
-	int32 NewExternalCount = 0;
-	int32 OverwriteExternalCount = 0;
 	int32 WritableSourceCount = 0;
 	for (const TSharedPtr<FQuickSDFMaskImportRowData>& Row : Rows)
 	{
-		if (!Row.IsValid() || !Row->bHasSource)
+		if (!IsApplicableImportRow(Row))
 		{
 			continue;
 		}
-		if (Row->Source.bExternalFile)
-		{
-			Row->bWillOverwriteExistingTexture ? ++OverwriteExternalCount : ++NewExternalCount;
-		}
-		else if (Row->bAllowSourceTextureOverwrite)
+		if (Row->bAllowSourceTextureOverwrite)
 		{
 			++WritableSourceCount;
 		}
 	}
 
-	if (OverwriteExternalCount == 0 && WritableSourceCount == 0)
+	if (WritableSourceCount == 0)
 	{
-		return LOCTEXT("WriteSummarySafeDefault", "Write: new external textures; Content Browser textures stay read-only unless enabled per row.");
+		return LOCTEXT("WriteSummarySafeDefault", "Write: assets are assigned only unless write-back is enabled per row.");
 	}
 	return FText::Format(
-		LOCTEXT("WriteSummary", "Write: {0} new external / {1} external overwrites / {2} writable source textures"),
-		FText::AsNumber(NewExternalCount),
-		FText::AsNumber(OverwriteExternalCount),
+		LOCTEXT("WriteSummary", "Write: {0} writable source textures"),
 		FText::AsNumber(WritableSourceCount));
 }
 
@@ -1515,7 +1317,7 @@ FSlateColor SQuickSDFMaskImportPanel::GetWriteSummaryColor() const
 {
 	for (const TSharedPtr<FQuickSDFMaskImportRowData>& Row : Rows)
 	{
-		if (Row.IsValid() && Row->bHasSource && (Row->bWillOverwriteExistingTexture || Row->bAllowSourceTextureOverwrite || Row->bWriteConflict))
+		if (IsApplicableImportRow(Row) && (Row->bAllowSourceTextureOverwrite || Row->bWriteConflict))
 		{
 			return FSlateColor(FLinearColor(1.0f, 0.72f, 0.28f, 1.0f));
 		}
@@ -1527,184 +1329,27 @@ FText SQuickSDFMaskImportPanel::GetApplyToolTipText() const
 {
 	if (!HasImportableRows())
 	{
-		return LOCTEXT("ApplyDisabledTooltip", "Add at least one texture or image file before applying.");
+		return LOCTEXT("ApplyDisabledTooltip", "Add at least one Texture2D asset before applying.");
 	}
-	if (HasNewSlotImportRows())
+	if (!Rows.ContainsByPredicate(IsApplicableImportRow))
 	{
-		return LOCTEXT("ApplyNewSlotDisabledTooltip", "Some sources target new slots. Select existing timeline rows; Apply Import will not change the mask count.");
+		return LOCTEXT("ApplyNoExistingSlotDisabledTooltip", "No source is assigned to an existing timeline slot. Choose a Texture2D in one of the row fields.");
 	}
 	if (HasWriteConflictRows())
 	{
-		return LOCTEXT("ApplyWriteConflictDisabledTooltip", "Resolve duplicate overwrite targets before applying.");
+		return LOCTEXT("ApplyWriteConflictDisabledTooltip", "Resolve protected or shared writable source rows before applying.");
 	}
-	return LOCTEXT("ApplyTooltip", "Create needed Texture2D assets, then assign the listed masks to existing timeline slots.");
-}
-
-FText SQuickSDFMaskImportPanel::GetImportedFolderText() const
-{
-	UQuickSDFPaintTool* Tool = PaintTool.Get();
-	const UQuickSDFToolProperties* Properties = Tool ? Tool->Properties.Get() : nullptr;
-	const FString ImportFolder = CleanContentFolder(Properties ? Properties->ImportedMaskFolder : FString(TEXT("/Game/QuickSDF_Imports")));
-	return FText::Format(LOCTEXT("ImportFolderSummary", "External images will be created under {0} only after Apply Import."), FText::FromString(ImportFolder));
-}
-
-FReply SQuickSDFMaskImportPanel::OnAddFilesClicked()
-{
-	IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
-	if (!DesktopPlatform)
+	if (HasNewSlotImportRows())
 	{
-		return FReply::Handled();
+		return LOCTEXT("ApplyWithSkippedRowsTooltip", "Apply rows assigned to existing timeline slots. Rows marked Skipped will not be imported.");
 	}
-
-	TArray<FString> SourceFilenames;
-	const void* ParentWindowHandle = FSlateApplication::Get().FindBestParentWindowHandleForDialogs(nullptr);
-	const bool bSelectedFiles = DesktopPlatform->OpenFileDialog(
-		ParentWindowHandle,
-		TEXT("Add Quick SDF Mask Images"),
-		FString(),
-		FString(),
-		TEXT("Image files|*.png;*.jpg;*.jpeg;*.bmp;*.tga;*.exr|All files|*.*"),
-		EFileDialogFlags::Multiple,
-		SourceFilenames);
-
-	if (!bSelectedFiles || SourceFilenames.Num() == 0)
-	{
-		return FReply::Handled();
-	}
-
-	TArray<FQuickSDFMaskImportSource> NewSources;
-	for (const FString& Filename : SourceFilenames)
-	{
-		if (!IsSupportedImageFile(Filename))
-		{
-			continue;
-		}
-
-		FQuickSDFMaskImportSource Source;
-		Source.bExternalFile = true;
-		Source.SourcePath = Filename;
-		Source.DisplayName = FPaths::GetBaseFilename(Filename);
-		ReadImageDimensions(Filename, Source.Width, Source.Height);
-		NewSources.Add(Source);
-	}
-	AddSourcesFromUserAction(NewSources);
-	return FReply::Handled();
-}
-
-FReply SQuickSDFMaskImportPanel::OnAddAssetsClicked()
-{
-	FContentBrowserModule& ContentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
-	AssetPickerState = MakeShared<FQuickSDFAssetPickerState>();
-	TWeakPtr<SQuickSDFMaskImportPanel> WeakPanel = SharedThis(this);
-
-	FAssetPickerConfig AssetPickerConfig;
-	AssetPickerConfig.SelectionMode = ESelectionMode::Multi;
-	AssetPickerConfig.Filter.ClassPaths.Add(UTexture2D::StaticClass()->GetClassPathName());
-	AssetPickerConfig.Filter.bRecursiveClasses = true;
-	AssetPickerConfig.InitialAssetViewType = EAssetViewType::List;
-	AssetPickerConfig.bAllowNullSelection = false;
-	AssetPickerConfig.GetCurrentSelectionDelegates.Add(&AssetPickerState->GetCurrentSelectionDelegate);
-	AssetPickerConfig.OnAssetsActivated = FOnAssetsActivated::CreateLambda(
-		[WeakPanel](const TArray<FAssetData>& ActivatedAssets, EAssetTypeActivationMethod::Type ActivationMethod)
-		{
-			if (TSharedPtr<SQuickSDFMaskImportPanel> PinnedPanel = WeakPanel.Pin())
-			{
-				PinnedPanel->AddAssetDataSelection(ActivatedAssets);
-				FSlateApplication::Get().DismissAllMenus();
-			}
-		});
-
-	TSharedRef<SWidget> MenuContent = SNew(SBox)
-		.WidthOverride(520.0f)
-		.HeightOverride(560.0f)
-		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot()
-			.FillHeight(1.0f)
-			[
-				ContentBrowserModule.Get().CreateAssetPicker(AssetPickerConfig)
-			]
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(8.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.0f)
-				.VAlign(VAlign_Center)
-				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("AssetPickerHint", "Select Texture2D assets. One asset replaces the selected row; multiple assets fill from that row downward."))
-					.Font(FAppStyle::GetFontStyle("SmallFont"))
-				]
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(8.0f, 0.0f, 4.0f, 0.0f)
-				[
-					MakeSmallButton(LOCTEXT("AddSelectedAssets", "Add Selected"), LOCTEXT("AddSelectedAssetsTooltip", "Add the selected Texture2D assets to the import preview."), FOnClicked::CreateSP(this, &SQuickSDFMaskImportPanel::OnAddSelectedAssetsClicked))
-				]
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				[
-					MakeSmallButton(LOCTEXT("CancelAssetPicker", "Cancel"), LOCTEXT("CancelAssetPickerTooltip", "Close the asset picker."), FOnClicked::CreateLambda([]()
-					{
-						FSlateApplication::Get().DismissAllMenus();
-						return FReply::Handled();
-					}))
-				]
-			]
-		];
-
-	FSlateApplication::Get().PushMenu(
-		AsShared(),
-		FWidgetPath(),
-		MenuContent,
-		FSlateApplication::Get().GetCursorPos(),
-		FPopupTransitionEffect(FPopupTransitionEffect::ContextMenu),
-		true);
-
-	return FReply::Handled();
-}
-
-FReply SQuickSDFMaskImportPanel::OnAddSelectedAssetsClicked()
-{
-	if (AssetPickerState.IsValid() && AssetPickerState->GetCurrentSelectionDelegate.IsBound())
-	{
-		AddAssetDataSelection(AssetPickerState->GetCurrentSelectionDelegate.Execute());
-	}
-	FSlateApplication::Get().DismissAllMenus();
-	return FReply::Handled();
+	return LOCTEXT("ApplyTooltip", "Assign the listed Texture2D assets to existing timeline slots.");
 }
 
 FReply SQuickSDFMaskImportPanel::OnUndoClicked()
 {
 	RestoreLastUndoState();
 	return FReply::Handled();
-}
-
-void SQuickSDFMaskImportPanel::OnAssetPicked(const FAssetData& AssetData)
-{
-	AddAssetDataSelection({ AssetData });
-	FSlateApplication::Get().DismissAllMenus();
-}
-
-void SQuickSDFMaskImportPanel::AddAssetDataSelection(const TArray<FAssetData>& AssetDataList)
-{
-	TArray<FQuickSDFMaskImportSource> NewSources;
-	for (const FAssetData& AssetData : AssetDataList)
-	{
-		if (UTexture2D* Texture = Cast<UTexture2D>(AssetData.GetAsset()))
-		{
-			FQuickSDFMaskImportSource Source;
-			Source.Texture = Texture;
-			Source.DisplayName = Texture->GetName();
-			Source.Width = Texture->GetSizeX();
-			Source.Height = Texture->GetSizeY();
-			NewSources.Add(Source);
-		}
-	}
-
-	AddSourcesFromUserAction(NewSources);
 }
 
 FReply SQuickSDFMaskImportPanel::OnCompleteClicked()
@@ -1750,33 +1395,29 @@ FReply SQuickSDFMaskImportPanel::OnEvenClicked()
 FReply SQuickSDFMaskImportPanel::OnApplyClicked()
 {
 	UQuickSDFPaintTool* Tool = PaintTool.Get();
-	UQuickSDFToolProperties* Properties = Tool ? Tool->Properties.Get() : nullptr;
-	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
-	if (!Tool || !Properties || !Subsystem)
+	if (!Tool)
 	{
 		return FReply::Handled();
 	}
 
-	if (HasNewSlotImportRows())
+	if (!Rows.ContainsByPredicate(IsApplicableImportRow))
 	{
 		FMessageDialog::Open(
 			EAppMsgType::Ok,
-			LOCTEXT("ApplyNewSlotBlockedMessage", "Some sources target new slots. Select existing timeline rows before applying. Apply Import does not change the mask count."));
+			LOCTEXT("ApplyNoExistingSlotBlockedMessage", "No source is assigned to an existing timeline slot. Choose a Texture2D in one of the row fields."));
 		return FReply::Handled();
 	}
 	if (HasWriteConflictRows())
 	{
 		FMessageDialog::Open(
 			EAppMsgType::Ok,
-			LOCTEXT("ApplyWriteConflictBlockedMessage", "Some sources have duplicate overwrite targets. Disable overwrite on duplicate rows before applying."));
+			LOCTEXT("ApplyWriteConflictBlockedMessage", "Some rows are protected or share a writable source texture. Resolve those rows before applying."));
 		return FReply::Handled();
 	}
 
 	TArray<UTexture2D*> Textures;
 	TArray<TSharedPtr<FQuickSDFMaskImportRowData>> ImportRows;
-	int32 CreatedTextureCount = 0;
-	int32 OverwrittenTextureCount = 0;
-	const FString ImportFolder = CleanContentFolder(Properties->ImportedMaskFolder);
+	int32 SkippedNewSlotCount = 0;
 
 	for (const TSharedPtr<FQuickSDFMaskImportRowData>& Row : Rows)
 	{
@@ -1784,30 +1425,13 @@ FReply SQuickSDFMaskImportPanel::OnApplyClicked()
 		{
 			continue;
 		}
-
-		UTexture2D* Texture = Row->Source.Texture.Get();
-		if (Row->Source.bExternalFile)
+		if (Row->ExistingSlotIndex == INDEX_NONE)
 		{
-			FText ImportError;
-			Texture = Subsystem->ImportMaskFileAsTexture(Row->Source.SourcePath, ImportFolder, Row->bWillOverwriteExistingTexture, &ImportError);
-			if (!Texture)
-			{
-				if (!ImportError.IsEmpty())
-				{
-					FMessageDialog::Open(EAppMsgType::Ok, ImportError);
-				}
-				return FReply::Handled();
-			}
-			if (Row->bWillOverwriteExistingTexture)
-			{
-				++OverwrittenTextureCount;
-			}
-			else
-			{
-				++CreatedTextureCount;
-			}
+			++SkippedNewSlotCount;
+			continue;
 		}
 
+		UTexture2D* Texture = Row->Source.Texture.Get();
 		if (Texture)
 		{
 			Textures.Add(Texture);
@@ -1820,37 +1444,18 @@ FReply SQuickSDFMaskImportPanel::OnApplyClicked()
 		return FReply::Handled();
 	}
 
-	bool bCanAssignExistingSlots = Textures.Num() == ImportRows.Num();
-	for (const TSharedPtr<FQuickSDFMaskImportRowData>& ImportRow : ImportRows)
-	{
-		bCanAssignExistingSlots &= ImportRow.IsValid() && ImportRow->ExistingSlotIndex != INDEX_NONE;
-	}
-
-	if (!bCanAssignExistingSlots)
-	{
-		FMessageDialog::Open(
-			EAppMsgType::Ok,
-			LOCTEXT("ApplyExistingSlotFailedMessage", "All sources must be assigned to existing timeline slots before applying."));
-		return FReply::Handled();
-	}
-
 	bool bAllAssigned = true;
 	for (int32 Index = 0; Index < Textures.Num(); ++Index)
 	{
-		const bool bAllowSourceTextureOverwrite = ImportRows[Index]->Source.bExternalFile
-			? false
-			: ImportRows[Index]->Source.bAllowSourceTextureOverwrite;
-		bAllAssigned &= Tool->AssignMaskTextureToAngle(ImportRows[Index]->ExistingSlotIndex, Textures[Index], bAllowSourceTextureOverwrite);
+		bAllAssigned &= Tool->AssignMaskTextureToAngle(ImportRows[Index]->ExistingSlotIndex, Textures[Index], ImportRows[Index]->bAllowSourceTextureOverwrite);
 	}
 
 	if (bAllAssigned)
 	{
 		FNotificationInfo Info(FText::Format(
-			LOCTEXT("SlotImportCompleteNotification", "Imported {0} masks / Created {1} textures / Overwrote {2} textures in {3}"),
+			LOCTEXT("SlotImportCompleteNotification", "Assigned {0} masks / Skipped {1}"),
 			FText::AsNumber(Textures.Num()),
-			FText::AsNumber(CreatedTextureCount),
-			FText::AsNumber(OverwrittenTextureCount),
-			FText::FromString(ImportFolder)));
+			FText::AsNumber(SkippedNewSlotCount)));
 		Info.ExpireDuration = 4.0f;
 		Info.bUseLargeFont = false;
 		if (TSharedPtr<SNotificationItem> Notification = FSlateNotificationManager::Get().AddNotification(Info))

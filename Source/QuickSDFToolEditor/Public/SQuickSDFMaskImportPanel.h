@@ -11,11 +11,8 @@ struct FAssetData;
 struct FQuickSDFMaskImportSource
 {
 	FGuid ImportGuid = FGuid::NewGuid();
-	bool bExternalFile = false;
 	bool bHasForcedAngle = false;
-	bool bOverwriteExistingImport = false;
 	bool bAllowSourceTextureOverwrite = false;
-	FString SourcePath;
 	FString DisplayName;
 	TWeakObjectPtr<UTexture2D> Texture;
 	float ForcedAngle = 0.0f;
@@ -24,7 +21,6 @@ struct FQuickSDFMaskImportSource
 };
 
 struct FQuickSDFMaskImportRowData;
-struct FQuickSDFAssetPickerState;
 
 struct FQuickSDFMaskImportUndoState
 {
@@ -45,6 +41,7 @@ public:
 
 	void Construct(const FArguments& InArgs);
 	void RefreshValidation();
+	void SetRowTexture(TSharedPtr<FQuickSDFMaskImportRowData> Row, const FAssetData& AssetData);
 	void SetRowWriteChecked(TSharedPtr<FQuickSDFMaskImportRowData> Row, bool bChecked);
 
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
@@ -58,20 +55,16 @@ public:
 
 private:
 	TSharedRef<ITableRow> GenerateRow(TSharedPtr<FQuickSDFMaskImportRowData> Item, const TSharedRef<STableViewBase>& OwnerTable);
-	FReply OnAddFilesClicked();
-	FReply OnAddAssetsClicked();
-	FReply OnAddSelectedAssetsClicked();
 	FReply OnUndoClicked();
 	FReply OnApplyClicked();
 	FReply OnCancelClicked();
 	FReply OnCompleteClicked();
 	FReply OnEvenClicked();
-	void OnAssetPicked(const FAssetData& AssetData);
-	void AddAssetDataSelection(const TArray<FAssetData>& AssetDataList);
 	void AddSources(const TArray<FQuickSDFMaskImportSource>& NewSources);
 	void AddSourcesFromUserAction(const TArray<FQuickSDFMaskImportSource>& NewSources);
 	void AddSingleSourceToSelectedRow(FQuickSDFMaskImportSource Source, const TSharedPtr<FQuickSDFMaskImportRowData>& SelectedRow);
 	void AddMultipleSourcesFromSelectedRow(TArray<FQuickSDFMaskImportSource> NewSources, const TSharedPtr<FQuickSDFMaskImportRowData>& SelectedRow);
+	void ClearSourceFromRow(const TSharedPtr<FQuickSDFMaskImportRowData>& Row);
 	int32 FindSourceIndex(const FQuickSDFMaskImportSource& Source) const;
 	float GetFallbackAssignmentStep() const;
 	void RebuildRows();
@@ -92,14 +85,12 @@ private:
 	FText GetWriteSummaryText() const;
 	FSlateColor GetWriteSummaryColor() const;
 	FText GetApplyToolTipText() const;
-	FText GetImportedFolderText() const;
 
 	TWeakObjectPtr<UQuickSDFPaintTool> PaintTool;
 	TArray<FQuickSDFMaskImportSource> Sources;
 	TArray<TSharedPtr<FQuickSDFMaskImportRowData>> Rows;
 	TArray<FQuickSDFMaskImportUndoState> UndoStack;
 	TSharedPtr<SListView<TSharedPtr<FQuickSDFMaskImportRowData>>> RowListView;
-	TSharedPtr<FQuickSDFAssetPickerState> AssetPickerState;
 	FSimpleDelegate OnClosed;
 	int32 ExpectedCountOverride = INDEX_NONE;
 };
