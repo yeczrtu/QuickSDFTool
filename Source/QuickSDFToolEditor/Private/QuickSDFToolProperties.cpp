@@ -166,3 +166,11 @@ void UQuickSDFToolProperties::GenerateSDFThresholdMap()
 		Tool->GenerateSDF();
 	}
 }
+
+void UQuickSDFToolProperties::ValidateMonotonicGuard()
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
+	{
+		Tool->ValidateMonotonicGuard();
+	}
+}

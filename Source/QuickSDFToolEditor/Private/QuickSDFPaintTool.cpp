@@ -164,6 +164,7 @@ void UQuickSDFPaintTool::RegisterActions(FInteractiveToolActionSet& ActionSet)
 		EKeys::Six,
 		EKeys::Seven,
 		EKeys::Eight,
+		EKeys::Nine,
 	};
 
 	ActionSet.RegisterAction(

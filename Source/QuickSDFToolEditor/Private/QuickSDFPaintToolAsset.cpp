@@ -159,6 +159,8 @@ void UQuickSDFPaintTool::GenerateSDF()
 		return;
 	}
 
+	WarnIfMonotonicGuardViolations(LOCTEXT("MonotonicGuardBeforeGenerateContext", "before SDF generation"));
+
 	// --- プログレスバーの初期化 ---
 	// 工程：SDF生成(ValidIndices.Num()) + 合成(1) + 保存(1)
 	FScopedSlowTask SlowTask(static_cast<float>(ProcessableIndices.Num()) + 2.0f, LOCTEXT("GenerateSDF", "Generating Multi-Channel SDF..."));
@@ -360,6 +362,7 @@ bool UQuickSDFPaintTool::AssignMaskTextureToAngle(int32 AngleIndex, UTexture2D* 
 	MarkMasksChanged();
 
 	GetToolManager()->EndUndoTransaction();
+	WarnIfMonotonicGuardViolations(LOCTEXT("MonotonicGuardAfterAssignTextureContext", "after assigning a mask texture"));
 	return true;
 }
 
@@ -647,6 +650,7 @@ bool UQuickSDFPaintTool::ImportEditedMasksFromTextures(const TArray<UTexture2D*>
 	bUseImportedMasksForQuickCreate = true;
 	MarkMasksChanged();
 	GetToolManager()->EndUndoTransaction();
+	WarnIfMonotonicGuardViolations(LOCTEXT("MonotonicGuardAfterImportWithAnglesContext", "after mask import"));
 	return true;
 }
 
@@ -764,6 +768,7 @@ bool UQuickSDFPaintTool::ImportEditedMasksFromTexturesWithAngles(const TArray<UT
 	bUseImportedMasksForQuickCreate = true;
 	MarkMasksChanged();
 	GetToolManager()->EndUndoTransaction();
+	WarnIfMonotonicGuardViolations(LOCTEXT("MonotonicGuardAfterImportContext", "after mask import"));
 	return true;
 }
 
@@ -979,11 +984,13 @@ void UQuickSDFPaintTool::RebakeCurrentMask()
 	}
 
 	FillOriginalShading(Properties->EditAngleIndex);
+	WarnIfMonotonicGuardViolations(LOCTEXT("MonotonicGuardAfterRebakeCurrentContext", "after rebaking the current mask"));
 }
 
 void UQuickSDFPaintTool::RebakeAllMasks()
 {
 	FillOriginalShadingAll();
+	WarnIfMonotonicGuardViolations(LOCTEXT("MonotonicGuardAfterRebakeAllContext", "after rebaking all masks"));
 }
 
 void UQuickSDFPaintTool::CompleteToEightMasks()

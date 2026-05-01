@@ -21,3 +21,11 @@ enum class ESDFOutputFormat : uint8
 	Monopolar UMETA(DisplayName = "Monopolar (Single Side)"),
 	Bipolar   UMETA(DisplayName = "Bipolar (Both Sides)")
 };
+
+UENUM(BlueprintType)
+enum class EQuickSDFClipDirection : uint8
+{
+	Auto UMETA(DisplayName = "Auto"),
+	WhiteExpands UMETA(DisplayName = "White Expands"),
+	WhiteShrinks UMETA(DisplayName = "White Shrinks")
+};

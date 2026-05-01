@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "InteractiveTool.h"
+#include "QuickSDFToolTypes.h"
 #include "QuickSDFToolProperties.generated.h"
 
 class UQuickSDFAsset;
@@ -106,6 +107,12 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bSymmetryMode = true;
 
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Enable Monotonic Guard"))
+	bool bEnableMonotonicGuard = false;
+
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Clip Direction", EditCondition = "bEnableMonotonicGuard"))
+	EQuickSDFClipDirection ClipDirection = EQuickSDFClipDirection::Auto;
+
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (UIMin = "0.0", UIMax = "180.0"))
 	TArray<float> TargetAngles;
 
@@ -189,4 +196,7 @@ public:
 
 	UFUNCTION(CallInEditor, Category = "Actions")
 	void GenerateSDFThresholdMap();
+
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Validate Monotonic Guard"))
+	void ValidateMonotonicGuard();
 };

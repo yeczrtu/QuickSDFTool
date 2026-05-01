@@ -1,4 +1,5 @@
 #include "QuickSDFPaintTool.h"
+#include "QuickSDFMonotonicGuard.h"
 #include "QuickSDFPaintToolPrivate.h"
 #include "QuickSDFMeshComponentAdapter.h"
 #include "QuickSDFToolSubsystem.h"
@@ -91,6 +92,65 @@ FIntRect UnionRects(const FIntRect& A, const FIntRect& B)
 		FMath::Min(A.Min.Y, B.Min.Y),
 		FMath::Max(A.Max.X, B.Max.X),
 		FMath::Max(A.Max.Y, B.Max.Y));
+}
+
+struct FQuickSDFGuardStrokeEntry
+{
+	int32 AngleIndex = INDEX_NONE;
+	float Angle = 0.0f;
+	UTextureRenderTarget2D* BeforeRenderTarget = nullptr;
+	UTextureRenderTarget2D* PaintRenderTarget = nullptr;
+	TArray<FColor> BeforePixels;
+	TArray<FColor> AfterPixels;
+	bool bChangedByStroke = false;
+	bool bNeedsRestore = false;
+};
+
+TArray<FQuickSDFGuardStrokeEntry> MakeSortedGuardStrokeEntries(
+	UQuickSDFAsset* Asset,
+	const TArray<int32>& GuardAngleIndices,
+	const TArray<int32>& StrokeAngleIndices,
+	const TArray<TObjectPtr<UTextureRenderTarget2D>>& BeforeRenderTargets)
+{
+	TArray<FQuickSDFGuardStrokeEntry> Entries;
+	if (!Asset)
+	{
+		return Entries;
+	}
+
+	Entries.Reserve(GuardAngleIndices.Num());
+	for (int32 AngleIndex : GuardAngleIndices)
+	{
+		if (!Asset->AngleDataList.IsValidIndex(AngleIndex))
+		{
+			continue;
+		}
+
+		FQuickSDFAngleData& AngleData = Asset->AngleDataList[AngleIndex];
+		UTextureRenderTarget2D* PaintRenderTarget = AngleData.PaintRenderTarget;
+		if (!PaintRenderTarget)
+		{
+			continue;
+		}
+
+		FQuickSDFGuardStrokeEntry& Entry = Entries.AddDefaulted_GetRef();
+		Entry.AngleIndex = AngleIndex;
+		Entry.Angle = AngleData.Angle;
+		Entry.PaintRenderTarget = PaintRenderTarget;
+
+		const int32 TransactionIndex = StrokeAngleIndices.IndexOfByKey(AngleIndex);
+		if (BeforeRenderTargets.IsValidIndex(TransactionIndex))
+		{
+			Entry.BeforeRenderTarget = BeforeRenderTargets[TransactionIndex].Get();
+			Entry.bChangedByStroke = Entry.BeforeRenderTarget != nullptr;
+		}
+	}
+
+	Entries.Sort([](const FQuickSDFGuardStrokeEntry& A, const FQuickSDFGuardStrokeEntry& B)
+	{
+		return A.Angle < B.Angle;
+	});
+	return Entries;
 }
 }
 
@@ -695,6 +755,408 @@ void UQuickSDFPaintTool::BeginStrokeTransaction()
 	bStrokeTransactionActive = StrokeTransactionAngleIndices.Num() > 0;
 }
 
+bool UQuickSDFPaintTool::ApplyMonotonicGuardToStroke(UQuickSDFAsset* Asset)
+{
+	if (!Properties || !Properties->bEnableMonotonicGuard || !Asset || StrokeTransactionAngleIndices.Num() < 1)
+	{
+		return false;
+	}
+
+	FIntRect GuardRect;
+	bool bHasGuardRect = false;
+	for (const FIntRect& DirtyRect : StrokeDirtyRectsByAngle)
+	{
+		if (DirtyRect.Width() <= 0 || DirtyRect.Height() <= 0)
+		{
+			continue;
+		}
+
+		GuardRect = bHasGuardRect ? UnionRects(GuardRect, DirtyRect) : DirtyRect;
+		bHasGuardRect = true;
+	}
+
+	if (!bHasGuardRect)
+	{
+		return false;
+	}
+
+	TArray<int32> GuardAngleIndices = CollectProcessableMaskIndices(*Asset, Properties->bSymmetryMode);
+	for (int32 AngleIndex : StrokeTransactionAngleIndices)
+	{
+		GuardAngleIndices.AddUnique(AngleIndex);
+	}
+
+	TArray<FQuickSDFGuardStrokeEntry> Entries = MakeSortedGuardStrokeEntries(Asset, GuardAngleIndices, StrokeTransactionAngleIndices, StrokeBeforeRenderTargetsByAngle);
+	if (Entries.Num() < 2)
+	{
+		return false;
+	}
+
+	UTextureRenderTarget2D* ReferenceRenderTarget = Entries[0].PaintRenderTarget;
+	if (!ReferenceRenderTarget)
+	{
+		return false;
+	}
+
+	const FIntRect ClampedRect(
+		FMath::Clamp(GuardRect.Min.X, 0, ReferenceRenderTarget->SizeX),
+		FMath::Clamp(GuardRect.Min.Y, 0, ReferenceRenderTarget->SizeY),
+		FMath::Clamp(GuardRect.Max.X, 0, ReferenceRenderTarget->SizeX),
+		FMath::Clamp(GuardRect.Max.Y, 0, ReferenceRenderTarget->SizeY));
+	if (ClampedRect.Width() <= 0 || ClampedRect.Height() <= 0)
+	{
+		return false;
+	}
+
+	for (FQuickSDFGuardStrokeEntry& Entry : Entries)
+	{
+		if (!Entry.PaintRenderTarget || Entry.PaintRenderTarget->SizeX != ReferenceRenderTarget->SizeX || Entry.PaintRenderTarget->SizeY != ReferenceRenderTarget->SizeY)
+		{
+			return false;
+		}
+
+		if (!CaptureRenderTargetPixelsInRect(Entry.PaintRenderTarget, ClampedRect, Entry.AfterPixels))
+		{
+			return false;
+		}
+
+		if (Entry.bChangedByStroke)
+		{
+			if (!CaptureRenderTargetPixelsInRect(Entry.BeforeRenderTarget, ClampedRect, Entry.BeforePixels))
+			{
+				return false;
+			}
+		}
+		else
+		{
+			Entry.BeforePixels = Entry.AfterPixels;
+		}
+	}
+
+	TArray<float> Angles;
+	TArray<bool> BeforeStates;
+	TArray<bool> AfterStates;
+	TArray<bool> ProjectedAfterStates;
+	TArray<bool> CandidateStates;
+	TArray<bool> RestoreEntries;
+	Angles.Reserve(Entries.Num());
+	BeforeStates.SetNum(Entries.Num());
+	AfterStates.SetNum(Entries.Num());
+	ProjectedAfterStates.SetNum(Entries.Num());
+	CandidateStates.SetNum(Entries.Num());
+	RestoreEntries.SetNum(Entries.Num());
+	for (const FQuickSDFGuardStrokeEntry& Entry : Entries)
+	{
+		Angles.Add(Entry.Angle);
+	}
+
+	bool bClippedAny = false;
+	const int32 PixelCount = ClampedRect.Width() * ClampedRect.Height();
+	for (int32 PixelIndex = 0; PixelIndex < PixelCount; ++PixelIndex)
+	{
+		bool bPixelChanged = false;
+		for (int32 EntryIndex = 0; EntryIndex < Entries.Num(); ++EntryIndex)
+		{
+			const FQuickSDFGuardStrokeEntry& Entry = Entries[EntryIndex];
+			BeforeStates[EntryIndex] = QuickSDFMonotonicGuard::IsWhite(Entry.BeforePixels[PixelIndex]);
+			AfterStates[EntryIndex] = QuickSDFMonotonicGuard::IsWhite(Entry.AfterPixels[PixelIndex]);
+			ProjectedAfterStates[EntryIndex] = AfterStates[EntryIndex];
+			if (Entry.bChangedByStroke && Entry.BeforePixels[PixelIndex] != Entry.AfterPixels[PixelIndex])
+			{
+				ProjectedAfterStates[EntryIndex] = QuickSDFMonotonicGuard::GetProjectedStrokeState(Entry.BeforePixels[PixelIndex], Entry.AfterPixels[PixelIndex]);
+				bPixelChanged = true;
+			}
+		}
+
+		if (!bPixelChanged)
+		{
+			continue;
+		}
+
+		const int32 BeforeViolations = QuickSDFMonotonicGuard::CountViolations(BeforeStates, Angles, Properties->ClipDirection);
+		const int32 AfterViolations = QuickSDFMonotonicGuard::CountViolations(ProjectedAfterStates, Angles, Properties->ClipDirection);
+		if (AfterViolations <= BeforeViolations)
+		{
+			continue;
+		}
+
+		CandidateStates = ProjectedAfterStates;
+		for (bool& bRestoreEntry : RestoreEntries)
+		{
+			bRestoreEntry = false;
+		}
+
+		int32 CurrentViolations = AfterViolations;
+		while (CurrentViolations > BeforeViolations)
+		{
+			int32 BestEntryIndex = INDEX_NONE;
+			int32 BestViolationCount = CurrentViolations;
+			for (int32 EntryIndex = 0; EntryIndex < Entries.Num(); ++EntryIndex)
+			{
+				if (!Entries[EntryIndex].bChangedByStroke || RestoreEntries[EntryIndex] || CandidateStates[EntryIndex] == BeforeStates[EntryIndex])
+				{
+					continue;
+				}
+
+				const bool bSavedState = CandidateStates[EntryIndex];
+				CandidateStates[EntryIndex] = BeforeStates[EntryIndex];
+				const int32 TestViolations = QuickSDFMonotonicGuard::CountViolations(CandidateStates, Angles, Properties->ClipDirection);
+				CandidateStates[EntryIndex] = bSavedState;
+				if (TestViolations < BestViolationCount)
+				{
+					BestEntryIndex = EntryIndex;
+					BestViolationCount = TestViolations;
+					if (BestViolationCount <= BeforeViolations)
+					{
+						break;
+					}
+				}
+			}
+
+			if (BestEntryIndex == INDEX_NONE)
+			{
+				for (int32 EntryIndex = 0; EntryIndex < Entries.Num(); ++EntryIndex)
+				{
+					if (Entries[EntryIndex].bChangedByStroke && CandidateStates[EntryIndex] != BeforeStates[EntryIndex])
+					{
+						RestoreEntries[EntryIndex] = true;
+						CandidateStates[EntryIndex] = BeforeStates[EntryIndex];
+					}
+				}
+				break;
+			}
+
+			RestoreEntries[BestEntryIndex] = true;
+			CandidateStates[BestEntryIndex] = BeforeStates[BestEntryIndex];
+			CurrentViolations = BestViolationCount;
+		}
+
+		for (int32 EntryIndex = 0; EntryIndex < Entries.Num(); ++EntryIndex)
+		{
+			if (RestoreEntries[EntryIndex])
+			{
+				FQuickSDFGuardStrokeEntry& Entry = Entries[EntryIndex];
+				Entry.AfterPixels[PixelIndex] = Entry.BeforePixels[PixelIndex];
+				Entry.bNeedsRestore = true;
+				bClippedAny = true;
+			}
+		}
+	}
+
+	if (!bClippedAny)
+	{
+		return false;
+	}
+
+	bool bRestoredAny = false;
+	for (FQuickSDFGuardStrokeEntry& Entry : Entries)
+	{
+		if (Entry.bNeedsRestore && RestoreRenderTargetPixelsInRect(Entry.PaintRenderTarget, ClampedRect, Entry.AfterPixels))
+		{
+			bRestoredAny = true;
+		}
+	}
+
+	if (bRestoredAny)
+	{
+		RefreshPreviewMaterial();
+	}
+	return bRestoredAny;
+}
+
+int32 UQuickSDFPaintTool::ValidateMonotonicGuardForAsset(UQuickSDFAsset* Asset, int32* OutTransitionViolations) const
+{
+	if (OutTransitionViolations)
+	{
+		*OutTransitionViolations = 0;
+	}
+	if (!Properties || !Asset)
+	{
+		return 0;
+	}
+
+	TArray<int32> ProcessableIndices = CollectProcessableMaskIndices(*Asset, Properties->bSymmetryMode);
+	if (ProcessableIndices.Num() < 2)
+	{
+		return 0;
+	}
+
+	struct FValidationEntry
+	{
+		float Angle = 0.0f;
+		UTextureRenderTarget2D* RenderTarget = nullptr;
+		TArray<FColor> Pixels;
+	};
+
+	TArray<FValidationEntry> Entries;
+	Entries.Reserve(ProcessableIndices.Num());
+	for (int32 AngleIndex : ProcessableIndices)
+	{
+		if (!Asset->AngleDataList.IsValidIndex(AngleIndex))
+		{
+			continue;
+		}
+
+		const FQuickSDFAngleData& AngleData = Asset->AngleDataList[AngleIndex];
+		if (!AngleData.PaintRenderTarget)
+		{
+			continue;
+		}
+
+		FValidationEntry& Entry = Entries.AddDefaulted_GetRef();
+		Entry.Angle = AngleData.Angle;
+		Entry.RenderTarget = AngleData.PaintRenderTarget;
+	}
+
+	if (Entries.Num() < 2)
+	{
+		return 0;
+	}
+
+	Entries.Sort([](const FValidationEntry& A, const FValidationEntry& B)
+	{
+		return A.Angle < B.Angle;
+	});
+
+	UTextureRenderTarget2D* ReferenceRenderTarget = Entries[0].RenderTarget;
+	if (!ReferenceRenderTarget)
+	{
+		return 0;
+	}
+
+	for (const FValidationEntry& Entry : Entries)
+	{
+		if (!Entry.RenderTarget ||
+			Entry.RenderTarget->SizeX != ReferenceRenderTarget->SizeX ||
+			Entry.RenderTarget->SizeY != ReferenceRenderTarget->SizeY)
+		{
+			return 0;
+		}
+	}
+
+	TArray<float> Angles;
+	TArray<bool> States;
+	Angles.Reserve(Entries.Num());
+	States.SetNum(Entries.Num());
+	for (const FValidationEntry& Entry : Entries)
+	{
+		Angles.Add(Entry.Angle);
+	}
+
+	constexpr int32 TileSize = 256;
+	int32 ViolationPixels = 0;
+	int32 ViolationTransitions = 0;
+	for (int32 MinY = 0; MinY < ReferenceRenderTarget->SizeY; MinY += TileSize)
+	{
+		for (int32 MinX = 0; MinX < ReferenceRenderTarget->SizeX; MinX += TileSize)
+		{
+			const FIntRect TileRect(
+				MinX,
+				MinY,
+				FMath::Min(MinX + TileSize, ReferenceRenderTarget->SizeX),
+				FMath::Min(MinY + TileSize, ReferenceRenderTarget->SizeY));
+			const int32 PixelCount = TileRect.Width() * TileRect.Height();
+			if (PixelCount <= 0)
+			{
+				continue;
+			}
+
+			bool bCapturedAll = true;
+			for (FValidationEntry& Entry : Entries)
+			{
+				Entry.Pixels.Reset();
+				if (!CaptureRenderTargetPixelsInRect(Entry.RenderTarget, TileRect, Entry.Pixels) || Entry.Pixels.Num() != PixelCount)
+				{
+					bCapturedAll = false;
+					break;
+				}
+			}
+			if (!bCapturedAll)
+			{
+				continue;
+			}
+
+			for (int32 PixelIndex = 0; PixelIndex < PixelCount; ++PixelIndex)
+			{
+				for (int32 EntryIndex = 0; EntryIndex < Entries.Num(); ++EntryIndex)
+				{
+					States[EntryIndex] = QuickSDFMonotonicGuard::IsWhite(Entries[EntryIndex].Pixels[PixelIndex]);
+				}
+
+				const int32 Violations = QuickSDFMonotonicGuard::CountViolations(States, Angles, Properties->ClipDirection);
+				if (Violations > 0)
+				{
+					++ViolationPixels;
+					ViolationTransitions += Violations;
+				}
+			}
+		}
+	}
+
+	if (OutTransitionViolations)
+	{
+		*OutTransitionViolations = ViolationTransitions;
+	}
+	return ViolationPixels;
+}
+
+void UQuickSDFPaintTool::WarnIfMonotonicGuardViolations(const FText& Context)
+{
+	if (!Properties || !Properties->bEnableMonotonicGuard)
+	{
+		return;
+	}
+
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	if (!Asset)
+	{
+		return;
+	}
+
+	int32 TransitionViolations = 0;
+	const int32 PixelViolations = ValidateMonotonicGuardForAsset(Asset, &TransitionViolations);
+	if (PixelViolations <= 0)
+	{
+		return;
+	}
+
+	GetToolManager()->DisplayMessage(
+		FText::Format(
+			LOCTEXT("MonotonicGuardWarningFormat", "Monotonic Guard found {0} UV pixels with {1} invalid transitions {2}. Masks were not changed."),
+			FText::AsNumber(PixelViolations),
+			FText::AsNumber(TransitionViolations),
+			Context),
+		EToolMessageLevel::UserWarning);
+}
+
+void UQuickSDFPaintTool::ValidateMonotonicGuard()
+{
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	if (!Asset)
+	{
+		return;
+	}
+
+	int32 TransitionViolations = 0;
+	const int32 PixelViolations = ValidateMonotonicGuardForAsset(Asset, &TransitionViolations);
+	if (PixelViolations > 0)
+	{
+		GetToolManager()->DisplayMessage(
+			FText::Format(
+				LOCTEXT("MonotonicGuardManualWarning", "Monotonic Guard found {0} UV pixels with {1} invalid transitions. Masks were not changed."),
+				FText::AsNumber(PixelViolations),
+				FText::AsNumber(TransitionViolations)),
+			EToolMessageLevel::UserWarning);
+		return;
+	}
+
+	GetToolManager()->DisplayMessage(
+		LOCTEXT("MonotonicGuardManualValid", "Monotonic Guard validation found no invalid transitions."),
+		EToolMessageLevel::UserNotification);
+}
+
 void UQuickSDFPaintTool::EndStrokeTransaction()
 {
 	if (!bStrokeTransactionActive) return;
@@ -704,6 +1166,7 @@ void UQuickSDFPaintTool::EndStrokeTransaction()
 	{
 		UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
 		EnsureMaskGuids(Asset);
+		ApplyMonotonicGuardToStroke(Asset);
 		TUniquePtr<FQuickSDFRenderTargetsChange> Change = MakeUnique<FQuickSDFRenderTargetsChange>();
 
 		for (int32 Index = 0; Index < StrokeTransactionAngleIndices.Num() && Index < StrokeBeforeRenderTargetsByAngle.Num(); ++Index)

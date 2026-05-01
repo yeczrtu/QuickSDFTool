@@ -59,6 +59,7 @@ const TArray<EQuickSDFPaintToggle>& QuickSDFToolUI::GetPaintToggles()
 		EQuickSDFPaintToggle::OnionSkin,
 		EQuickSDFPaintToggle::QuickLine,
 		EQuickSDFPaintToggle::Symmetry,
+		EQuickSDFPaintToggle::MonotonicGuard,
 	};
 	return Toggles;
 }
@@ -206,6 +207,8 @@ FName QuickSDFToolUI::GetTogglePropertyName(EQuickSDFPaintToggle Toggle)
 		return GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bEnableQuickLine);
 	case EQuickSDFPaintToggle::Symmetry:
 		return GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bSymmetryMode);
+	case EQuickSDFPaintToggle::MonotonicGuard:
+		return GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bEnableMonotonicGuard);
 	default:
 		return NAME_None;
 	}
@@ -229,6 +232,8 @@ FText QuickSDFToolUI::GetToggleLabel(EQuickSDFPaintToggle Toggle)
 		return LOCTEXT("QuickLineLabel", "Quick Stroke");
 	case EQuickSDFPaintToggle::Symmetry:
 		return LOCTEXT("SymmetryLabel", "Symmetry");
+	case EQuickSDFPaintToggle::MonotonicGuard:
+		return LOCTEXT("MonotonicGuardLabel", "Guard");
 	default:
 		return FText::GetEmpty();
 	}
@@ -252,6 +257,8 @@ FText QuickSDFToolUI::GetToggleDescription(EQuickSDFPaintToggle Toggle)
 		return LOCTEXT("QuickLineDesc", "Enables hold-to-line quick stroke drawing.");
 	case EQuickSDFPaintToggle::Symmetry:
 		return LOCTEXT("SymmetryDesc", "Uses the front half sweep and mirrors the result.");
+	case EQuickSDFPaintToggle::MonotonicGuard:
+		return LOCTEXT("MonotonicGuardDesc", "Clips brush strokes that would create repeated light/shadow flips in the active angle range.");
 	default:
 		return FText::GetEmpty();
 	}
@@ -275,6 +282,8 @@ FName QuickSDFToolUI::GetToggleIconName(EQuickSDFPaintToggle Toggle)
 		return "QuickSDF.Toggle.QuickLine";
 	case EQuickSDFPaintToggle::Symmetry:
 		return "QuickSDF.Toggle.Symmetry";
+	case EQuickSDFPaintToggle::MonotonicGuard:
+		return "QuickSDF.Toggle.MonotonicGuard";
 	default:
 		return NAME_None;
 	}
@@ -303,6 +312,8 @@ bool QuickSDFToolUI::GetToggleValue(const UQuickSDFToolProperties* Properties, E
 		return Properties->bEnableQuickLine;
 	case EQuickSDFPaintToggle::Symmetry:
 		return Properties->bSymmetryMode;
+	case EQuickSDFPaintToggle::MonotonicGuard:
+		return Properties->bEnableMonotonicGuard;
 	default:
 		return false;
 	}
@@ -338,6 +349,9 @@ void QuickSDFToolUI::SetToggleValue(UQuickSDFPaintTool* Tool, UQuickSDFToolPrope
 		break;
 	case EQuickSDFPaintToggle::Symmetry:
 		Properties->bSymmetryMode = bValue;
+		break;
+	case EQuickSDFPaintToggle::MonotonicGuard:
+		Properties->bEnableMonotonicGuard = bValue;
 		break;
 	default:
 		break;

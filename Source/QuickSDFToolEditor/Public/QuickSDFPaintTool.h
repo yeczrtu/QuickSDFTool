@@ -130,6 +130,7 @@ public:
 	void RequestImportPanel();
 	bool ConsumeImportPanelRequest();
 	void SaveQuickSDFAsset();
+	void ValidateMonotonicGuard();
 	bool CaptureRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const;
 	class UTextureRenderTarget2D* GetActiveRenderTarget() const;
 	void EnsureInitialMasksReady();
@@ -202,6 +203,9 @@ protected:
 	bool RestoreStrokeStartPixels() const;
 	void BeginStrokeTransaction();
 	void EndStrokeTransaction();
+	bool ApplyMonotonicGuardToStroke(class UQuickSDFAsset* Asset);
+	int32 ValidateMonotonicGuardForAsset(class UQuickSDFAsset* Asset, int32* OutTransitionViolations = nullptr) const;
+	void WarnIfMonotonicGuardViolations(const FText& Context);
 	void ResetStrokeState();
 	void AddStrokeDirtyRect(class UTextureRenderTarget2D* RenderTarget, const FIntRect& Rect);
 	void InitializeRenderTargets();
