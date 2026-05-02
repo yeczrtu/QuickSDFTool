@@ -302,6 +302,17 @@ QuickSDFTool/
 | `QuickSDFToolEditor` | Editor | `InteractiveToolsFramework`, `EditorInteractiveToolsFramework`, `GeometryCore`, `DynamicMesh`, `MeshDescription`, `ModelingComponents`, `MeshConversion`, `EditorSubsystem`, `UMG`, `Slate`, `LevelEditor`, `PropertyEditor`, `MaterialBaking`, `DesktopPlatform`, `ImageWrapper`, `AssetRegistry` |
 | `QuickSDFToolShaders` | Runtime / `PostConfigInit` | `Core`, `CoreUObject`, `Engine`, `RenderCore`, `RHI`, `Projects` |
 
+### Editor Code Layout
+
+- `UQuickSDFAsset` uses the active `FQuickSDFTextureSetData` as the primary source for editable masks, resolution, UV channel, and final SDF texture data. Legacy top-level fields are migrated on load on a best-effort basis.
+- `UQuickSDFPaintTool` is kept as the Interactive Tools Framework facade for lifecycle, input routing, and UI commands. Paint state, undo changes, mask utilities, SDF helpers, asset selection, and render target support live in focused private helpers.
+- Timeline keyframe rendering is split from the main timeline widget, and mask import validation is handled by a Slate-independent import model so the UI and import rules can evolve independently.
+- Developer automation tests cover default angles, angle-name parsing, SDF edge cases, asset migration, mask import model validation, and Monotonic Guard behavior.
+
+### Development Verification
+
+The current development target is UE 5.7.x. For local verification, build a C++ host project with the plugin enabled, then run the `QuickSDFTool` automation test group. The refactor was validated against `sdfbuildEditor Win64 Development` and `Automation RunTests QuickSDFTool`.
+
 ## How It Works
 
 1. **Paint** — For each light angle, paint a binary mask on the mesh or UV preview.

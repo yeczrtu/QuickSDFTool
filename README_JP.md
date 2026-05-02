@@ -278,6 +278,17 @@ QuickSDFTool は UE 5.7 以降のみ対応です。エディターツールは U
 - `Stroke Auto Fill` は、現在マスクのみ、`Before / After / All`、UV アイランド分離、左右または内外の塗り選択を確認します。
 - 英日 README の機能名、優先度、未実装ステータスが同期していることを確認します。
 
+## 内部構成
+
+- `UQuickSDFAsset` は、編集中のマスク、解像度、UV チャンネル、最終 SDF テクスチャの主データ源としてアクティブな `FQuickSDFTextureSetData` を使用します。旧トップレベルフィールドは、保存済みアセットの互換性のためロード時にベストエフォートで移行します。
+- `UQuickSDFPaintTool` は Interactive Tools Framework のライフサイクル、入力イベントの受け口、UI コマンドを担当するファサードとして整理しました。ペイント状態、Undo 変更、マスクユーティリティ、SDF ヘルパー、アセット選択、Render Target 補助処理は責務別の private helper に分離しています。
+- タイムラインのキーフレーム描画はメインタイムラインウィジェットから分離し、マスクインポートの検証は Slate に依存しない import model に寄せています。UI と取り込みルールを個別に保守できます。
+- 開発用 Automation Test では、デフォルト角度、角度名パース、SDF のエッジケース、アセット移行、マスクインポートモデル検証、Monotonic Guard の挙動を確認します。
+
+## 開発時の検証
+
+現在の開発対象は UE 5.7.x です。ローカル検証では、プラグインを有効化した C++ ホストプロジェクトをビルドし、`QuickSDFTool` の Automation Test グループを実行してください。このリファクタは `sdfbuildEditor Win64 Development` のビルドと `Automation RunTests QuickSDFTool` で検証しています。
+
 ## 仕組み
 
 1. **ペイント** — ライト角度ごとにメッシュまたは UV プレビューへ二値マスクを描きます。
