@@ -27,6 +27,7 @@ public:
 	void SetPreviewLightAngle(float AzimuthAngle);
 	void SetTimelineSeekAngle(float AzimuthAngle);
 	class ADirectionalLight* GetPreviewLight() const { return PreviewLight; }
+	bool RequestBrushResizeFromHoveredViewport();
 	
 protected:
 	virtual void CreateToolkit() override;
@@ -49,6 +50,7 @@ private:
 
 	TSharedPtr<class SQuickSDFTimeline> TimelineWidget;
 	TWeakPtr<class SLevelViewport> TimelineViewport;
+	TSharedPtr<class IInputProcessor> BrushResizeInputPreProcessor;
 
 	UPROPERTY()
 	TObjectPtr<class ADirectionalLight> PreviewLight;

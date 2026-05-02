@@ -17,10 +17,47 @@
 #include "EditorViewportClient.h"
 #include "LevelEditor.h"
 #include "SLevelViewport.h"
+#include "Framework/Application/IInputProcessor.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Commands/UICommandList.h"
+#include "Widgets/SViewport.h"
 
 const FEditorModeID UQuickSDFEditorMode::EM_QuickSDFEditorModeId = TEXT("EM_QuickSDFEditorMode");
+
+namespace
+{
+class FQuickSDFBrushResizeInputPreProcessor final : public IInputProcessor
+{
+public:
+	explicit FQuickSDFBrushResizeInputPreProcessor(UQuickSDFEditorMode* InMode)
+		: Mode(InMode)
+	{
+	}
+
+	virtual void Tick(const float DeltaTime, FSlateApplication& SlateApp, TSharedRef<ICursor> Cursor) override
+	{
+	}
+
+	virtual bool HandleKeyDownEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent) override
+	{
+		if (InKeyEvent.GetKey() != EKeys::F || !InKeyEvent.IsControlDown())
+		{
+			return false;
+		}
+
+		UQuickSDFEditorMode* ModePtr = Mode.Get();
+		return ModePtr ? ModePtr->RequestBrushResizeFromHoveredViewport() : false;
+	}
+
+	virtual const TCHAR* GetDebugName() const override
+	{
+		return TEXT("QuickSDFBrushResizeInputPreProcessor");
+	}
+
+private:
+	TWeakObjectPtr<UQuickSDFEditorMode> Mode;
+};
+}
 
 UQuickSDFEditorMode::UQuickSDFEditorMode()
 {
@@ -44,6 +81,11 @@ void UQuickSDFEditorMode::Enter()
 	Toolkit->SetCurrentPalette(FName(TEXT("Default")));
 
 	AttachTimelineToActiveViewport();
+	if (!BrushResizeInputPreProcessor.IsValid())
+	{
+		BrushResizeInputPreProcessor = MakeShared<FQuickSDFBrushResizeInputPreProcessor>(this);
+		FSlateApplication::Get().RegisterInputPreProcessor(BrushResizeInputPreProcessor);
+	}
 
 	MuteLights();
 
@@ -57,6 +99,12 @@ void UQuickSDFEditorMode::Enter()
 
 void UQuickSDFEditorMode::Exit()
 {
+	if (BrushResizeInputPreProcessor.IsValid())
+	{
+		FSlateApplication::Get().UnregisterInputPreProcessor(BrushResizeInputPreProcessor);
+		BrushResizeInputPreProcessor.Reset();
+	}
+
 	DetachTimelineFromViewport();
 	TimelineWidget.Reset();
 	EndViewportNavigationSuppression();
@@ -121,6 +169,40 @@ void UQuickSDFEditorMode::DetachTimelineFromViewport()
 		AttachedViewport->RemoveOverlayWidget(TimelineWidget.ToSharedRef());
 	}
 	TimelineViewport.Reset();
+}
+
+bool UQuickSDFEditorMode::RequestBrushResizeFromHoveredViewport()
+{
+	TSharedPtr<SLevelViewport> AttachedViewport = TimelineViewport.Pin();
+	if (!AttachedViewport.IsValid())
+	{
+		AttachTimelineToActiveViewport();
+		AttachedViewport = TimelineViewport.Pin();
+	}
+
+	bool bCursorOverViewport = false;
+	if (AttachedViewport.IsValid())
+	{
+		if (TSharedPtr<SViewport> ViewportWidget = AttachedViewport->GetViewportWidget().Pin())
+		{
+			const FVector2D CursorPosition = FSlateApplication::Get().GetCursorPos();
+			bCursorOverViewport = ViewportWidget->GetTickSpaceGeometry().IsUnderLocation(CursorPosition);
+		}
+	}
+
+	if (!bCursorOverViewport)
+	{
+		return false;
+	}
+
+	UInteractiveToolManager* ToolManager = GetToolManager();
+	if (UQuickSDFPaintTool* PaintTool = ToolManager ? Cast<UQuickSDFPaintTool>(ToolManager->GetActiveTool(EToolSide::Mouse)) : nullptr)
+	{
+		PaintTool->RequestBrushResizeMode();
+		return true;
+	}
+
+	return false;
 }
 
 void UQuickSDFEditorMode::MuteLights()
@@ -250,14 +332,9 @@ bool UQuickSDFEditorMode::InputKey(FEditorViewportClient* ViewportClient, FViewp
 		const bool bCtrlDown =
 			ModifierKeys.IsControlDown() ||
 			(Viewport && (Viewport->KeyState(EKeys::LeftControl) || Viewport->KeyState(EKeys::RightControl)));
-		if (bCtrlDown)
+		if (bCtrlDown && RequestBrushResizeFromHoveredViewport())
 		{
-			UInteractiveToolManager* ToolManager = GetToolManager();
-			if (UQuickSDFPaintTool* PaintTool = ToolManager ? Cast<UQuickSDFPaintTool>(ToolManager->GetActiveTool(EToolSide::Mouse)) : nullptr)
-			{
-				PaintTool->RequestBrushResizeMode();
-				return true;
-			}
+			return true;
 		}
 	}
 

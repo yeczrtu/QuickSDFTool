@@ -44,13 +44,16 @@
 #include "Engine/Selection.h"
 #include "Framework/Application/SlateApplication.h"
 #include "IDesktopPlatform.h"
+#include "LevelEditor.h"
 #include "Misc/DefaultValueHelper.h"
 #include "Containers/Ticker.h"
+#include "SLevelViewport.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
 #include "IAssetTools.h"
 #include "Misc/PackageName.h"
 #include "ObjectTools.h"
+#include "Widgets/SViewport.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -61,6 +64,43 @@
 #define LOCTEXT_NAMESPACE "QuickSDFPaintTool"
 
 using namespace QuickSDFPaintToolPrivate;
+
+namespace
+{
+bool IsCursorOverLevelViewport()
+{
+	if (!FModuleManager::Get().IsModuleLoaded(TEXT("LevelEditor")))
+	{
+		return false;
+	}
+
+	FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>(TEXT("LevelEditor"));
+	const TSharedPtr<ILevelEditor> LevelEditor = LevelEditorModule.GetFirstLevelEditor();
+	if (!LevelEditor.IsValid())
+	{
+		return false;
+	}
+
+	const FVector2D CursorPosition = FSlateApplication::Get().GetCursorPos();
+	for (const TSharedPtr<SLevelViewport>& LevelViewport : LevelEditor->GetViewports())
+	{
+		if (!LevelViewport.IsValid())
+		{
+			continue;
+		}
+
+		if (const TSharedPtr<SViewport> ViewportWidget = LevelViewport->GetViewportWidget().Pin())
+		{
+			if (ViewportWidget->GetTickSpaceGeometry().IsUnderLocation(CursorPosition))
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+}
 
 void UQuickSDFPaintTool::InvalidatePaintChartCache()
 {
@@ -743,6 +783,7 @@ void UQuickSDFPaintTool::BeginBrushResizeMode()
 {
 	if (!BrushProperties) return;
 	if (bAdjustingBrushRadius) return;
+	if (!IsCursorOverLevelViewport()) return;
 	const FVector2D CurrentCursorPosition = FSlateApplication::Get().GetCursorPos();
 	if (!bBrushResizeTransactionOpen)
 	{
