@@ -222,10 +222,7 @@ void UQuickSDFPaintTool::RefreshPreviewMaterial()
 		PreviewMaterial->SetScalarParameterValue(TEXT("OverlayOriginalShadow"), Properties->bOverlayOriginalShadow);
 	}
 
-	if (PreviewBaseMaterial)
-	{
-		PreviewBaseMaterial->GetOutermost()->SetDirtyFlag(false);
-	}
+	ClearPreviewMaterialDirtyState();
 }
 
 bool UQuickSDFPaintTool::CaptureRenderTargetPixels(UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const

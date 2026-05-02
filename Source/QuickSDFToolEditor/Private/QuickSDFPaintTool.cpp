@@ -52,6 +52,7 @@
 #include "IAssetTools.h"
 #include "Misc/PackageName.h"
 #include "ObjectTools.h"
+#include "UObject/Package.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -62,6 +63,13 @@
 #define LOCTEXT_NAMESPACE "QuickSDFPaintTool"
 
 using namespace QuickSDFPaintToolPrivate;
+
+namespace
+{
+const TCHAR* QuickSDFPreviewMaterialObjectPath = TEXT("/QuickSDFTool/Materials/M_PreviewMat.M_PreviewMat");
+const TCHAR* QuickSDFPreviewMaterialPackagePath = TEXT("/QuickSDFTool/Materials/M_PreviewMat");
+}
+
 
 void UQuickSDFBrushResizeInputBehavior::Initialize(UQuickSDFPaintTool* InTool)
 {
@@ -119,6 +127,19 @@ UQuickSDFPaintTool::UQuickSDFPaintTool()
 void UQuickSDFPaintTool::RequestBrushResizeMode()
 {
 	BeginBrushResizeMode();
+}
+
+void UQuickSDFPaintTool::ClearPreviewMaterialDirtyState() const
+{
+	UPackage* PreviewPackage = PreviewBaseMaterial ? PreviewBaseMaterial->GetOutermost() : FindPackage(nullptr, QuickSDFPreviewMaterialPackagePath);
+	if (PreviewPackage)
+	{
+		if (PreviewPackage->IsDirty())
+		{
+			PreviewPackage->SetDirtyFlag(false);
+		}
+		PreviewPackage->ClearDirtyFlag();
+	}
 }
 
 void UQuickSDFPaintTool::RegisterActions(FInteractiveToolActionSet& ActionSet)
@@ -326,6 +347,11 @@ void UQuickSDFPaintTool::OnTick(float DeltaTime)
 		}
 	}
 
+	if (PreviewBaseMaterial)
+	{
+		ClearPreviewMaterialDirtyState();
+	}
+
 	TryActivateQuickLine();
 }
 
@@ -357,10 +383,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 		}
 	}
 
-	if (PreviewBaseMaterial)
-	{
-		PreviewBaseMaterial->GetOutermost()->SetDirtyFlag(false);
-	}
+	ClearPreviewMaterialDirtyState();
 	PreviewMaterial = nullptr;
 	PreviewBaseMaterial = nullptr;
 	OriginalMaterials.Empty();
@@ -395,7 +418,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 	TargetMeshSpatial = MakeShared<UE::Geometry::FDynamicMeshAABBTree3>();
 	TargetMeshSpatial->SetMesh(TargetMesh.Get(), true);
 
-	PreviewBaseMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/QuickSDFTool/Materials/M_PreviewMat.M_PreviewMat"));
+	PreviewBaseMaterial = LoadObject<UMaterialInterface>(nullptr, QuickSDFPreviewMaterialObjectPath);
 	PreviewMaterial = PreviewBaseMaterial
 		? UMaterialInstanceDynamic::Create(PreviewBaseMaterial, GetTransientPackage())
 		: nullptr;
@@ -405,10 +428,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 		return;
 	}
 	PreviewMaterial->SetFlags(RF_Transient);
-	if (PreviewBaseMaterial)
-	{
-		PreviewBaseMaterial->GetOutermost()->SetDirtyFlag(false);
-	}
+	ClearPreviewMaterialDirtyState();
 
 	// 譁ｰ縺励＞繧ｳ繝ｳ繝昴・繝阪Φ繝医・繝槭ユ繝ｪ繧｢繝ｫ繧偵・繝ｬ繝薙Η繝ｼ逕ｨ縺ｫ蟾ｮ縺玲崛縺・
 	for (int32 i = 0; i < CurrentComponent->GetNumMaterials(); ++i)
@@ -416,6 +436,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 		OriginalMaterials.Add(CurrentComponent->GetMaterial(i));
 		CurrentComponent->SetMaterial(i, PreviewMaterial);
 	}
+	ClearPreviewMaterialDirtyState();
 
 	RefreshTextureSetsForCurrentComponent();
 	EnsureInitialMasksReady();
@@ -434,8 +455,10 @@ void UQuickSDFPaintTool::Shutdown(EToolShutdownType ShutdownType)
 	}
 	
 	ChangeTargetComponent(nullptr);
+	ClearPreviewMaterialDirtyState();
 	
 	Super::Shutdown(ShutdownType); // 繝・・繝ｫ邨ゆｺ・・逅・
+	ClearPreviewMaterialDirtyState();
 }
 
 bool UQuickSDFPaintTool::IsTriangleInTargetMaterialSlot(int32 TriangleID) const

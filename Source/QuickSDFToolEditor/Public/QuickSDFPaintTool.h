@@ -165,6 +165,7 @@ public:
 protected:
 	void BuildBrushMaskTexture();
 	void RefreshPreviewMaterial();
+	void ClearPreviewMaterialDirtyState() const;
 	FQuickSDFStrokeSample SmoothStrokeSample(const FQuickSDFStrokeSample& RawSample);
 	void ChangeTargetComponent(class UMeshComponent* NewComponent);
 	void ApplyTargetMaterialSlotIsolation();
