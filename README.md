@@ -3,7 +3,7 @@
 <p align="center">
   Unreal Engine 5 Editor Mode for painting toon-shadow masks and generating SDF threshold maps.
   <br>
-  <a href="#demo">Demo</a> · <a href="#quick-start">Quick Start</a> · <a href="#artist-use-cases">Use Cases</a> · <a href="./README_JP.md">日本語</a>
+  <a href="#demo">Demo</a> | <a href="#quick-start">Quick Start</a> | <a href="#artist-use-cases">Use Cases</a> | <a href="./README_JP.md">日本語</a>
 </p>
 
 > [!NOTE]
@@ -27,14 +27,16 @@ flowchart LR
 
 - Dedicated UE5 Editor Mode named `Quick SDF`.
 - Direct painting on Static Mesh and Skeletal Mesh components, including target material-slot isolation.
+- Compact `Material Slots` list with row-click selection, `Baked` / `Empty` status pills, and per-slot Bake actions. Bulk multi-slot bake buttons are intentionally not part of the main workflow.
 - 2D UV preview painting with optional UV guides, original-shadow overlay, and onion skinning.
-- Angular keyframe timeline with thumbnails, a seek bar/marker, 5-degree snapping, add/duplicate/delete controls, symmetry-aware mask completion, even redistribution, and `DirectionalLight` sync.
+- Angular timeline with a separated upper seek lane and lower keyframe lane, thumbnail previews, high-contrast angle labels, 5-degree snapping, add/duplicate/delete controls, symmetry-aware mask completion, even redistribution, and `DirectionalLight` sync.
+- Timeline status badges and paint-target range highlights for `Current`, `All`, `Before`, and `After`, including mask, `Monotonic Guard`, and warning indicators plus detailed tooltips.
 - Arrow-key previous/next frame navigation that suppresses viewport movement while the mode handles the keys.
 - Paint target modes for Current, All, Before Current, and After Current masks.
 - Symmetry mode for front-half sweeps, hold-to-line quick strokes, paint-all-angles style workflows, and 8-mask / 15-mask default completion depending on the sweep range.
 - Monotonic Guard for silently clipping paint strokes that would introduce repeated light/shadow flips across mask angles, with validation warnings before SDF generation.
 - Stabilized brush input with lazy-radius smoothing, pressure-sensitive radius support, antialiased brush edges, and optimized 1K-4K render target painting.
-- Mask import from selected textures, file picker, or timeline drag-and-drop; mask export; non-destructive `UQuickSDFAsset` storage; UE transaction-based undo/redo.
+- Mask import from file picker or timeline drag-and-drop; mask export; non-destructive `UQuickSDFAsset` storage; UE transaction-based undo/redo.
 - CPU SDF generation with automatic Monopolar/Bipolar packing, optional 1x-8x upscaling, and half-float texture export.
 - Example preview/toon materials under `Content/Materials/`.
 
@@ -65,11 +67,12 @@ Use this path when you only want to see a result quickly.
 2. Regenerate project files, build the project, enable **QuickSDFTool**, then restart the editor.
 3. Open the Editor Mode selector and choose **Quick SDF**.
 4. Select a mesh in the level.
-5. Paint white with `LMB`; paint black/shadow with `Shift + LMB`.
-6. Add, duplicate, delete, or move timeline keys for the light angles you want.
-7. Choose the paint target mode if you want a stroke to affect only the current mask, all masks, or a range before/after the current key.
-8. Click **Create Threshold Map** or **Generate SDF Threshold Map** in the tool details.
-9. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
+5. In **Material Slots**, click the row you want to edit. Use the small Bake icon on that row if the slot still needs a baked source mask.
+6. Paint white with `LMB`; paint black/shadow with `Shift + LMB`.
+7. Use the upper timeline lane to seek the light angle. Use the lower keyframe lane to select, add, duplicate, delete, or drag keyframes.
+8. Choose the paint target mode if you want a stroke to affect only the current mask, all masks, or a range before/after the current key. The highlighted timeline range shows what will be edited.
+9. Click **Generate Selected SDF** or **Generate SDF Threshold Map** in the tool details.
+10. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
 
 See [Examples](./Examples/README.md), [Material Setup](./Docs/MaterialSetup.md), and [Troubleshooting](./Docs/Troubleshooting.md) for a fuller walkthrough.
 
@@ -87,12 +90,12 @@ QuickSDFTool requires Unreal Engine 5.7 or later and a C++ Unreal project.
 
    ```text
    YourProject/
-   └── Plugins/
-       └── QuickSDFTool/
-           ├── QuickSDFTool.uplugin
-           ├── Source/
-           ├── Shaders/
-           └── Content/
+   |-- Plugins/
+       |-- QuickSDFTool/
+           |-- QuickSDFTool.uplugin
+           |-- Source/
+           |-- Shaders/
+           |-- Content/
    ```
 
 3. Regenerate project files and build:
@@ -124,34 +127,59 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 | --- | --- |
 | `LMB Drag` | Paint light/white |
 | `Shift + LMB Drag` | Paint shadow/black |
-| `Ctrl + F`, move mouse, click | Resize brush |
+| `Ctrl + F`, move mouse, click | Resize brush while the mouse is over the viewport |
 | `Alt + T` | Open the quick toggle menu |
 | `Alt + 1` | Cycle paint target mode |
 | `Alt + 2` - `Alt + 9` | Toggle Auto Light, Preview, UV overlay, Shadow overlay, Onion Skin, Quick Stroke, Symmetry, and Monotonic Guard |
 | `Left / Right Arrow` | Select previous / next timeline frame |
-| `Timeline Track Click / Drag` | Seek the light angle and select the nearest key |
+| `Material Slot Row Click` | Select the material slot / texture set to edit |
+| `Material Slot Bake Icon` | Bake that slot only |
+| `Timeline Seek Lane Click / Drag` | Seek the preview light angle without dragging keyframes |
 | `Timeline Key Click` | Select angle |
-| `Timeline Key Drag` | Adjust angle |
+| `Timeline Key Drag` | Adjust angle after the drag threshold is crossed |
+| `Timeline Status Badge Hover` | Inspect angle, texture, edit state, paint target inclusion, Guard state, overwrite state, and warning details |
 | `Timeline Add / Duplicate / Delete` | Create, copy, or remove keyframes |
-| `Timeline Seek Bar Click / Drag` | Seek the preview angle and select the nearest timeline key |
 | `Timeline 8 or 15 / Even` | Complete the default mask set or redistribute angles evenly. Symmetry mode completes to 8 masks; non-symmetry mode completes to 15 masks |
 | `Drag Texture2D assets onto timeline` | Import edited masks |
 | `Ctrl + Z / Ctrl + Y` | Undo / Redo |
 
 ## Features
 
-- **Custom Editor Mode** — Registers a dedicated UE5 mode accessible from the mode selector toolbar.
-- **Direct Mesh Painting** — Paint masks directly on target mesh surfaces with realtime preview and material-slot filtering.
-- **2D UV Canvas Painting** — Paint on a HUD-overlaid texture preview for texture-space control.
-- **Paint Target Modes** — Send a stroke to the current mask, all masks, or a before/after range on the timeline.
-- **Monotonic Guard / Clipping Mask** — When enabled, normal brush strokes and Quick Stroke are clipped at commit time so the same UV pixel does not flip repeatedly across mask angles. Current-mask strokes are checked against the surrounding processable mask set, but only pixels changed by the stroke are restored. Import, rebake, and SDF generation do not auto-fix masks; they only report validation warnings.
-- **Brush Feel Controls** — Lazy-radius stroke stabilization, fine spacing, antialiased brush masks, and pressure-driven brush radius for tablet workflows.
-- **Spatial Timeline UI** — Manage mask keyframes by light angle with thumbnail handles, a supported seek bar, add/duplicate/delete actions, snapping, symmetry-aware mask completion, and quick redistribution tools.
-- **Preview Light Workflow** — Temporarily mutes scene `DirectionalLight` actors, spawns a preview light, and restores original light intensity on exit/save.
-- **Auto Fill from Original Shading** — Bake current viewport/material lighting into masks as a starting point.
-- **Mask I/O** — Import edited masks from selected assets, image files, or timeline drops, and export mask textures for external editing.
-- **SDF Generation Pipeline** — Generate threshold maps through SDF interpolation, automatic Monopolar/Bipolar RGBA packing, and half-float texture output.
-- **Non-Destructive Workflow** — Store work in `UQuickSDFAsset`, optionally save mask textures with the asset, and iterate without losing mask state.
+- **Custom Editor Mode:** registers a dedicated UE5 mode accessible from the mode selector toolbar.
+- **Direct Mesh Painting:** paint masks directly on target mesh surfaces with realtime preview and material-slot filtering.
+- **Material Slot Workflow:** select a slot by clicking its row, read compact `Baked` / `Empty` state pills, and bake only the active slot from the row action. Multi-slot bulk bake controls are omitted from the standard workflow because most toon-mask edits are slot-specific.
+- **2D UV Canvas Painting:** paint on a HUD-overlaid texture preview for texture-space control.
+- **Paint Target Modes:** send a stroke to the current mask, all masks, or a before/after range on the timeline. The timeline range highlight uses the same midpoint-based key segments as the edit operation.
+- **Timeline Status Badges:** each key can show mask availability, active Guard state, and warning state without blocking keyframe interaction. Tooltips expose the texture name or `Missing`, paint-target inclusion, overwrite status, and warning message.
+- **Monotonic Guard / Clipping Mask:** when enabled, normal brush strokes and Quick Stroke are clipped at commit time so the same UV pixel does not flip repeatedly across mask angles. Current-mask strokes are checked against the surrounding processable mask set, but only pixels changed by the stroke are restored. Import, rebake, and SDF generation do not auto-fix masks; they only report validation warnings.
+- **Brush Feel Controls:** lazy-radius stroke stabilization, fine spacing, antialiased brush masks, and pressure-driven brush radius for tablet workflows.
+- **Spatial Timeline UI:** manage mask keyframes by light angle with separate seek/keyframe lanes, clearer thumbnail segmentation, status badges, add/duplicate/delete actions, snapping, symmetry-aware mask completion, and quick redistribution tools.
+- **Preview Light Workflow:** temporarily mutes scene `DirectionalLight` actors, spawns a preview light, and restores original light intensity on exit/save.
+- **Auto Fill from Original Shading:** bake current viewport/material lighting into masks as a starting point.
+- **Mask I/O:** import edited masks from image files or timeline drops, and export mask textures for external editing.
+- **SDF Generation Pipeline:** generate threshold maps through SDF interpolation, automatic Monopolar/Bipolar RGBA packing, and half-float texture output.
+- **Non-Destructive Workflow:** store work in `UQuickSDFAsset`, optionally save mask textures with the asset, and iterate without losing mask state.
+
+## Material Slots
+
+The `Quick SDF > Material Slots` section is designed for the common case where artists edit one material slot at a time.
+
+- Clicking a row selects the corresponding texture set and updates the active paint/bake target.
+- Each row shows the slot number, slot name, material name, and a compact status pill such as `Baked` or `Empty`.
+- The row action button bakes only that slot. The old `Bake Selected`, `Bake Missing`, and `Generate All` style bulk actions are intentionally left out of the primary UI.
+- Active rows use a subtle accent, brighter background, and border so the editable slot remains visible in dense Details Panel layouts.
+- Long slot lists are contained in a scrollable area to avoid pushing the rest of the tool UI off screen.
+
+## Timeline
+
+The timeline is split into two interaction lanes to reduce accidental edits.
+
+- The upper seek lane is the only area that seeks the preview angle by click or drag. It shows the current light/seek cursor and degree ticks.
+- The lower keyframe lane contains thumbnails and key handles. Keyframes select on click and move only after the drag threshold is crossed.
+- Thumbnail backgrounds do not handle input; keyframe widgets own selection and drag behavior.
+- Paint-target range highlights are always shown for `Current`, `All`, `Before`, and `After`. The visible range is calculated from neighboring-angle midpoints so the highlight matches the masks that will be edited.
+- Key status badges are hit-test invisible and do not interfere with selecting, dragging, importing, or seeking.
+- The current vector-layer badge exists internally as a hidden placeholder for future Quick Nose / Quick Reshape work.
 
 ## Monotonic Guard
 
@@ -192,7 +220,7 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 ### Planned Feature Requirements
 
 > [!NOTE]
-> These are roadmap requirements for future work. They are not available in the current preview build and do not change the current C++ API, `UQuickSDFAsset` format, Slate UI, shortcuts, or asset formats.
+> These are roadmap requirements for future work. They are not available in the current preview build and do not change the current C++ API, `UQuickSDFAsset` format, Slate UI, shortcuts, or asset formats unless a future release explicitly says so.
 
 #### Quick Nose
 
@@ -220,12 +248,6 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 - Existing brush controls such as radius, falloff, antialiasing, pressure radius, quick stroke, and paint target modes should work where practical in both projection modes.
 - The viewport cursor should clearly indicate the active projection mode because the same stroke may produce different UV results depending on the mode.
 
-#### Timeline Status Badges
-
-- Extend the existing thumbnail timeline with range highlights for `Current / All / Before / After`.
-- Show compact badges per key for mask presence, `Monotonic Guard` enabled state, unbaked vector layers, and warnings.
-- Tooltips should expose the angle, texture name, edit state, and warning details for each mask.
-
 #### Actor Mesh Component Selection
 
 - Address the current limitation where a single actor that owns multiple mesh components does not provide a clear way to choose which mesh should be edited by QuickSDFTool.
@@ -237,10 +259,10 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 
 #### Material Slot Isolation and Bake Scope
 
+- The current UI already supports row-click material-slot selection and per-slot baking. Future work should focus on advanced edit-scope behavior instead of reintroducing broad bulk-bake controls.
 - Fix material-slot isolation so hidden non-target slots do not keep blocking paint hits. When artists isolate one slot or body part, paint picking and brush projection should ignore collision or hit results from the slots that are not visible/editable.
 - Treat the isolate state as an edit target filter, not only as a viewport visibility filter, so artists can reliably paint the currently selected slot even when the full mesh still has geometry under the cursor.
-- Avoid a naive `Auto Bake All Slots` workflow for meshes that have multiple material slots with separated UV layouts, because baking unused or unrelated slots can be slow and may not produce meaningful output.
-- Add an explicit per-material-slot bake scope so artists can choose the slots that need baking, skip unused slots, and understand the cost before starting a bake.
+- Add optional advanced bake-scope controls for meshes whose slots have separated UV layouts, so artists can choose exactly which slots need baking, skip unused slots, and understand the cost before starting a bake.
 - Preserve separate bake outputs or warnings per slot when UV islands/material slots do not share a useful combined layout.
 
 #### Threshold Map Reverse Conversion
@@ -273,27 +295,27 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 - `Quick Reshape` should support multiple boundary lines such as `0 / 30 / 60 / 90` degrees on one guide layer, update only the matching angle masks, keep the guide layer editable after baking, and warn for lines that do not split a UV island or close a region.
 - `Brush Projection Mode` should let artists switch between the current `Surface / UV` behavior and a `View Projected` brush, preserve the visible brush shape in screen space, and avoid painting hidden or back-facing surfaces.
 - `Actor Mesh Component Selection` should let a single actor with multiple mesh components choose one target component, paint and bake only that component, and preserve separate QuickSDF state when switching between components.
-- `Material Slot Isolation and Bake Scope` should let artists paint an isolated material slot without hidden slots stealing hit detection, and should bake only the explicitly selected material slots when UV layouts are separated.
+- `Material Slot Isolation and Bake Scope` should extend the existing slot list by preventing hidden slots from stealing hit detection and by adding optional advanced bake-scope selection for separated UV layouts.
 - `Threshold Map Reverse Conversion` should let artists specify an angle, preview the reconstructed mask from a completed threshold map, and extract it for repair or reuse.
 - `Mask Freeze` should lower VRAM usage in a high-resolution, multi-mask setup, restore frozen masks without visual changes, and automatically thaw every affected mask before applying multi-mask edits.
 - `Stroke Auto Fill` should be verified for current-only edits, `Before / After / All` edits, UV-island isolation, and left/right or inside/outside fill selection.
-- The English and Japanese README entries should stay synchronized and clearly marked as planned, not implemented.
+- The English and Japanese README entries should stay synchronized and clearly mark planned work separately from implemented features.
 
 ## Architecture
 
 ```text
 QuickSDFTool/
-├── Content/
-│   ├── Materials/        # Preview and toon materials
-│   ├── Textures/         # Default textures
-│   └── Widget/           # UMG widget blueprints
-├── Shaders/
-│   └── Private/
-│       └── JumpFloodingCS.usf
-└── Source/
-    ├── QuickSDFTool/              # Runtime module and UQuickSDFAsset
-    ├── QuickSDFToolEditor/        # Editor Mode, paint tool, timeline, processor
-    └── QuickSDFToolShaders/       # Compute shader binding
+|-- Content/
+|   |-- Materials/        # Preview and toon materials
+|   |-- Textures/         # Default textures
+|   |-- Widget/           # UMG widget blueprints
+|-- Shaders/
+|   |-- Private/
+|       |-- JumpFloodingCS.usf
+|-- Source/
+    |-- QuickSDFTool/              # Runtime module and UQuickSDFAsset
+    |-- QuickSDFToolEditor/        # Editor Mode, paint tool, timeline, processor
+    |-- QuickSDFToolShaders/       # Compute shader binding
 ```
 
 | Module | Type | Key Dependencies |
@@ -306,22 +328,32 @@ QuickSDFTool/
 
 - `UQuickSDFAsset` uses the active `FQuickSDFTextureSetData` as the primary source for editable masks, resolution, UV channel, and final SDF texture data. Legacy top-level fields are migrated on load on a best-effort basis.
 - `UQuickSDFPaintTool` is kept as the Interactive Tools Framework facade for lifecycle, input routing, and UI commands. Paint state, undo changes, mask utilities, SDF helpers, asset selection, and render target support live in focused private helpers.
-- Timeline keyframe rendering is split from the main timeline widget, and mask import validation is handled by a Slate-independent import model so the UI and import rules can evolve independently.
-- Developer automation tests cover default angles, angle-name parsing, SDF edge cases, asset migration, mask import model validation, and Monotonic Guard behavior.
+- Timeline keyframe rendering is split from the main timeline widget. Timeline range/key status calculations live in `QuickSDFTimelineStatus` so range highlighting, badges, and tooltips can be tested without Slate.
+- Mask import validation is handled by a Slate-independent import model so the UI and import rules can evolve independently.
+- Developer automation tests cover default angles, angle-name parsing, SDF edge cases, asset migration, mask import model validation, `TimelineRangeStatus`, `TimelineKeyStatus`, and Monotonic Guard behavior.
 
 ### Development Verification
 
-The current development target is UE 5.7.x. For local verification, build a C++ host project with the plugin enabled, then run the `QuickSDFTool` automation test group. The refactor was validated against `sdfbuildEditor Win64 Development` and `Automation RunTests QuickSDFTool`.
+The current development target is UE 5.7.x. For local verification, build a C++ host project with the plugin enabled, then run the `QuickSDFTool` automation test group.
+
+Useful verification commands in the Unreal Editor command line or Session Frontend:
+
+```text
+Automation RunTests QuickSDFTool
+Automation RunTests QuickSDFTool.Core.Timeline
+```
+
+The recent refactor was validated against `sdfbuildEditor Win64 Development` and the focused timeline automation coverage.
 
 ## How It Works
 
-1. **Paint** — For each light angle, paint a binary mask on the mesh or UV preview.
-2. **SDF** — Convert each mask to a signed distance field.
-3. **Interpolate** — Find transitions between neighboring masks and derive threshold value `T`.
-4. **Composite** — Automatically choose Monopolar or Bipolar output and pack values into RGBA channels:
+1. **Paint:** for each light angle, paint a binary mask on the mesh or UV preview.
+2. **SDF:** convert each mask to a signed distance field.
+3. **Interpolate:** find transitions between neighboring masks and derive threshold value `T`.
+4. **Composite:** automatically choose Monopolar or Bipolar output and pack values into RGBA channels:
    - **Monopolar:** symmetric shadow behavior, same threshold in RGB.
    - **Bipolar:** asymmetric shadow enter/exit values across RGBA.
-5. **Export** — Save the final threshold map as a 16-bit half-float texture.
+5. **Export:** save the final threshold map as a 16-bit half-float texture.
 
 ## Repository Setup Checklist
 
@@ -348,8 +380,8 @@ Contributions are welcome. Good first areas are documentation, UE version verifi
 
 ## Acknowledgments
 
-- [Unreal Engine Interactive Tools Framework](https://docs.unrealengine.com/5.0/en-US/interactive-tools-framework-in-unreal-engine/) — foundation for the editor paint workflow.
-- Felzenszwalb & Huttenlocher — *Distance Transforms of Sampled Functions* (2012).
-- Jump Flooding Algorithm (JFA) — GPU distance field generation reference.
-- [UE5 SDF Face Shadowマッピングでアニメ顔用の影を作ろう](https://unrealengine.hatenablog.com/entry/2024/02/28/222220).
+- [Unreal Engine Interactive Tools Framework](https://docs.unrealengine.com/5.0/en-US/interactive-tools-framework-in-unreal-engine/) - foundation for the editor paint workflow.
+- Felzenszwalb & Huttenlocher - *Distance Transforms of Sampled Functions* (2012).
+- Jump Flooding Algorithm (JFA) - GPU distance field generation reference.
+- [UE5 SDF Face Shadow Mappingでアニメ顔用の影を作ろう](https://unrealengine.hatenablog.com/entry/2024/02/28/222220).
 - [SDF TextureとLiltoonでセルルックの影を再現しよう！](https://note.com/ca__mocha/n/n9289fbbc4c8b).
