@@ -440,44 +440,24 @@ void UQuickSDFPaintTool::StampQuickLineSegment(const FQuickSDFStrokeSample& Star
 		return;
 	}
 
+	if (ActiveStrokeInputMode == EQuickSDFStrokeInputMode::MeshSurface)
+	{
+		StampQuickLineSurfaceSegment(StartSample, EndSample);
+		return;
+	}
+
 	if (QuickLineSourceSamples.Num() >= 2)
 	{
 		TArray<FQuickSDFStrokeSample> CurveSamples;
 		CurveSamples.Reserve(QuickLineSourceSamples.Num());
+		const FQuickSDFStrokeSample& SourceStart = QuickLineSourceSamples[0];
+		const FQuickSDFStrokeSample& SourceEnd = QuickLineSourceSamples.Last();
 		for (const FQuickSDFStrokeSample& SourceSample : QuickLineSourceSamples)
 		{
-			CurveSamples.Add(TransformQuickLineSample(SourceSample));
+			CurveSamples.Add(TransformQuickLineSample(SourceSample, SourceStart, SourceEnd, StartSample, EndSample));
 		}
 
-		UTextureRenderTarget2D* RT = GetActiveRenderTarget();
-		if (!RT)
-		{
-			return;
-		}
-
-		const FVector2D RTSize(RT->SizeX, RT->SizeY);
-		const double SpacingPixels = FMath::Max(GetCurrentStrokeSpacing(RT), 1.0);
-		TArray<FQuickSDFStrokeSample> ResampledSamples;
-		ResampledSamples.Reserve(CurveSamples.Num() * 4);
-		ResampledSamples.Add(CurveSamples[0]);
-
-		for (int32 Index = 1; Index < CurveSamples.Num(); ++Index)
-		{
-			const FQuickSDFStrokeSample& Prev = CurveSamples[Index - 1];
-			const FQuickSDFStrokeSample& Curr = CurveSamples[Index];
-			const FVector2D PrevPixel(Prev.UV.X * RTSize.X, Prev.UV.Y * RTSize.Y);
-			const FVector2D CurrPixel(Curr.UV.X * RTSize.X, Curr.UV.Y * RTSize.Y);
-			const double SegmentPixels = FVector2D::Distance(PrevPixel, CurrPixel);
-			const int32 StepCount = FMath::Max(FMath::CeilToInt(SegmentPixels / SpacingPixels), 1);
-			for (int32 Step = 1; Step <= StepCount; ++Step)
-			{
-			const float Alpha = static_cast<float>(Step) / static_cast<float>(StepCount);
-			FQuickSDFStrokeSample Sample = LerpStrokeSample(Prev, Curr, Alpha);
-			ResampledSamples.Add(Sample);
-		}
-	}
-
-		StampSamples(ResampledSamples);
+		StampQuickLineResampledSamples(CurveSamples);
 		return;
 	}
 
@@ -500,26 +480,141 @@ void UQuickSDFPaintTool::StampQuickLineSegment(const FQuickSDFStrokeSample& Star
 	StampSamples(LineSamples);
 }
 
-FQuickSDFStrokeSample UQuickSDFPaintTool::TransformQuickLineSample(const FQuickSDFStrokeSample& SourceSample) const
+void UQuickSDFPaintTool::StampQuickLineSurfaceSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample)
 {
-	if (QuickLineSourceSamples.Num() < 2)
+	if (!CanInterpolateStrokeSamples(StartSample, EndSample))
 	{
-		return SourceSample;
+		TArray<FQuickSDFStrokeSample> EndpointSamples;
+		EndpointSamples.Reserve(2);
+		EndpointSamples.Add(StartSample);
+		if (FVector2f::DistSquared(StartSample.UV, EndSample.UV) > 1e-12f)
+		{
+			EndpointSamples.Add(EndSample);
+		}
+		StampSamples(EndpointSamples);
+		return;
 	}
 
-	const FQuickSDFStrokeSample& SourceStart = QuickLineSourceSamples[0];
-	const FQuickSDFStrokeSample& SourceEnd = QuickLineSourceSamples.Last();
+	TArray<FQuickSDFStrokeSample> SourceSegment;
+	SourceSegment.Reserve(QuickLineSourceSamples.Num());
+	const int32 TargetChartID = StartSample.PaintChartID;
+	for (const FQuickSDFStrokeSample& SourceSample : QuickLineSourceSamples)
+	{
+		if (SourceSample.PaintChartID != TargetChartID)
+		{
+			if (SourceSegment.Num() >= 2)
+			{
+				break;
+			}
+			SourceSegment.Reset();
+			continue;
+		}
+
+		if (SourceSegment.Num() > 0 && !CanInterpolateStrokeSamples(SourceSegment.Last(), SourceSample))
+		{
+			if (SourceSegment.Num() >= 2)
+			{
+				break;
+			}
+			SourceSegment.Reset();
+		}
+
+		SourceSegment.Add(SourceSample);
+	}
+
+	if (SourceSegment.Num() < 2)
+	{
+		SourceSegment.Reset();
+		SourceSegment.Add(StartSample);
+		SourceSegment.Add(EndSample);
+	}
+
+	const FQuickSDFStrokeSample& SourceStart = SourceSegment[0];
+	const FQuickSDFStrokeSample& SourceEnd = SourceSegment.Last();
+	TArray<FQuickSDFStrokeSample> CurveSamples;
+	CurveSamples.Reserve(SourceSegment.Num());
+	for (const FQuickSDFStrokeSample& SourceSample : SourceSegment)
+	{
+		CurveSamples.Add(TransformQuickLineSample(SourceSample, SourceStart, SourceEnd, StartSample, EndSample));
+	}
+
+	StampQuickLineResampledSamples(CurveSamples);
+}
+
+void UQuickSDFPaintTool::StampQuickLineResampledSamples(const TArray<FQuickSDFStrokeSample>& CurveSamples)
+{
+	if (CurveSamples.Num() == 0)
+	{
+		return;
+	}
+
+	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
+	if (!RT)
+	{
+		return;
+	}
+
+	const double SpacingPixels = FMath::Max(GetCurrentStrokeSpacing(RT), 1.0);
+	TArray<FQuickSDFStrokeSample> ResampledSamples;
+	ResampledSamples.Reserve(CurveSamples.Num() * 4);
+	ResampledSamples.Add(CurveSamples[0]);
+
+	auto FlushResampledSamples = [&ResampledSamples, this]()
+	{
+		if (ResampledSamples.Num() > 0)
+		{
+			StampSamples(ResampledSamples);
+			ResampledSamples.Reset();
+		}
+	};
+
+	for (int32 Index = 1; Index < CurveSamples.Num(); ++Index)
+	{
+		const FQuickSDFStrokeSample& Prev = CurveSamples[Index - 1];
+		const FQuickSDFStrokeSample& Curr = CurveSamples[Index];
+		if (!CanInterpolateStrokeSamples(Prev, Curr))
+		{
+			FlushResampledSamples();
+			ResampledSamples.Add(Curr);
+			continue;
+		}
+
+		const double SegmentPixels = GetSamplePixelDistance(Prev, Curr, RT);
+		const int32 StepCount = FMath::Max(FMath::CeilToInt(SegmentPixels / SpacingPixels), 1);
+		for (int32 Step = 1; Step <= StepCount; ++Step)
+		{
+			const float Alpha = static_cast<float>(Step) / static_cast<float>(StepCount);
+			ResampledSamples.Add(LerpStrokeSample(Prev, Curr, Alpha));
+		}
+	}
+
+	FlushResampledSamples();
+}
+
+FQuickSDFStrokeSample UQuickSDFPaintTool::TransformQuickLineSample(
+	const FQuickSDFStrokeSample& SourceSample,
+	const FQuickSDFStrokeSample& SourceStart,
+	const FQuickSDFStrokeSample& SourceEnd,
+	const FQuickSDFStrokeSample& TargetStart,
+	const FQuickSDFStrokeSample& TargetEnd) const
+{
 	const FVector2f SourceAxis = SourceEnd.UV - SourceStart.UV;
-	const FVector2f TargetAxis = QuickLineEndSample.UV - QuickLineStartSample.UV;
+	const FVector2f TargetAxis = TargetEnd.UV - TargetStart.UV;
 	const float SourceLength = SourceAxis.Size();
 	const float TargetLength = TargetAxis.Size();
 
 	FQuickSDFStrokeSample OutSample = SourceSample;
 	if (SourceLength <= KINDA_SMALL_NUMBER || TargetLength <= KINDA_SMALL_NUMBER)
 	{
-		const FVector2f UVOffset = QuickLineEndSample.UV - SourceEnd.UV;
+		const FVector2f UVOffset = TargetEnd.UV - SourceEnd.UV;
 		OutSample.UV = SourceSample.UV + UVOffset;
-		OutSample.WorldPos = SourceSample.WorldPos + (QuickLineEndSample.WorldPos - SourceEnd.WorldPos);
+		OutSample.WorldPos = SourceSample.WorldPos + (TargetEnd.WorldPos - SourceEnd.WorldPos);
+		OutSample.LocalUVScale = TargetEnd.LocalUVScale;
+		OutSample.TriangleID = TargetEnd.TriangleID;
+		OutSample.PaintChartID = TargetEnd.PaintChartID;
+		OutSample.ScreenPosition = TargetEnd.ScreenPosition;
+		OutSample.RayOrigin = TargetEnd.RayOrigin;
+		OutSample.RayDirection = TargetEnd.RayDirection;
 		return OutSample;
 	}
 
@@ -531,10 +626,16 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::TransformQuickLineSample(const FQuickS
 	const float Along = FVector2f::DotProduct(SourceOffset, SourceUnit);
 	const float Across = FVector2f::DotProduct(SourceOffset, SourcePerp);
 	const float Scale = TargetLength / SourceLength;
+	const float AlongAlpha = FMath::Clamp(Along / FMath::Max(SourceLength, KINDA_SMALL_NUMBER), 0.0f, 1.0f);
 
-	OutSample.UV = QuickLineStartSample.UV + TargetUnit * (Along * Scale) + TargetPerp * (Across * Scale);
-	OutSample.WorldPos = FVector3d(OutSample.UV.X, OutSample.UV.Y, 0.0);
-	OutSample.ScreenPosition = FMath::Lerp(QuickLineStartSample.ScreenPosition, QuickLineEndSample.ScreenPosition, Along / FMath::Max(SourceLength, KINDA_SMALL_NUMBER));
+	OutSample.UV = TargetStart.UV + TargetUnit * (Along * Scale) + TargetPerp * (Across * Scale);
+	OutSample.WorldPos = FMath::Lerp(TargetStart.WorldPos, TargetEnd.WorldPos, static_cast<double>(AlongAlpha));
+	OutSample.LocalUVScale = FMath::Lerp(TargetStart.LocalUVScale, TargetEnd.LocalUVScale, AlongAlpha);
+	OutSample.TriangleID = AlongAlpha < 0.5f ? TargetStart.TriangleID : TargetEnd.TriangleID;
+	OutSample.PaintChartID = TargetStart.PaintChartID == TargetEnd.PaintChartID ? TargetStart.PaintChartID : INDEX_NONE;
+	OutSample.ScreenPosition = FMath::Lerp(TargetStart.ScreenPosition, TargetEnd.ScreenPosition, AlongAlpha);
+	OutSample.RayOrigin = FMath::Lerp(TargetStart.RayOrigin, TargetEnd.RayOrigin, static_cast<double>(AlongAlpha));
+	OutSample.RayDirection = FMath::Lerp(TargetStart.RayDirection, TargetEnd.RayDirection, static_cast<double>(AlongAlpha)).GetSafeNormal();
 	return OutSample;
 }
 

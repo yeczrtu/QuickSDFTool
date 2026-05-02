@@ -231,7 +231,14 @@ protected:
 	void TryActivateQuickLine();
 	void RedrawQuickLinePreview();
 	void StampQuickLineSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample);
-	FQuickSDFStrokeSample TransformQuickLineSample(const FQuickSDFStrokeSample& SourceSample) const;
+	void StampQuickLineSurfaceSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample);
+	void StampQuickLineResampledSamples(const TArray<FQuickSDFStrokeSample>& CurveSamples);
+	FQuickSDFStrokeSample TransformQuickLineSample(
+		const FQuickSDFStrokeSample& SourceSample,
+		const FQuickSDFStrokeSample& SourceStart,
+		const FQuickSDFStrokeSample& SourceEnd,
+		const FQuickSDFStrokeSample& TargetStart,
+		const FQuickSDFStrokeSample& TargetEnd) const;
 
 	TSharedPtr<UE::Geometry::FDynamicMesh3> TargetMesh;
 	TSharedPtr<UE::Geometry::FDynamicMeshAABBTree3> TargetMeshSpatial;
