@@ -17,7 +17,8 @@ constexpr float QuickSDFTimelineDragStartDistance = 8.0f;
 constexpr float QuickSDFTimelineAccentR = 0.35f;
 constexpr float QuickSDFTimelineAccentG = 0.82f;
 constexpr float QuickSDFTimelineAccentB = 1.0f;
-constexpr float QuickSDFTimelineBadgeSize = 5.0f;
+constexpr float QuickSDFTimelineBadgeSize = 7.0f;
+constexpr float QuickSDFTimelineBadgeInnerSize = 5.0f;
 
 FLinearColor GetQuickSDFTimelineAccentColor(float Alpha = 1.0f)
 {
@@ -34,7 +35,18 @@ TSharedRef<SWidget> MakeStatusBadge(TAttribute<EVisibility> Visibility, TAttribu
 			SNew(SBorder)
 			.Visibility(EVisibility::HitTestInvisible)
 			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-			.BorderBackgroundColor(Color)
+			.BorderBackgroundColor(FLinearColor(0.0f, 0.0f, 0.0f, 0.86f))
+			.Padding(1.0f)
+			[
+				SNew(SBox)
+				.WidthOverride(QuickSDFTimelineBadgeInnerSize)
+				.HeightOverride(QuickSDFTimelineBadgeInnerSize)
+				[
+					SNew(SBorder)
+					.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+					.BorderBackgroundColor(Color)
+				]
+			]
 		];
 }
 }
@@ -166,55 +178,55 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 		+ SOverlay::Slot()
 		.HAlign(HAlign_Center)
 		.VAlign(VAlign_Top)
-		.Padding(0.0f, 11.0f, 0.0f, 0.0f)
+		.Padding(0.0f, 10.0f, 0.0f, 0.0f)
 		[
 			SNew(SHorizontalBox)
 			.Visibility(EVisibility::HitTestInvisible)
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
-			.Padding(1.0f, 0.0f)
+			.Padding(1.5f, 0.0f)
 			[
 				MakeStatusBadge(
 					TAttribute<EVisibility>(EVisibility::HitTestInvisible),
 					TAttribute<FSlateColor>::CreateLambda([this]()
 					{
 						return bHasMask.Get()
-							? FSlateColor(FLinearColor(0.40f, 0.86f, 0.58f, 0.95f))
-							: FSlateColor(FLinearColor(0.45f, 0.45f, 0.45f, 0.62f));
+							? FSlateColor(FLinearColor(0.42f, 1.0f, 0.68f, 1.0f))
+							: FSlateColor(FLinearColor(0.62f, 0.62f, 0.62f, 0.80f));
 					}))
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
-			.Padding(1.0f, 0.0f)
+			.Padding(1.5f, 0.0f)
 			[
 				MakeStatusBadge(
 					TAttribute<EVisibility>::CreateLambda([this]()
 					{
 						return bGuardEnabled.Get() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 					}),
-					TAttribute<FSlateColor>(FLinearColor(0.35f, 0.70f, 1.0f, 0.95f)))
+					TAttribute<FSlateColor>(FLinearColor(0.20f, 0.68f, 1.0f, 1.0f)))
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
-			.Padding(1.0f, 0.0f)
+			.Padding(1.5f, 0.0f)
 			[
 				MakeStatusBadge(
 					TAttribute<EVisibility>::CreateLambda([this]()
 					{
 						return bHasUnbakedVectorLayer.Get() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 					}),
-					TAttribute<FSlateColor>(FLinearColor(0.80f, 0.50f, 1.0f, 0.95f)))
+					TAttribute<FSlateColor>(FLinearColor(0.82f, 0.42f, 1.0f, 1.0f)))
 			]
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
-			.Padding(1.0f, 0.0f)
+			.Padding(1.5f, 0.0f)
 			[
 				MakeStatusBadge(
 					TAttribute<EVisibility>::CreateLambda([this]()
 					{
 						return bHasWarning.Get() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 					}),
-					TAttribute<FSlateColor>(FLinearColor(1.0f, 0.58f, 0.22f, 0.98f)))
+					TAttribute<FSlateColor>(FLinearColor(1.0f, 0.50f, 0.10f, 1.0f)))
 			]
 		]
 	];

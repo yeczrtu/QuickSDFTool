@@ -272,14 +272,14 @@ FLinearColor GetPaintTargetRangeColor(const UQuickSDFPaintTool* Tool)
 	switch (Mode)
 	{
 	case EQuickSDFPaintTargetMode::All:
-		return FLinearColor(0.35f, 0.82f, 1.0f, 0.18f);
+		return FLinearColor(0.35f, 0.82f, 1.0f, 0.24f);
 	case EQuickSDFPaintTargetMode::BeforeCurrent:
-		return FLinearColor(0.36f, 0.64f, 1.0f, 0.17f);
+		return FLinearColor(0.36f, 0.64f, 1.0f, 0.23f);
 	case EQuickSDFPaintTargetMode::AfterCurrent:
-		return FLinearColor(0.28f, 0.86f, 0.64f, 0.17f);
+		return FLinearColor(0.28f, 0.86f, 0.64f, 0.23f);
 	case EQuickSDFPaintTargetMode::CurrentOnly:
 	default:
-		return FLinearColor(0.35f, 0.82f, 1.0f, 0.13f);
+		return FLinearColor(0.35f, 0.82f, 1.0f, 0.20f);
 	}
 }
 }
@@ -1324,7 +1324,43 @@ void SQuickSDFTimeline::RebuildTimeline()
 
 		const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
 		const float LeftPercent = FMath::Clamp(RangeStatus.TargetRangeLeftAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
-		return FVector2D(FMath::Max(0.0f, TrackWidth) * LeftPercent + QuickSDFTimelineTrackPadding, KeyframeLaneTop + 2.0f);
+		return FVector2D(FMath::Max(0.0f, TrackWidth) * LeftPercent + QuickSDFTimelineTrackPadding, KeyframeLaneTop + 5.0f);
+	}))
+	.Size(TAttribute<FVector2D>::CreateLambda([this, KeyframeLaneHeight]() {
+		const FQuickSDFTimelineRangeStatus RangeStatus = BuildTimelineRangeStatus(GetActivePaintTool());
+		if (!RangeStatus.bHasTargetRange || RangeStatus.MaxAngle <= 0.0f)
+		{
+			return FVector2D::ZeroVector;
+		}
+
+		const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+		const float LeftPercent = FMath::Clamp(RangeStatus.TargetRangeLeftAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
+		const float RightPercent = FMath::Clamp(RangeStatus.TargetRangeRightAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
+		return FVector2D(FMath::Max(0.0f, TrackWidth) * FMath::Max(0.0f, RightPercent - LeftPercent), FMath::Max(0.0f, KeyframeLaneHeight - 10.0f));
+	}))
+	[
+		SNew(SBorder)
+		.Visibility(EVisibility::HitTestInvisible)
+		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+		.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this]()
+		{
+			FLinearColor Color = GetPaintTargetRangeColor(GetActivePaintTool());
+			Color.A *= 0.70f;
+			return FSlateColor(Color);
+		}))
+	];
+
+	TimelineTrackCanvas->AddSlot()
+	.Position(TAttribute<FVector2D>::CreateLambda([this, KeyframeLaneTop]() {
+		const FQuickSDFTimelineRangeStatus RangeStatus = BuildTimelineRangeStatus(GetActivePaintTool());
+		if (!RangeStatus.bHasTargetRange || RangeStatus.MaxAngle <= 0.0f)
+		{
+			return FVector2D(-1000.0f, -1000.0f);
+		}
+
+		const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+		const float LeftPercent = FMath::Clamp(RangeStatus.TargetRangeLeftAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
+		return FVector2D(FMath::Max(0.0f, TrackWidth) * LeftPercent + QuickSDFTimelineTrackPadding, KeyframeLaneTop + 1.0f);
 	}))
 	.Size(TAttribute<FVector2D>::CreateLambda([this]() {
 		const FQuickSDFTimelineRangeStatus RangeStatus = BuildTimelineRangeStatus(GetActivePaintTool());
@@ -1336,7 +1372,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 		const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
 		const float LeftPercent = FMath::Clamp(RangeStatus.TargetRangeLeftAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
 		const float RightPercent = FMath::Clamp(RangeStatus.TargetRangeRightAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
-		return FVector2D(FMath::Max(0.0f, TrackWidth) * FMath::Max(0.0f, RightPercent - LeftPercent), 2.0f);
+		return FVector2D(FMath::Max(0.0f, TrackWidth) * FMath::Max(0.0f, RightPercent - LeftPercent), 3.0f);
 	}))
 	[
 		SNew(SBorder)
@@ -1346,6 +1382,42 @@ void SQuickSDFTimeline::RebuildTimeline()
 		{
 			FLinearColor Color = GetPaintTargetRangeColor(GetActivePaintTool());
 			Color.A = 0.70f;
+			return FSlateColor(Color);
+		}))
+	];
+
+	TimelineTrackCanvas->AddSlot()
+	.Position(TAttribute<FVector2D>::CreateLambda([this, KeyframeLaneTop, KeyframeLaneHeight]() {
+		const FQuickSDFTimelineRangeStatus RangeStatus = BuildTimelineRangeStatus(GetActivePaintTool());
+		if (!RangeStatus.bHasTargetRange || RangeStatus.MaxAngle <= 0.0f)
+		{
+			return FVector2D(-1000.0f, -1000.0f);
+		}
+
+		const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+		const float LeftPercent = FMath::Clamp(RangeStatus.TargetRangeLeftAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
+		return FVector2D(FMath::Max(0.0f, TrackWidth) * LeftPercent + QuickSDFTimelineTrackPadding, KeyframeLaneTop + KeyframeLaneHeight - 4.0f);
+	}))
+	.Size(TAttribute<FVector2D>::CreateLambda([this]() {
+		const FQuickSDFTimelineRangeStatus RangeStatus = BuildTimelineRangeStatus(GetActivePaintTool());
+		if (!RangeStatus.bHasTargetRange || RangeStatus.MaxAngle <= 0.0f)
+		{
+			return FVector2D::ZeroVector;
+		}
+
+		const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+		const float LeftPercent = FMath::Clamp(RangeStatus.TargetRangeLeftAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
+		const float RightPercent = FMath::Clamp(RangeStatus.TargetRangeRightAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
+		return FVector2D(FMath::Max(0.0f, TrackWidth) * FMath::Max(0.0f, RightPercent - LeftPercent), 3.0f);
+	}))
+	[
+		SNew(SBorder)
+		.Visibility(EVisibility::HitTestInvisible)
+		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+		.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this]()
+		{
+			FLinearColor Color = GetPaintTargetRangeColor(GetActivePaintTool());
+			Color.A = 0.58f;
 			return FSlateColor(Color);
 		}))
 	];
