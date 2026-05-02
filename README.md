@@ -202,7 +202,7 @@ The timeline is split into two interaction lanes to reduce accidental edits.
 - [ ] Confirm and document the final SDF output direction.
 - [ ] Improve or document UV-dependent brush-size mismatch.
 - [ ] Add a short end-to-end video showing mask paint -> SDF texture -> toon shader result.
-- [ ] Publish `v0.1.0-preview` with release notes and install verification steps.
+- [ ] Publish preview releases with release notes and install verification steps.
 
 ### P1: Improve Performance and Compatibility
 
@@ -361,7 +361,7 @@ For maintainers preparing the GitHub page:
 
 - Add these repository topics: `unreal-engine`, `ue5`, `toon-shading`, `cel-shading`, `sdf`, `editor-plugin`, `technical-art`.
 - Upload `.github/assets/social-preview.svg` as the GitHub Social Preview image, or export it to PNG first.
-- Create a `v0.1.0-preview` release using [the prepared release notes](./Docs/ReleaseNotes/v0.1.0-preview.md).
+- Create preview releases using the matching files under [Docs/ReleaseNotes](./Docs/ReleaseNotes/).
 
 ## Known Defects
 
