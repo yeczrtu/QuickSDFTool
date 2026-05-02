@@ -11,6 +11,7 @@ inline constexpr int32 QuickSDFPreviewActionIncreaseBrush = static_cast<int32>(E
 inline constexpr int32 QuickSDFActionOpenToggleMenu = static_cast<int32>(EStandardToolActions::BaseClientDefinedActionID) + 20;
 inline constexpr int32 QuickSDFActionToggleBase = static_cast<int32>(EStandardToolActions::BaseClientDefinedActionID) + 30;
 inline constexpr float QuickSDFMinResizeSensitivity = 0.01f;
+inline constexpr float QuickSDFInitialBrushRadius = 2.5f;
 inline constexpr int32 QuickSDFBipolarDetectionStride = 500;
 inline constexpr int32 QuickSDFDefaultSymmetricAngleCount = 8;
 inline constexpr int32 QuickSDFDefaultAsymmetricAngleCount = (QuickSDFDefaultSymmetricAngleCount - 1) * 2 + 1;
