@@ -1,4 +1,4 @@
-﻿#include "QuickSDFSelectTool.h"
+#include "QuickSDFSelectTool.h"
 #include "InteractiveToolManager.h"
 #include "ToolContextInterfaces.h"
 #include "QuickSDFToolSubsystem.h"

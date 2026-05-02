@@ -149,7 +149,7 @@ void UQuickSDFPaintTool::FillOriginalShading(int32 AngleIndex)
 	TArray<FMeshData*> MeshSettings;
 	MeshSettings.Add(&MeshData);
 
-	// ベイク実衁E
+	// 繝吶う繧ｯ螳溯｡・
 	Module.BakeMaterials(MaterialSettings, MeshSettings, BakeOutputs);
 
 	if (BakeOutputs.Num() > 0)
@@ -157,13 +157,13 @@ void UQuickSDFPaintTool::FillOriginalShading(int32 AngleIndex)
 		TArray<FColor> FinalPixels;
 		bool bGotPixels = false;
 
-		// Emissive をチェチE�� (LDR)
+		// Emissive 繧偵メ繧ｧ繝・け (LDR)
 		if (BakeOutputs[0].PropertyData.Contains(MP_EmissiveColor) && BakeOutputs[0].PropertyData[MP_EmissiveColor].Num() > 1)
 		{
 			FinalPixels = BakeOutputs[0].PropertyData[MP_EmissiveColor];
 			bGotPixels = true;
 		}
-		// BaseColor をチェチE�� (LDR)
+		// BaseColor 繧偵メ繧ｧ繝・け (LDR)
 		else if (BakeOutputs[0].PropertyData.Contains(MP_BaseColor) && BakeOutputs[0].PropertyData[MP_BaseColor].Num() > 1)
 		{
 			FinalPixels = BakeOutputs[0].PropertyData[MP_BaseColor];

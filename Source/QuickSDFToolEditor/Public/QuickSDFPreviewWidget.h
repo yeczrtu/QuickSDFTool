@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "Blueprint/UserWidget.h"
 #include "QuickSDFPaintTool.h"
 #include "QuickSDFPreviewWidget.generated.h"

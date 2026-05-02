@@ -1,4 +1,4 @@
-﻿#include "QuickSDFEditorModeCommands.h"
+#include "QuickSDFEditorModeCommands.h"
 
 #include "QuickSDFEditorMode.h"
 

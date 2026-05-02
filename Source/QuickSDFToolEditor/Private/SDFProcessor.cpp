@@ -1,4 +1,4 @@
-﻿#include "SDFProcessor.h"
+#include "SDFProcessor.h"
 
 TArray<uint8> FSDFProcessor::ConvertToGrayscale(const TArray<FColor>& Src)
 {

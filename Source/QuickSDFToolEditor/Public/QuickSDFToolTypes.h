@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "CoreMinimal.h"
 
 enum class EQuickSDFStrokeInputMode : uint8
