@@ -96,8 +96,7 @@ private:
 	void OnKeyframeAngleChanged(float NewAngle, int32 Index);
 	void OnKeyframeDragStarted();
 	void OnKeyframeDragEnded();
-	bool IsTimelineTrackUnderCursor(const FVector2D& ScreenPosition) const;
-	bool IsNearKeyframeHandle(const FVector2D& ScreenPosition) const;
+	bool IsSeekLaneUnderCursor(const FVector2D& ScreenPosition) const;
 	int32 FindKeyframeAtScreenPosition(const FVector2D& ScreenPosition) const;
 	void SeekTimelineAtScreenPosition(const FVector2D& ScreenPosition);
 	void OpenImportPanel(const TArray<FQuickSDFMaskImportSource>& Sources);

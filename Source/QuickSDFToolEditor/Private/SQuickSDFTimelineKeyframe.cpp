@@ -12,7 +12,7 @@
 
 namespace
 {
-constexpr float QuickSDFTimelineDragStartDistance = 4.0f;
+constexpr float QuickSDFTimelineDragStartDistance = 8.0f;
 constexpr float QuickSDFTimelineAccentR = 0.35f;
 constexpr float QuickSDFTimelineAccentG = 0.82f;
 constexpr float QuickSDFTimelineAccentB = 1.0f;
@@ -155,7 +155,6 @@ FReply SQuickSDFTimelineKeyframe::OnMouseButtonDown(const FGeometry& MyGeometry,
 		bIsMouseDown = true;
 		bIsDragging = false;
 		MouseDownScreenPosition = MouseEvent.GetScreenSpacePosition();
-		OnClicked.ExecuteIfBound();
 		return FReply::Handled().CaptureMouse(SharedThis(this));
 	}
 	return FReply::Unhandled();
@@ -170,6 +169,10 @@ FReply SQuickSDFTimelineKeyframe::OnMouseButtonUp(const FGeometry& MyGeometry, c
 		{
 			bIsDragging = false;
 			OnDragEnded.ExecuteIfBound();
+		}
+		else
+		{
+			OnClicked.ExecuteIfBound();
 		}
 		return FReply::Handled().ReleaseMouseCapture();
 	}
@@ -204,6 +207,7 @@ FReply SQuickSDFTimelineKeyframe::OnMouseMove(const FGeometry& MyGeometry, const
 			}
 
 			bIsDragging = true;
+			OnClicked.ExecuteIfBound();
 			OnDragStarted.ExecuteIfBound();
 		}
 
