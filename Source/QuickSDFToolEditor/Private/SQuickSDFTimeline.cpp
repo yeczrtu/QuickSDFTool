@@ -317,7 +317,7 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 						[
 							MakeTimelineIconButton(
 								"QuickSDF.Action.ImportMasks",
-								LOCTEXT("ImportMasksTooltip", "Assign selected or dragged Texture2D assets to mask slots"),
+								LOCTEXT("ImportMasksTooltip", "Open the mask import panel. Choose Texture2D assets in the panel or drag them onto it."),
 								FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnImportClicked))
 						]
 
@@ -446,7 +446,7 @@ void SQuickSDFTimeline::Tick(const FGeometry& AllottedGeometry, const double InC
 
 	if (Tool->ConsumeImportPanelRequest())
 	{
-		OpenImportPanel(MakeImportSourcesFromTextures(QuickSDFPaintToolPrivate::CollectSelectedTextureAssets()));
+		OpenImportPanel(TArray<FQuickSDFMaskImportSource>());
 	}
 
 	bool bNeedsRebuild = false;
@@ -1283,7 +1283,7 @@ FReply SQuickSDFTimeline::OnDeleteKeyframeClicked()
 
 FReply SQuickSDFTimeline::OnImportClicked()
 {
-	OpenImportPanel(MakeImportSourcesFromTextures(QuickSDFPaintToolPrivate::CollectSelectedTextureAssets()));
+	OpenImportPanel(TArray<FQuickSDFMaskImportSource>());
 	return FReply::Handled();
 }
 

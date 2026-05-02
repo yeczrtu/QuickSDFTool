@@ -27,7 +27,6 @@ bool TryBuildMaskData(
 void SortMaskData(TArray<FMaskData>& MaskData);
 bool NeedsBipolarOutput(const TArray<FMaskData>& MaskData, int32 PixelCount);
 bool TryExtractAngleFromName(const FString& Name, float& OutAngle);
-TArray<UTexture2D*> CollectSelectedTextureAssets();
 bool HasImportedSourceMasks(const UQuickSDFAsset* Asset);
 bool HasNonWhitePaintMasks(const UQuickSDFPaintTool& Tool, const UQuickSDFAsset* Asset);
 bool IsPersistentQuickSDFAsset(const UQuickSDFAsset* Asset);

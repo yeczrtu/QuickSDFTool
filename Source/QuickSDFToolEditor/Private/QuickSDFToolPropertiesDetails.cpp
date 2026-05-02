@@ -460,7 +460,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 			QuickSDFToolUI::MakeIconLabelButton(
 				"QuickSDF.Action.ImportMasks",
 				LOCTEXT("ImportEditedMasksButton", "Import Mask Assets"),
-				LOCTEXT("ImportEditedMasksTooltip", "Assign selected Content Browser Texture2D assets to timeline mask slots"),
+				LOCTEXT("ImportEditedMasksTooltip", "Open the mask import panel. Choose Texture2D assets in the panel or drag them onto it."),
 				FOnClicked::CreateLambda([WeakProperties]()
 				{
 					if (UQuickSDFToolProperties* Props = WeakProperties.Get())

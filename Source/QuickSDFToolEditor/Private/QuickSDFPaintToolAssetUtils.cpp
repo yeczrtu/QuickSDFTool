@@ -3,8 +3,6 @@
 #include "QuickSDFPaintTool.h"
 
 #include "Containers/Ticker.h"
-#include "Editor.h"
-#include "Engine/Selection.h"
 #include "Misc/DefaultValueHelper.h"
 #include "Misc/PackageName.h"
 
@@ -50,32 +48,6 @@ bool TryExtractAngleFromName(const FString& Name, float& OutAngle)
 
 	OutAngle = Candidates.Last();
 	return true;
-}
-
-TArray<UTexture2D*> CollectSelectedTextureAssets()
-{
-	TArray<UTexture2D*> SelectedTextures;
-	if (!GEditor)
-	{
-		return SelectedTextures;
-	}
-
-	if (USelection* SelectedObjects = GEditor->GetSelectedObjects())
-	{
-		for (FSelectionIterator It(*SelectedObjects); It; ++It)
-		{
-			if (UTexture2D* Texture = Cast<UTexture2D>(*It))
-			{
-				SelectedTextures.Add(Texture);
-			}
-		}
-	}
-
-	SelectedTextures.Sort([](const UTexture2D& A, const UTexture2D& B)
-	{
-		return A.GetName() < B.GetName();
-	});
-	return SelectedTextures;
 }
 
 bool HasImportedSourceMasks(const UQuickSDFAsset* Asset)
