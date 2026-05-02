@@ -5,6 +5,7 @@
 #include "Styling/CoreStyle.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -16,10 +17,25 @@ constexpr float QuickSDFTimelineDragStartDistance = 8.0f;
 constexpr float QuickSDFTimelineAccentR = 0.35f;
 constexpr float QuickSDFTimelineAccentG = 0.82f;
 constexpr float QuickSDFTimelineAccentB = 1.0f;
+constexpr float QuickSDFTimelineBadgeSize = 5.0f;
 
 FLinearColor GetQuickSDFTimelineAccentColor(float Alpha = 1.0f)
 {
 	return FLinearColor(QuickSDFTimelineAccentR, QuickSDFTimelineAccentG, QuickSDFTimelineAccentB, Alpha);
+}
+
+TSharedRef<SWidget> MakeStatusBadge(TAttribute<EVisibility> Visibility, TAttribute<FSlateColor> Color)
+{
+	return SNew(SBox)
+		.WidthOverride(QuickSDFTimelineBadgeSize)
+		.HeightOverride(QuickSDFTimelineBadgeSize)
+		.Visibility(Visibility)
+		[
+			SNew(SBorder)
+			.Visibility(EVisibility::HitTestInvisible)
+			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+			.BorderBackgroundColor(Color)
+		];
 }
 }
 
@@ -31,6 +47,12 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 	bSnapEnabled = InArgs._bSnapEnabled;
 	bSymmetryMode = InArgs._bSymmetryMode;
 	bAllowSourceTextureOverwrite = InArgs._bAllowSourceTextureOverwrite;
+	bHasMask = InArgs._bHasMask;
+	bIsInPaintTargetRange = InArgs._bIsInPaintTargetRange;
+	bGuardEnabled = InArgs._bGuardEnabled;
+	bHasUnbakedVectorLayer = InArgs._bHasUnbakedVectorLayer;
+	bHasWarning = InArgs._bHasWarning;
+	StatusToolTip = InArgs._StatusToolTip;
 	TextureBrush = InArgs._TextureBrush;
 	OnAngleChanged = InArgs._OnAngleChanged;
 	OnClicked = InArgs._OnClicked;
@@ -41,14 +63,17 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 	{
 		return bIsActive.Get()
 			? FSlateColor(FLinearColor(0.95f, 0.95f, 0.95f, 1.0f))
-			: FSlateColor(FLinearColor(0.72f, 0.72f, 0.72f, 0.72f));
+			: bIsInPaintTargetRange.Get()
+				? FSlateColor(FLinearColor(0.78f, 0.88f, 0.92f, 0.92f))
+				: FSlateColor(FLinearColor(0.72f, 0.72f, 0.72f, 0.72f));
 	});
 
 	SetToolTipText(TAttribute<FText>::CreateLambda([this]()
 	{
-		return bAllowSourceTextureOverwrite.Get()
-			? LOCTEXT("WritableSourceKeyframeTooltip", "Writable source: Overwrite Source Textures can write this mask back to its Texture2D.")
-			: LOCTEXT("AssignedOnlySourceKeyframeTooltip", "Assigned only: this mask will not overwrite its Texture2D.");
+		const FText ToolTip = StatusToolTip.Get();
+		return ToolTip.IsEmpty()
+			? LOCTEXT("TimelineKeyframeFallbackTooltip", "Timeline key")
+			: ToolTip;
 	}));
 
 	ChildSlot
@@ -69,7 +94,15 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 				.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
 				.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this]()
 				{
-					return bIsActive.Get() ? GetQuickSDFTimelineAccentColor(0.95f) : FLinearColor(1.0f, 1.0f, 1.0f, 0.18f);
+					if (bIsActive.Get())
+					{
+						return GetQuickSDFTimelineAccentColor(0.95f);
+					}
+					if (bIsInPaintTargetRange.Get())
+					{
+						return GetQuickSDFTimelineAccentColor(0.52f);
+					}
+					return FLinearColor(1.0f, 1.0f, 1.0f, 0.18f);
 				}))
 			]
 		]
@@ -129,21 +162,60 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 			.ShadowColorAndOpacity(FLinearColor::Black)
 		]
 
+		// Compact status badges: mask, guard, future vector-layer, warning.
 		+ SOverlay::Slot()
 		.HAlign(HAlign_Center)
 		.VAlign(VAlign_Top)
 		.Padding(0.0f, 11.0f, 0.0f, 0.0f)
 		[
-			SNew(STextBlock)
-			.Text(LOCTEXT("WritableSourceKeyframeLabel", "Writable"))
-			.Visibility(TAttribute<EVisibility>::CreateLambda([this]()
-			{
-				return bAllowSourceTextureOverwrite.Get() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-			}))
-			.ColorAndOpacity(FLinearColor(1.0f, 0.78f, 0.3f, 1.0f))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 6))
-			.ShadowOffset(FVector2D(1.0f, 1.0f))
-			.ShadowColorAndOpacity(FLinearColor::Black)
+			SNew(SHorizontalBox)
+			.Visibility(EVisibility::HitTestInvisible)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(1.0f, 0.0f)
+			[
+				MakeStatusBadge(
+					TAttribute<EVisibility>(EVisibility::HitTestInvisible),
+					TAttribute<FSlateColor>::CreateLambda([this]()
+					{
+						return bHasMask.Get()
+							? FSlateColor(FLinearColor(0.40f, 0.86f, 0.58f, 0.95f))
+							: FSlateColor(FLinearColor(0.45f, 0.45f, 0.45f, 0.62f));
+					}))
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(1.0f, 0.0f)
+			[
+				MakeStatusBadge(
+					TAttribute<EVisibility>::CreateLambda([this]()
+					{
+						return bGuardEnabled.Get() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+					}),
+					TAttribute<FSlateColor>(FLinearColor(0.35f, 0.70f, 1.0f, 0.95f)))
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(1.0f, 0.0f)
+			[
+				MakeStatusBadge(
+					TAttribute<EVisibility>::CreateLambda([this]()
+					{
+						return bHasUnbakedVectorLayer.Get() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+					}),
+					TAttribute<FSlateColor>(FLinearColor(0.80f, 0.50f, 1.0f, 0.95f)))
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(1.0f, 0.0f)
+			[
+				MakeStatusBadge(
+					TAttribute<EVisibility>::CreateLambda([this]()
+					{
+						return bHasWarning.Get() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+					}),
+					TAttribute<FSlateColor>(FLinearColor(1.0f, 0.58f, 0.22f, 0.98f)))
+			]
 		]
 	];
 }

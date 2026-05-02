@@ -29,6 +29,7 @@
 #include "QuickSDFAsset.h"
 #include "QuickSDFToolStyle.h"
 #include "QuickSDFToolUI.h"
+#include "QuickSDFTimelineStatus.h"
 #include "Brushes/SlateImageBrush.h"
 #include "Widgets/Layout/SExpandableArea.h"
 #include "Widgets/Input/SCheckBox.h"
@@ -197,6 +198,89 @@ UTexture2D* CreateTimelineThumbnailTexture(UQuickSDFPaintTool* Tool, UTextureRen
 	Mip.BulkData.Unlock();
 	Thumbnail->UpdateResource();
 	return Thumbnail;
+}
+
+UQuickSDFAsset* GetActiveTimelineAsset()
+{
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	return Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+}
+
+FQuickSDFTimelineRangeStatus BuildTimelineRangeStatus(const UQuickSDFPaintTool* Tool)
+{
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	if (!Props)
+	{
+		return FQuickSDFTimelineRangeStatus();
+	}
+
+	return QuickSDFTimelineStatus::BuildRangeStatus(
+		Props->TargetAngles,
+		Props->EditAngleIndex,
+		Props->PaintTargetMode,
+		Props->bPaintAllAngles,
+		Props->bSymmetryMode);
+}
+
+FQuickSDFTimelineKeyStatus BuildTimelineKeyStatus(const UQuickSDFPaintTool* Tool, int32 KeyIndex)
+{
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	UQuickSDFAsset* Asset = GetActiveTimelineAsset();
+	const FQuickSDFTextureSetData* ActiveTextureSet = Asset ? Asset->GetActiveTextureSet() : nullptr;
+	const TArray<FQuickSDFAngleData>* AngleDataList = Asset ? &Asset->GetActiveAngleDataList() : nullptr;
+	const FQuickSDFAngleData* AngleData = AngleDataList && AngleDataList->IsValidIndex(KeyIndex) ? &(*AngleDataList)[KeyIndex] : nullptr;
+	const FQuickSDFTimelineRangeStatus RangeStatus = BuildTimelineRangeStatus(Tool);
+
+	FQuickSDFTimelineKeyStatusInput Input;
+	Input.KeyIndex = KeyIndex;
+	Input.Angle = Props && Props->TargetAngles.IsValidIndex(KeyIndex) ? Props->TargetAngles[KeyIndex] : (AngleData ? AngleData->Angle : 0.0f);
+	Input.bVisible = RangeStatus.FindSegmentByKeyIndex(KeyIndex) != nullptr;
+	Input.bIsActive = Props && Props->EditAngleIndex == KeyIndex;
+	Input.bInPaintTargetRange = RangeStatus.IsKeyInTargetRange(KeyIndex);
+	Input.bHasTextureMask = AngleData && AngleData->TextureMask;
+	Input.bHasPaintRenderTarget = AngleData && AngleData->PaintRenderTarget;
+	Input.bAllowSourceTextureOverwrite = AngleData && AngleData->bAllowSourceTextureOverwrite;
+	Input.bGuardEnabled = Props && Props->bEnableMonotonicGuard;
+	Input.bHasUnbakedVectorLayer = false;
+	Input.bHasWarning = ActiveTextureSet && ActiveTextureSet->bHasWarning;
+	Input.WarningMessage = ActiveTextureSet ? ActiveTextureSet->WarningMessage : FText::GetEmpty();
+
+	if (AngleData && AngleData->TextureMask)
+	{
+		Input.TextureName = AngleData->TextureMask->GetName();
+	}
+	else if (Props && Props->TargetTextures.IsValidIndex(KeyIndex) && Props->TargetTextures[KeyIndex])
+	{
+		Input.bHasTextureMask = true;
+		Input.TextureName = Props->TargetTextures[KeyIndex]->GetName();
+	}
+	else if (AngleData && AngleData->PaintRenderTarget)
+	{
+		Input.TextureName = TEXT("Paint Render Target");
+	}
+
+	return QuickSDFTimelineStatus::BuildKeyStatus(Input);
+}
+
+FLinearColor GetPaintTargetRangeColor(const UQuickSDFPaintTool* Tool)
+{
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	const EQuickSDFPaintTargetMode Mode = Props
+		? QuickSDFTimelineStatus::ResolvePaintTargetMode(Props->PaintTargetMode, Props->bPaintAllAngles)
+		: EQuickSDFPaintTargetMode::CurrentOnly;
+
+	switch (Mode)
+	{
+	case EQuickSDFPaintTargetMode::All:
+		return FLinearColor(0.35f, 0.82f, 1.0f, 0.18f);
+	case EQuickSDFPaintTargetMode::BeforeCurrent:
+		return FLinearColor(0.36f, 0.64f, 1.0f, 0.17f);
+	case EQuickSDFPaintTargetMode::AfterCurrent:
+		return FLinearColor(0.28f, 0.86f, 0.64f, 0.17f);
+	case EQuickSDFPaintTargetMode::CurrentOnly:
+	default:
+		return FLinearColor(0.35f, 0.82f, 1.0f, 0.13f);
+	}
 }
 }
 
@@ -1069,6 +1153,40 @@ void SQuickSDFTimeline::RebuildTimeline()
 	];
 
 	TimelineTrackCanvas->AddSlot()
+	.Position(TAttribute<FVector2D>::CreateLambda([this, KeyframeLaneTop]() {
+		const FQuickSDFTimelineRangeStatus RangeStatus = BuildTimelineRangeStatus(GetActivePaintTool());
+		if (!RangeStatus.bHasTargetRange || RangeStatus.MaxAngle <= 0.0f)
+		{
+			return FVector2D(-1000.0f, -1000.0f);
+		}
+
+		const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+		const float LeftPercent = FMath::Clamp(RangeStatus.TargetRangeLeftAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
+		return FVector2D(FMath::Max(0.0f, TrackWidth) * LeftPercent + QuickSDFTimelineTrackPadding, KeyframeLaneTop + 2.0f);
+	}))
+	.Size(TAttribute<FVector2D>::CreateLambda([this, KeyframeLaneHeight]() {
+		const FQuickSDFTimelineRangeStatus RangeStatus = BuildTimelineRangeStatus(GetActivePaintTool());
+		if (!RangeStatus.bHasTargetRange || RangeStatus.MaxAngle <= 0.0f)
+		{
+			return FVector2D::ZeroVector;
+		}
+
+		const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+		const float LeftPercent = FMath::Clamp(RangeStatus.TargetRangeLeftAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
+		const float RightPercent = FMath::Clamp(RangeStatus.TargetRangeRightAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
+		return FVector2D(FMath::Max(0.0f, TrackWidth) * FMath::Max(0.0f, RightPercent - LeftPercent), FMath::Max(0.0f, KeyframeLaneHeight - 4.0f));
+	}))
+	[
+		SNew(SBorder)
+		.Visibility(EVisibility::HitTestInvisible)
+		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+		.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this]()
+		{
+			return FSlateColor(GetPaintTargetRangeColor(GetActivePaintTool()));
+		}))
+	];
+
+	TimelineTrackCanvas->AddSlot()
 	.Position(FVector2D(0.0f, KeyframeLaneTop))
 	.Size(TAttribute<FVector2D>::CreateLambda([this]() {
 		const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X;
@@ -1196,6 +1314,42 @@ void SQuickSDFTimeline::RebuildTimeline()
 		];
 	}
 
+	TimelineTrackCanvas->AddSlot()
+	.Position(TAttribute<FVector2D>::CreateLambda([this, KeyframeLaneTop]() {
+		const FQuickSDFTimelineRangeStatus RangeStatus = BuildTimelineRangeStatus(GetActivePaintTool());
+		if (!RangeStatus.bHasTargetRange || RangeStatus.MaxAngle <= 0.0f)
+		{
+			return FVector2D(-1000.0f, -1000.0f);
+		}
+
+		const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+		const float LeftPercent = FMath::Clamp(RangeStatus.TargetRangeLeftAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
+		return FVector2D(FMath::Max(0.0f, TrackWidth) * LeftPercent + QuickSDFTimelineTrackPadding, KeyframeLaneTop + 2.0f);
+	}))
+	.Size(TAttribute<FVector2D>::CreateLambda([this]() {
+		const FQuickSDFTimelineRangeStatus RangeStatus = BuildTimelineRangeStatus(GetActivePaintTool());
+		if (!RangeStatus.bHasTargetRange || RangeStatus.MaxAngle <= 0.0f)
+		{
+			return FVector2D::ZeroVector;
+		}
+
+		const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+		const float LeftPercent = FMath::Clamp(RangeStatus.TargetRangeLeftAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
+		const float RightPercent = FMath::Clamp(RangeStatus.TargetRangeRightAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
+		return FVector2D(FMath::Max(0.0f, TrackWidth) * FMath::Max(0.0f, RightPercent - LeftPercent), 2.0f);
+	}))
+	[
+		SNew(SBorder)
+		.Visibility(EVisibility::HitTestInvisible)
+		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+		.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this]()
+		{
+			FLinearColor Color = GetPaintTargetRangeColor(GetActivePaintTool());
+			Color.A = 0.70f;
+			return FSlateColor(Color);
+		}))
+	];
+
 	// 2. Add tick marks (Middle layer)
 	bool bSymmetryModeActive = Props->bSymmetryMode;
 	int32 NumTicks = bSymmetryModeActive ? 1 : 2;
@@ -1261,15 +1415,25 @@ void SQuickSDFTimeline::RebuildTimeline()
 				return ActiveTool && ActiveTool->Properties && ActiveTool->Properties->bSymmetryMode;
 			}))
 			.bAllowSourceTextureOverwrite(TAttribute<bool>::CreateLambda([this, i]() {
-				if (const UQuickSDFPaintTool* ActiveTool = this->GetActivePaintTool())
-				{
-					if (const UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr)
-					{
-						const UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
-						return Asset && Asset->GetActiveAngleDataList().IsValidIndex(i) && Asset->GetActiveAngleDataList()[i].bAllowSourceTextureOverwrite;
-					}
-				}
-				return false;
+				return BuildTimelineKeyStatus(this->GetActivePaintTool(), i).bAllowSourceTextureOverwrite;
+			}))
+			.bHasMask(TAttribute<bool>::CreateLambda([this, i]() {
+				return BuildTimelineKeyStatus(this->GetActivePaintTool(), i).bHasMask;
+			}))
+			.bIsInPaintTargetRange(TAttribute<bool>::CreateLambda([this, i]() {
+				return BuildTimelineKeyStatus(this->GetActivePaintTool(), i).bInPaintTargetRange;
+			}))
+			.bGuardEnabled(TAttribute<bool>::CreateLambda([this, i]() {
+				return BuildTimelineKeyStatus(this->GetActivePaintTool(), i).bGuardEnabled;
+			}))
+			.bHasUnbakedVectorLayer(TAttribute<bool>::CreateLambda([this, i]() {
+				return BuildTimelineKeyStatus(this->GetActivePaintTool(), i).bHasUnbakedVectorLayer;
+			}))
+			.bHasWarning(TAttribute<bool>::CreateLambda([this, i]() {
+				return BuildTimelineKeyStatus(this->GetActivePaintTool(), i).bHasWarning;
+			}))
+			.StatusToolTip(TAttribute<FText>::CreateLambda([this, i]() {
+				return QuickSDFTimelineStatus::BuildKeyTooltip(BuildTimelineKeyStatus(this->GetActivePaintTool(), i));
 			}))
 			.TextureBrush(TAttribute<FSlateBrush*>::CreateLambda([this, i]() -> FSlateBrush* {
 				if (KeyframeBrushes.IsValidIndex(i)) return KeyframeBrushes[i].Get();

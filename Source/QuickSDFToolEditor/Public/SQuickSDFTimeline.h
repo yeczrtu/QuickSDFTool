@@ -21,6 +21,12 @@ public:
 		SLATE_ATTRIBUTE(bool, bSnapEnabled)
 		SLATE_ATTRIBUTE(bool, bSymmetryMode)
 		SLATE_ATTRIBUTE(bool, bAllowSourceTextureOverwrite)
+		SLATE_ATTRIBUTE(bool, bHasMask)
+		SLATE_ATTRIBUTE(bool, bIsInPaintTargetRange)
+		SLATE_ATTRIBUTE(bool, bGuardEnabled)
+		SLATE_ATTRIBUTE(bool, bHasUnbakedVectorLayer)
+		SLATE_ATTRIBUTE(bool, bHasWarning)
+		SLATE_ATTRIBUTE(FText, StatusToolTip)
 		SLATE_ATTRIBUTE(FSlateBrush*, TextureBrush)
 		SLATE_EVENT(FOnKeyframeAngleChanged, OnAngleChanged)
 		SLATE_EVENT(FSimpleDelegate, OnClicked)
@@ -43,6 +49,12 @@ private:
 	TAttribute<bool> bSnapEnabled;
 	TAttribute<bool> bSymmetryMode;
 	TAttribute<bool> bAllowSourceTextureOverwrite;
+	TAttribute<bool> bHasMask;
+	TAttribute<bool> bIsInPaintTargetRange;
+	TAttribute<bool> bGuardEnabled;
+	TAttribute<bool> bHasUnbakedVectorLayer;
+	TAttribute<bool> bHasWarning;
+	TAttribute<FText> StatusToolTip;
 	TAttribute<FSlateBrush*> TextureBrush;
 	bool bIsMouseDown = false;
 	bool bIsDragging = false;
