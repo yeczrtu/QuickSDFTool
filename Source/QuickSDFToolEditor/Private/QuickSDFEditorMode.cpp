@@ -17,6 +17,7 @@
 #include "EditorViewportClient.h"
 #include "LevelEditor.h"
 #include "SLevelViewport.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Framework/Commands/UICommandList.h"
 
 const FEditorModeID UQuickSDFEditorMode::EM_QuickSDFEditorModeId = TEXT("EM_QuickSDFEditorMode");
@@ -243,6 +244,23 @@ void UQuickSDFEditorMode::BindCommands()
 
 bool UQuickSDFEditorMode::InputKey(FEditorViewportClient* ViewportClient, FViewport* Viewport, FKey Key, EInputEvent Event)
 {
+	if (Key == EKeys::F && (Event == IE_Pressed || Event == IE_Repeat))
+	{
+		const FModifierKeysState ModifierKeys = FSlateApplication::Get().GetModifierKeys();
+		const bool bCtrlDown =
+			ModifierKeys.IsControlDown() ||
+			(Viewport && (Viewport->KeyState(EKeys::LeftControl) || Viewport->KeyState(EKeys::RightControl)));
+		if (bCtrlDown)
+		{
+			UInteractiveToolManager* ToolManager = GetToolManager();
+			if (UQuickSDFPaintTool* PaintTool = ToolManager ? Cast<UQuickSDFPaintTool>(ToolManager->GetActiveTool(EToolSide::Mouse)) : nullptr)
+			{
+				PaintTool->RequestBrushResizeMode();
+				return true;
+			}
+		}
+	}
+
 	if (!IsArrowNavigationKey(Key))
 	{
 		return false;

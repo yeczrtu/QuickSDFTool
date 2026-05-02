@@ -116,6 +116,11 @@ UQuickSDFPaintTool::UQuickSDFPaintTool()
 {
 }
 
+void UQuickSDFPaintTool::RequestBrushResizeMode()
+{
+	BeginBrushResizeMode();
+}
+
 void UQuickSDFPaintTool::RegisterActions(FInteractiveToolActionSet& ActionSet)
 {
 	Super::RegisterActions(ActionSet);
@@ -130,7 +135,7 @@ void UQuickSDFPaintTool::RegisterActions(FInteractiveToolActionSet& ActionSet)
 		EKeys::F,
 		[this]()
 		{
-			BeginBrushResizeMode();
+			RequestBrushResizeMode();
 		});
 
 	ActionSet.RegisterAction(
@@ -282,6 +287,11 @@ void UQuickSDFPaintTool::Setup()
 void UQuickSDFPaintTool::OnTick(float DeltaTime)
 {
 	Super::OnTick(DeltaTime);
+
+	if (bAdjustingBrushRadius)
+	{
+		UpdateBrushResizeFromCursor();
+	}
 	
 	if (UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>())
 	{

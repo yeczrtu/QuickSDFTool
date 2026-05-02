@@ -174,12 +174,6 @@ public:
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Create Threshold Map"))
 	void CreateQuickThresholdMap();
 
-	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Bake Selected Texture Set"))
-	void BakeSelectedTextureSet();
-
-	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Bake Missing Texture Sets"))
-	void BakeMissingTextureSets();
-
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Import Mask Assets"))
 	void ImportEditedMasks();
 
@@ -215,9 +209,6 @@ public:
 
 	UFUNCTION(CallInEditor, Category = "Actions")
 	void GenerateSDFThresholdMap();
-
-	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Generate All Baked Texture Sets"))
-	void GenerateAllBakedTextureSets();
 
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Validate Monotonic Guard"))
 	void ValidateMonotonicGuard();

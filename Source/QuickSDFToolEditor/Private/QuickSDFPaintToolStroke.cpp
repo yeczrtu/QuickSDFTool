@@ -743,6 +743,7 @@ void UQuickSDFPaintTool::BeginBrushResizeMode()
 {
 	if (!BrushProperties) return;
 	if (bAdjustingBrushRadius) return;
+	const FVector2D CurrentCursorPosition = FSlateApplication::Get().GetCursorPos();
 	if (!bBrushResizeTransactionOpen)
 	{
 		GetToolManager()->BeginUndoTransaction(LOCTEXT("QuickSDFBrushResizeTransaction", "Quick SDF Change Brush Radius"));
@@ -751,8 +752,9 @@ void UQuickSDFPaintTool::BeginBrushResizeMode()
 		bBrushResizeTransactionOpen = true;
 	}
 	bAdjustingBrushRadius = true;
-	BrushResizeStartScreenPosition = LastInputScreenPosition;
-	BrushResizeStartAbsolutePosition = FSlateApplication::Get().GetCursorPos();
+	LastInputScreenPosition = CurrentCursorPosition;
+	BrushResizeStartScreenPosition = CurrentCursorPosition;
+	BrushResizeStartAbsolutePosition = CurrentCursorPosition;
 	BrushResizeStartStamp = LastBrushStamp;
 	BrushResizeStartRadius = BrushProperties->BrushRadius;
 	bBrushResizeHadVisibleStamp = BrushStampIndicator && BrushStampIndicator->bVisible;
@@ -765,8 +767,13 @@ void UQuickSDFPaintTool::BeginBrushResizeMode()
 void UQuickSDFPaintTool::UpdateBrushResizeFromCursor()
 {
 	if (!bAdjustingBrushRadius || !BrushProperties) return;
+	LastInputScreenPosition = FSlateApplication::Get().GetCursorPos();
 	const FVector2D Delta = ConvertInputScreenToCanvasSpace(LastInputScreenPosition) - ConvertInputScreenToCanvasSpace(BrushResizeStartScreenPosition);
 	const float NewRadius = FMath::Max(0.1f, BrushResizeStartRadius + (Delta.X * FMath::Max(BrushResizeSensitivity, QuickSDFMinResizeSensitivity)));
+	if (FMath::IsNearlyEqual(BrushProperties->BrushRadius, NewRadius, KINDA_SMALL_NUMBER))
+	{
+		return;
+	}
 	const float RangeMin = BrushRelativeSizeRange.Min;
 	const float RangeSize = BrushRelativeSizeRange.Max - BrushRelativeSizeRange.Min;
 	if (RangeSize > KINDA_SMALL_NUMBER)

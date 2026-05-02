@@ -264,63 +264,6 @@ TSharedRef<SWidget> MakeTextureSetList(TWeakObjectPtr<UQuickSDFToolProperties> W
 		.AutoHeight()
 		[
 			Rows
-		]
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(0.0f, 5.0f, 0.0f, 0.0f)
-		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.FillWidth(1.0f)
-			.Padding(0.0f, 0.0f, 2.0f, 0.0f)
-			[
-				QuickSDFToolUI::MakeIconLabelButton(
-					"QuickSDF.Action.Rebake",
-					LOCTEXT("BakeSelectedSetButton", "Bake Selected"),
-					LOCTEXT("BakeSelectedSetTooltip", "Bake only the active Texture Set."),
-					FOnClicked::CreateLambda([WeakProperties]()
-					{
-						if (UQuickSDFToolProperties* Props = WeakProperties.Get())
-						{
-							Props->BakeSelectedTextureSet();
-						}
-						return FReply::Handled();
-					}))
-			]
-			+ SHorizontalBox::Slot()
-			.FillWidth(1.0f)
-			.Padding(2.0f, 0.0f)
-			[
-				QuickSDFToolUI::MakeIconLabelButton(
-					"QuickSDF.Action.CompleteToEight",
-					LOCTEXT("BakeMissingSetsButton", "Bake Missing"),
-					LOCTEXT("BakeMissingSetsTooltip", "Bake every Texture Set that is still empty."),
-					FOnClicked::CreateLambda([WeakProperties]()
-					{
-						if (UQuickSDFToolProperties* Props = WeakProperties.Get())
-						{
-							Props->BakeMissingTextureSets();
-						}
-						return FReply::Handled();
-					}))
-			]
-			+ SHorizontalBox::Slot()
-			.FillWidth(1.0f)
-			.Padding(2.0f, 0.0f, 0.0f, 0.0f)
-			[
-				QuickSDFToolUI::MakeIconLabelButton(
-					"QuickSDF.Action.CreateThresholdMap",
-					LOCTEXT("GenerateAllBakedSetsButton", "Generate All"),
-					LOCTEXT("GenerateAllBakedSetsTooltip", "Generate SDF threshold textures for every baked Texture Set."),
-					FOnClicked::CreateLambda([WeakProperties]()
-					{
-						if (UQuickSDFToolProperties* Props = WeakProperties.Get())
-						{
-							Props->GenerateAllBakedTextureSets();
-						}
-						return FReply::Handled();
-					}))
-			]
 		];
 }
 }
@@ -382,7 +325,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
 	];
 
-	QuickCategory.AddCustomRow(LOCTEXT("TextureSetsFilter", "Texture Sets Material Slots Bake Selected Bake Missing"))
+	QuickCategory.AddCustomRow(LOCTEXT("TextureSetsFilter", "Texture Sets Material Slots Select Bake"))
 	.WholeRowContent()
 	[
 		SNew(SVerticalBox)

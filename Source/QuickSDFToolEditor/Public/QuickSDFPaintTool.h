@@ -137,13 +137,12 @@ public:
 	void RebakeCurrentMask();
 	void RebakeAllMasks();
 	void BakeSelectedTextureSet();
-	void BakeMissingTextureSets();
 	void GenerateSelectedTextureSetSDF();
-	void GenerateAllBakedTextureSets();
 	void CompleteToEightMasks();
 	void RedistributeAnglesEvenly();
 	void FillMaskColor(bool bFillAllAngles, const FLinearColor& FillColor);
 	void MarkMasksChanged();
+	void RequestBrushResizeMode();
 	int32 GetMaskRevision() const { return MaskRevision; }
 	bool SelectTextureSet(int32 TextureSetIndex);
 	void RefreshTextureSetsForCurrentComponent();

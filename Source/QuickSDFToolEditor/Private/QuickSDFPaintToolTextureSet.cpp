@@ -294,52 +294,9 @@ void UQuickSDFPaintTool::BakeSelectedTextureSet()
 	GetToolManager()->EndUndoTransaction();
 }
 
-void UQuickSDFPaintTool::BakeMissingTextureSets()
-{
-	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
-	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
-	if (!Asset)
-	{
-		return;
-	}
-
-	const int32 OriginalIndex = Asset->ActiveTextureSetIndex;
-	for (int32 TextureSetIndex = 0; TextureSetIndex < Asset->TextureSets.Num(); ++TextureSetIndex)
-	{
-		if (!Asset->TextureSets[TextureSetIndex].bInitialBakeComplete)
-		{
-			SelectTextureSet(TextureSetIndex);
-			BakeSelectedTextureSet();
-		}
-	}
-	SelectTextureSet(OriginalIndex);
-}
-
 void UQuickSDFPaintTool::GenerateSelectedTextureSetSDF()
 {
 	GenerateSDF();
-}
-
-void UQuickSDFPaintTool::GenerateAllBakedTextureSets()
-{
-	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
-	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
-	if (!Asset)
-	{
-		return;
-	}
-
-	const int32 OriginalIndex = Asset->ActiveTextureSetIndex;
-	for (int32 TextureSetIndex = 0; TextureSetIndex < Asset->TextureSets.Num(); ++TextureSetIndex)
-	{
-		const FQuickSDFTextureSetData& TextureSet = Asset->TextureSets[TextureSetIndex];
-		if (TextureSet.bInitialBakeComplete)
-		{
-			SelectTextureSet(TextureSetIndex);
-			GenerateSDF();
-		}
-	}
-	SelectTextureSet(OriginalIndex);
 }
 
 FText UQuickSDFPaintTool::GetActiveTextureSetLabel() const
