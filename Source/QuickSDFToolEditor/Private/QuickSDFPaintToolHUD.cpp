@@ -2,6 +2,7 @@
 #include "QuickSDFPaintToolPrivate.h"
 #include "QuickSDFMeshComponentAdapter.h"
 #include "QuickSDFToolSubsystem.h"
+#include "QuickSDFToolUI.h"
 #include "QuickSDFAsset.h"
 #include "SDFProcessor.h"
 #include "BaseGizmos/BrushStampIndicator.h"
@@ -19,6 +20,7 @@
 #include "DynamicMesh/DynamicMeshAttributeSet.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Components/PrimitiveComponent.h"
+#include "GameFramework/Actor.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SkinnedMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -314,14 +316,34 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
 
 
 	const FString PaintModeLabel = IsPaintingShadow() ? TEXT("Shadow") : TEXT("Light");
-	const FString ShortcutLabel = bAdjustingBrushRadius ? TEXT("Ctrl+F active: move mouse, click to confirm") : TEXT("Shift: toggle paint, Ctrl+F: resize brush");
-	FCanvasTextItem ModeText(FVector2D(10.0f, 275.0f), FText::FromString(FString::Printf(TEXT("Paint: %s"), *PaintModeLabel)), GEngine->GetSmallFont(), FLinearColor::White);
+	const FString MeshLabel = CurrentComponent.IsValid()
+		? FString::Printf(TEXT("%s / %s"),
+			CurrentComponent->GetOwner() ? *CurrentComponent->GetOwner()->GetActorLabel() : TEXT("Mesh"),
+			*CurrentComponent->GetName())
+		: FString(TEXT("No Mesh"));
+	const FString TextureSetLabel = GetActiveTextureSetLabel().ToString();
+	const int32 ActiveAngleIndex = Properties ? FMath::Clamp(Properties->EditAngleIndex, 0, FMath::Max(Properties->TargetAngles.Num() - 1, 0)) : 0;
+	const FString AngleLabel = Properties && Properties->TargetAngles.IsValidIndex(ActiveAngleIndex)
+		? FString::Printf(TEXT("%.0f deg"), Properties->TargetAngles[ActiveAngleIndex])
+		: FString(TEXT("--"));
+	const FString TargetModeLabel = QuickSDFToolUI::GetPaintTargetModeLabel(QuickSDFToolUI::GetPaintTargetMode(Properties)).ToString();
+	const FString TextureSetStatus = Properties ? GetTextureSetStatusText(Properties->ActiveTextureSetIndex).ToString() : FString(TEXT("Idle"));
+
+	FCanvasTextItem SetText(
+		FVector2D(10.0f, 275.0f),
+		FText::FromString(FString::Printf(TEXT("%s > %s > %s"), *MeshLabel, *TextureSetLabel, *AngleLabel)),
+		GEngine->GetSmallFont(),
+		FLinearColor::White);
+	SetText.EnableShadow(FLinearColor::Black);
+	Canvas->DrawItem(SetText);
+
+	FCanvasTextItem ModeText(
+		FVector2D(10.0f, 292.0f),
+		FText::FromString(FString::Printf(TEXT("Paint: %s  Target: %s  Set: %s"), *PaintModeLabel, *TargetModeLabel, *TextureSetStatus)),
+		GEngine->GetSmallFont(),
+		FLinearColor::White);
 	ModeText.EnableShadow(FLinearColor::Black);
 	Canvas->DrawItem(ModeText);
-
-	FCanvasTextItem ShortcutText(FVector2D(10.0f, 292.0f), FText::FromString(ShortcutLabel), GEngine->GetSmallFont(), FLinearColor::White);
-	ShortcutText.EnableShadow(FLinearColor::Black);
-	Canvas->DrawItem(ShortcutText);
 
 	if (bAdjustingBrushRadius)
 	{

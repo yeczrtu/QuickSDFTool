@@ -7,6 +7,7 @@
 #include "DynamicMesh/DynamicMeshAABBTree3.h"
 #include "InteractiveToolBuilder.h"
 #include "InteractiveToolActionSet.h"
+#include "QuickSDFAsset.h"
 #include "QuickSDFToolTypes.h"
 #include "QuickSDFToolProperties.h"
 #include "Components/MeshComponent.h"
@@ -136,11 +137,20 @@ public:
 	void EnsureInitialMasksReady();
 	void RebakeCurrentMask();
 	void RebakeAllMasks();
+	void BakeSelectedTextureSet();
+	void BakeMissingTextureSets();
+	void GenerateSelectedTextureSetSDF();
+	void GenerateAllBakedTextureSets();
 	void CompleteToEightMasks();
 	void RedistributeAnglesEvenly();
 	void FillMaskColor(bool bFillAllAngles, const FLinearColor& FillColor);
 	void MarkMasksChanged();
 	int32 GetMaskRevision() const { return MaskRevision; }
+	bool SelectTextureSet(int32 TextureSetIndex);
+	void RefreshTextureSetsForCurrentComponent();
+	FText GetActiveTextureSetLabel() const;
+	FText GetTextureSetStatusText(int32 TextureSetIndex) const;
+	FLinearColor GetTextureSetStatusColor(int32 TextureSetIndex) const;
 	
 	void AddKeyframe();
 	void AddKeyframeAtAngle(float Angle);
@@ -197,6 +207,8 @@ protected:
 	bool CopyNearestMaskToAngle(int32 DestinationIndex);
 	void AddKeyframeInternal(float RequestedAngle, bool bUseRequestedAngle, const TArray<FColor>* SourcePixels = nullptr);
 	void SyncPropertiesFromActiveAsset();
+	void SyncActiveTextureSetFromProperties();
+	void InitializeDefaultAngleData(TArray<FQuickSDFAngleData>& AngleData, bool bResetExisting) const;
 	void InvalidateUVOverlayCache();
 	class UTextureRenderTarget2D* GetUVOverlayRenderTarget();
 	void RebuildUVOverlayRenderTarget(int32 Width, int32 Height);

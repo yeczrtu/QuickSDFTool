@@ -59,6 +59,7 @@ void UQuickSDFToolProperties::ExportToTexture()
 
 	if (ExportedCount > 0)
 	{
+		Asset->SyncActiveTextureSetFromLegacy();
 		Asset->MarkPackageDirty();
 	}
 }
@@ -76,6 +77,22 @@ void UQuickSDFToolProperties::ImportEditedMasks()
 	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
 	{
 		Tool->ImportEditedMasks();
+	}
+}
+
+void UQuickSDFToolProperties::BakeSelectedTextureSet()
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
+	{
+		Tool->BakeSelectedTextureSet();
+	}
+}
+
+void UQuickSDFToolProperties::BakeMissingTextureSets()
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
+	{
+		Tool->BakeMissingTextureSets();
 	}
 }
 
@@ -163,7 +180,15 @@ void UQuickSDFToolProperties::GenerateSDFThresholdMap()
 {
 	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
 	{
-		Tool->GenerateSDF();
+		Tool->GenerateSelectedTextureSetSDF();
+	}
+}
+
+void UQuickSDFToolProperties::GenerateAllBakedTextureSets()
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
+	{
+		Tool->GenerateAllBakedTextureSets();
 	}
 }
 

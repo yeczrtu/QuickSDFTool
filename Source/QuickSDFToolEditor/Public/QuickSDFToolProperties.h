@@ -119,6 +119,9 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	TArray<UTexture2D*> TargetTextures;
 
+	UPROPERTY(VisibleAnywhere, Category = "Texture Sets", meta = (DisplayName = "Active Texture Set"))
+	int32 ActiveTextureSetIndex = 0;
+
 	UPROPERTY(EditAnywhere, Category = "Target Settings")
 	FIntPoint Resolution = FIntPoint(1024, 1024);
 
@@ -161,6 +164,12 @@ public:
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Create Threshold Map"))
 	void CreateQuickThresholdMap();
 
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Bake Selected Texture Set"))
+	void BakeSelectedTextureSet();
+
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Bake Missing Texture Sets"))
+	void BakeMissingTextureSets();
+
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Import Mask Assets"))
 	void ImportEditedMasks();
 
@@ -196,6 +205,9 @@ public:
 
 	UFUNCTION(CallInEditor, Category = "Actions")
 	void GenerateSDFThresholdMap();
+
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Generate All Baked Texture Sets"))
+	void GenerateAllBakedTextureSets();
 
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Validate Monotonic Guard"))
 	void ValidateMonotonicGuard();

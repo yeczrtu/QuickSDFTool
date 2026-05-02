@@ -401,8 +401,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 		CurrentComponent->SetMaterial(i, PreviewMaterial);
 	}
 
-	ApplyTargetMaterialSlotIsolation();
-	RefreshPreviewMaterial();
+	RefreshTextureSetsForCurrentComponent();
 	EnsureInitialMasksReady();
 }
 

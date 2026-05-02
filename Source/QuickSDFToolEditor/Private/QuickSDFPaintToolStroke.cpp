@@ -518,7 +518,8 @@ bool UQuickSDFPaintTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 			Ray.Origin + Ray.Direction * 100000.0f,
 			Params);
 
-		if ((!Properties || Properties->TargetMaterialSlot < 0) && bComponentHit)
+		const bool bUseTextureSetFilter = Properties && Properties->TargetMaterialSlot >= 0;
+		if (!bUseTextureSetFilter && bComponentHit)
 		{
 			OutHit = ComponentHit;
 			return true;
@@ -528,11 +529,15 @@ bool UQuickSDFPaintTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 		{
 			const FTransform Transform = CurrentComponent->GetComponentTransform();
 			const FRay LocalRay(Transform.InverseTransformPosition(Ray.Origin), Transform.InverseTransformVector(Ray.Direction));
+			UE::Geometry::IMeshSpatial::FQueryOptions QueryOptions(100000.0, [this](int32 TriangleID)
+			{
+				return IsTriangleInTargetMaterialSlot(TriangleID);
+			});
 
 			double HitDistance = 100000.0;
 			int32 HitTID = INDEX_NONE;
 			FVector3d BaryCoords(0.0, 0.0, 0.0);
-			if (TargetMeshSpatial->FindNearestHitTriangle(LocalRay, HitDistance, HitTID, BaryCoords) &&
+			if (TargetMeshSpatial->FindNearestHitTriangle(LocalRay, HitDistance, HitTID, BaryCoords, QueryOptions) &&
 				HitTID != INDEX_NONE &&
 				IsTriangleInTargetMaterialSlot(HitTID))
 			{
@@ -544,23 +549,14 @@ bool UQuickSDFPaintTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 					WorldNormal *= -1.0;
 				}
 
-				if (bComponentHit)
-				{
-					OutHit = ComponentHit;
-					OutHit.FaceIndex = HitTID;
-					OutHit.Distance = FVector::Distance(Ray.Origin, OutHit.ImpactPoint);
-				}
-				else
-				{
-					OutHit.Component = CurrentComponent.Get();
-					OutHit.Location = Transform.TransformPosition(LocalHitPosition);
-					OutHit.ImpactPoint = OutHit.Location;
-					OutHit.Normal = WorldNormal;
-					OutHit.ImpactNormal = WorldNormal;
-					OutHit.FaceIndex = HitTID;
-					OutHit.Distance = FVector::Distance(Ray.Origin, OutHit.Location);
-					OutHit.bBlockingHit = true;
-				}
+				OutHit.Component = CurrentComponent.Get();
+				OutHit.Location = Transform.TransformPosition(LocalHitPosition);
+				OutHit.ImpactPoint = OutHit.Location;
+				OutHit.Normal = WorldNormal;
+				OutHit.ImpactNormal = WorldNormal;
+				OutHit.FaceIndex = HitTID;
+				OutHit.Distance = FVector::Distance(Ray.Origin, OutHit.Location);
+				OutHit.bBlockingHit = true;
 
 				LastBrushStamp.HitResult = OutHit;
 				LastBrushStamp.WorldPosition = OutHit.ImpactPoint;
@@ -764,14 +760,17 @@ bool UQuickSDFPaintTool::TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSam
 	
 	const FTransform Transform = CurrentComponent->GetComponentTransform();
 	const FRay LocalRay(Transform.InverseTransformPosition(Ray.Origin), Transform.InverseTransformVector(Ray.Direction));
+	UE::Geometry::IMeshSpatial::FQueryOptions QueryOptions(100000.0, [this](int32 TriangleID)
+	{
+		return IsTriangleInTargetMaterialSlot(TriangleID);
+	});
 
 	double HitDistance = 100000.0;
 	int32 HitTID = -1;
 	FVector3d BaryCoords(0.0, 0.0, 0.0);
-	const bool bHit = TargetMeshSpatial->FindNearestHitTriangle(LocalRay, HitDistance, HitTID, BaryCoords);
+	const bool bHit = TargetMeshSpatial->FindNearestHitTriangle(LocalRay, HitDistance, HitTID, BaryCoords, QueryOptions);
 
 	if (!bHit || HitTID < 0) return false;
-	if (!IsTriangleInTargetMaterialSlot(HitTID)) return false;
 
 	UE::Geometry::FIndex3i TriV = TargetMesh->GetTriangle(HitTID);
 

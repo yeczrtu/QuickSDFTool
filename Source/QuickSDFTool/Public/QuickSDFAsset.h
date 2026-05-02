@@ -28,6 +28,45 @@ struct FQuickSDFAngleData
 	class UTextureRenderTarget2D* PaintRenderTarget = nullptr;
 };
 
+USTRUCT(BlueprintType)
+struct FQuickSDFTextureSetData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture Set")
+	int32 MaterialSlotIndex = INDEX_NONE;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture Set")
+	FName SlotName = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture Set")
+	FString MaterialName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture Set")
+	int32 UVChannel = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture Set")
+	FIntPoint Resolution = FIntPoint(1024, 1024);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SDF Data")
+	TArray<FQuickSDFAngleData> AngleDataList;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SDF Result")
+	class UTexture2D* FinalSDFTexture = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture Set")
+	bool bDirty = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture Set")
+	bool bInitialBakeComplete = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture Set")
+	bool bHasWarning = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture Set")
+	FText WarningMessage;
+};
+
 /**
  * Data Asset to hold non-destructive data for QuickSDFTool
  */
@@ -45,6 +84,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SDF settings")
 	int32 UVChannel;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture Sets")
+	TArray<FQuickSDFTextureSetData> TextureSets;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture Sets")
+	int32 ActiveTextureSetIndex = 0;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SDF Data")
 	TArray<FQuickSDFAngleData> AngleDataList;
 
@@ -55,4 +100,11 @@ public:
 	void InitializeRenderTargets(class UWorld* InWorld);
 	// Merges render targets back to standard textures
 	void BakeToTextures();
+
+	FQuickSDFTextureSetData* GetActiveTextureSet();
+	const FQuickSDFTextureSetData* GetActiveTextureSet() const;
+	bool SetActiveTextureSetIndex(int32 NewIndex);
+	void MigrateLegacyDataToTextureSetsIfNeeded();
+	void SyncActiveTextureSetFromLegacy();
+	void SyncLegacyFromActiveTextureSet();
 };
