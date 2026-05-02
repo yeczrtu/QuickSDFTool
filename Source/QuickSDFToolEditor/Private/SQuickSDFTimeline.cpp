@@ -460,15 +460,6 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 								LOCTEXT("DelFrameTooltip", "Delete the selected timeline keyframe"),
 								FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnDeleteKeyframeClicked))
 						]
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.Padding(1.0f, 0.0f)
-						[
-							MakeTimelineIconButton(
-								"QuickSDF.Toggle.AutoSyncLight",
-								LOCTEXT("SyncLightTooltip", "Sync Directional Light to selected keyframe angle"),
-								FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnSyncLightClicked))
-						]
 					]
 				]
 				.BodyContent()
