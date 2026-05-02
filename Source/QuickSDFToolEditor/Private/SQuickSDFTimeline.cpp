@@ -40,12 +40,15 @@ namespace
 {
 constexpr int32 QuickSDFTimelineThumbnailSize = 64;
 constexpr float QuickSDFTimelineKeyframeHitSlop = 14.0f;
-constexpr float QuickSDFTimelineSeekLaneHeight = 28.0f;
-constexpr float QuickSDFTimelineKeyframeLaneHeight = 44.0f;
+constexpr float QuickSDFTimelineSeekLaneHeight = 20.0f;
+constexpr float QuickSDFTimelineKeyframeLaneHeight = 48.0f;
 constexpr float QuickSDFTimelineTrackHeight = QuickSDFTimelineSeekLaneHeight + QuickSDFTimelineKeyframeLaneHeight;
 constexpr float QuickSDFTimelineKeyframeWidth = 26.0f;
 constexpr float QuickSDFTimelineButtonHeight = 24.0f;
 constexpr float QuickSDFTimelineIconButtonWidth = 28.0f;
+constexpr float QuickSDFTimelineTrackPadding = 20.0f;
+constexpr float QuickSDFTimelineRailY = 8.0f;
+constexpr float QuickSDFTimelineRailHeight = 3.0f;
 constexpr float QuickSDFTimelineAccentR = 0.35f;
 constexpr float QuickSDFTimelineAccentG = 0.82f;
 constexpr float QuickSDFTimelineAccentB = 1.0f;
@@ -401,7 +404,7 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 							.HeightOverride(QuickSDFTimelineTrackHeight)
 							[
 								SNew(SOverlay)
-								
+
 								// Track base.
 								+ SOverlay::Slot()
 								.VAlign(VAlign_Fill)
@@ -621,7 +624,7 @@ FText SQuickSDFTimeline::GetCompactSummaryText() const
 	const int32 MaskCount = Props ? Props->NumAngles : 0;
 	const int32 CurrentIndex = Props ? FMath::Clamp(Props->EditAngleIndex, 0, FMath::Max(Props->NumAngles - 1, 0)) : 0;
 	const float CurrentAngle = Props && Props->TargetAngles.IsValidIndex(CurrentIndex) ? Props->TargetAngles[CurrentIndex] : 0.0f;
-	return FText::Format(LOCTEXT("CompactSummary", "{0} masks ready. Current {1}: {2} deg. Click or drag the timeline to seek."), MaskCount, CurrentIndex + 1, FText::AsNumber(FMath::RoundToInt(CurrentAngle)));
+	return FText::Format(LOCTEXT("CompactSummary", "{0} masks ready. Current {1}: {2} deg. Click or drag the upper rail to seek."), MaskCount, CurrentIndex + 1, FText::AsNumber(FMath::RoundToInt(CurrentAngle)));
 }
 
 FText SQuickSDFTimeline::GetCompleteMaskButtonText() const
@@ -672,7 +675,7 @@ void SQuickSDFTimeline::OnSymmetryModeStateChanged(ECheckBoxState NewState)
 	if (Tool && Tool->Properties)
 	{
 		Tool->Properties->bSymmetryMode = (NewState == ECheckBoxState::Checked);
-		
+
 		// Rebuild the timeline to reflect the new range
 		RebuildTimeline();
 	}
@@ -732,7 +735,7 @@ float SQuickSDFTimeline::GetCurrentLightYaw() const
 						while (RelativeAngle >= 360.0f) RelativeAngle -= 360.0f;
 						if (RelativeAngle > 180.0f) return -1.0f;
 					}
-					
+
 					// If symmetry mode is on, we only care about 0-90
 					bool bSymmetry = Tool->Properties && Tool->Properties->bSymmetryMode;
 					if (bSymmetry)
@@ -744,7 +747,7 @@ float SQuickSDFTimeline::GetCurrentLightYaw() const
 						if (RelativeAngle > 90.0f) RelativeAngle = 180.0f - RelativeAngle;
 						return FMath::Clamp(RelativeAngle, 0.0f, 90.0f);
 					}
-					
+
 					return FMath::Clamp(RelativeAngle, 0.0f, 180.0f);
 				}
 		}
@@ -828,7 +831,7 @@ int32 SQuickSDFTimeline::FindKeyframeAtScreenPosition(const FVector2D& ScreenPos
 		return INDEX_NONE;
 	}
 
-	const float TrackWidth = FMath::Max(LocalSize.X - 40.0f, 1.0f);
+	const float TrackWidth = FMath::Max(LocalSize.X - (QuickSDFTimelineTrackPadding * 2.0f), 1.0f);
 	const float MaxAngle = Props->bSymmetryMode ? 90.0f : 180.0f;
 	int32 BestIndex = INDEX_NONE;
 	float BestDistance = TNumericLimits<float>::Max();
@@ -841,7 +844,7 @@ int32 SQuickSDFTimeline::FindKeyframeAtScreenPosition(const FVector2D& ScreenPos
 			continue;
 		}
 
-		const float KeyX = FMath::Clamp(Angle / MaxAngle, 0.0f, 1.0f) * TrackWidth + 20.0f;
+		const float KeyX = FMath::Clamp(Angle / MaxAngle, 0.0f, 1.0f) * TrackWidth + QuickSDFTimelineTrackPadding;
 		const float Distance = FMath::Abs(LocalPosition.X - KeyX);
 		if (Distance <= QuickSDFTimelineKeyframeHitSlop && Distance < BestDistance)
 		{
@@ -869,9 +872,9 @@ void SQuickSDFTimeline::SeekTimelineAtScreenPosition(const FVector2D& ScreenPosi
 
 	const FGeometry TrackGeometry = TimelineTrackCanvas->GetTickSpaceGeometry();
 	const FVector2D LocalPosition = TrackGeometry.AbsoluteToLocal(ScreenPosition);
-	const float TrackWidth = FMath::Max(TrackGeometry.GetLocalSize().X - 40.0f, 1.0f);
+	const float TrackWidth = FMath::Max(TrackGeometry.GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f), 1.0f);
 	const float MaxAngle = Props->bSymmetryMode ? 90.0f : 180.0f;
-	const float SeekPercent = FMath::Clamp((LocalPosition.X - 20.0f) / TrackWidth, 0.0f, 1.0f);
+	const float SeekPercent = FMath::Clamp((LocalPosition.X - QuickSDFTimelineTrackPadding) / TrackWidth, 0.0f, 1.0f);
 	const float SeekAngle = SeekPercent * MaxAngle;
 	LastSeekAngle = SeekAngle;
 	bHasSeekAngle = true;
@@ -969,7 +972,7 @@ TArray<FQuickSDFMaskImportSource> SQuickSDFTimeline::MakeImportSourcesFromTextur
 void SQuickSDFTimeline::RebuildTimeline()
 {
 	if (!TimelineTrackCanvas.IsValid()) return;
-	
+
 	TimelineTrackCanvas->ClearChildren();
 	KeyframeBrushes.Empty();
 	ThumbnailTextures.Empty();
@@ -992,7 +995,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 			{
 				ThumbnailTextures.Add(TStrongObjectPtr<UTexture2D>(ThumbnailTexture));
 			}
-			
+
 			UTexture* Tex = ThumbnailTexture ? ThumbnailTexture : Asset->GetActiveAngleDataList()[i].TextureMask;
 			if (Tex)
 			{
@@ -1019,7 +1022,37 @@ void SQuickSDFTimeline::RebuildTimeline()
 		SNew(SBorder)
 		.Visibility(EVisibility::HitTestInvisible)
 		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-		.BorderBackgroundColor(FLinearColor(0.025f, 0.025f, 0.025f, 1.0f))
+		.BorderBackgroundColor(FLinearColor(0.018f, 0.018f, 0.018f, 0.96f))
+	];
+
+	TimelineTrackCanvas->AddSlot()
+	.Position(FVector2D(QuickSDFTimelineTrackPadding, QuickSDFTimelineRailY))
+	.Size(TAttribute<FVector2D>::CreateLambda([this]() {
+		const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+		return FVector2D(FMath::Max(1.0f, TrackWidth), QuickSDFTimelineRailHeight);
+	}))
+	[
+		SNew(SBorder)
+		.Visibility(EVisibility::HitTestInvisible)
+		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+		.BorderBackgroundColor(FLinearColor(1.0f, 1.0f, 1.0f, 0.14f))
+	];
+
+	TimelineTrackCanvas->AddSlot()
+	.Position(FVector2D(QuickSDFTimelineTrackPadding, QuickSDFTimelineRailY))
+	.Size(TAttribute<FVector2D>::CreateLambda([this]() {
+		const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+		const bool bSymmetry = Tool && Tool->Properties && Tool->Properties->bSymmetryMode;
+		const float MaxAngle = bSymmetry ? 90.0f : 180.0f;
+		const float Percent = FMath::Clamp(GetCurrentSeekAngle() / MaxAngle, 0.0f, 1.0f);
+		const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+		return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent, QuickSDFTimelineRailHeight);
+	}))
+	[
+		SNew(SBorder)
+		.Visibility(EVisibility::HitTestInvisible)
+		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+		.BorderBackgroundColor(GetQuickSDFTimelineAccentColor(0.75f))
 	];
 
 	TimelineTrackCanvas->AddSlot()
@@ -1032,7 +1065,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 		SNew(SBorder)
 		.Visibility(EVisibility::HitTestInvisible)
 		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-		.BorderBackgroundColor(FLinearColor(0.012f, 0.012f, 0.012f, 0.96f))
+		.BorderBackgroundColor(FLinearColor(0.018f, 0.018f, 0.018f, 0.98f))
 	];
 
 	TimelineTrackCanvas->AddSlot()
@@ -1070,12 +1103,12 @@ void SQuickSDFTimeline::RebuildTimeline()
 
 			if (!Indices.IsValidIndex(i)) return FVector2D::ZeroVector;
 
-			float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
+			float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
 			float PrevAngle = (i == 0) ? 0.0f : P->TargetAngles[Indices[i - 1]];
 			float CurrAngle = P->TargetAngles[Indices[i]];
 			float L = (i == 0) ? 0.0f : (PrevAngle + CurrAngle) * 0.5f;
-			
-			return FVector2D(FMath::Max(0.0f, TrackWidth) * (L / MaxAngle) + 20.0f, KeyframeLaneTop);
+
+			return FVector2D(FMath::Max(0.0f, TrackWidth) * (L / MaxAngle) + QuickSDFTimelineTrackPadding, KeyframeLaneTop);
 		}))
 		.Size(TAttribute<FVector2D>::CreateLambda([this, i, KeyframeLaneHeight]() {
 			UQuickSDFPaintTool* Tool = this->GetActivePaintTool();
@@ -1094,14 +1127,14 @@ void SQuickSDFTimeline::RebuildTimeline()
 
 			if (!Indices.IsValidIndex(i)) return FVector2D::ZeroVector;
 
-			float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
+			float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
 			float PrevAngle = (i == 0) ? 0.0f : P->TargetAngles[Indices[i - 1]];
 			float CurrAngle = P->TargetAngles[Indices[i]];
 			float NextAngle = (i == Indices.Num() - 1) ? MaxAngle : P->TargetAngles[Indices[i + 1]];
-			
+
 			float L = (i == 0) ? 0.0f : (PrevAngle + CurrAngle) * 0.5f;
 			float R = (i == Indices.Num() - 1) ? MaxAngle : (CurrAngle + NextAngle) * 0.5f;
-			
+
 			return FVector2D(FMath::Max(0.0f, TrackWidth) * ((R - L) / MaxAngle), KeyframeLaneHeight);
 		}))
 		[
@@ -1173,18 +1206,18 @@ void SQuickSDFTimeline::RebuildTimeline()
 	{
 		float TickAngle = i * TickStep;
 		float Percent = TickAngle / MaxTimelineAngle;
-		
+
 		TimelineTrackCanvas->AddSlot()
 		.Position(TAttribute<FVector2D>::CreateLambda([this, Percent]() {
-			float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
-			return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 19.0f, 0.0f);
+			const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+			return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + QuickSDFTimelineTrackPadding - 0.5f, 4.0f);
 		}))
-		.Size(FVector2D(1.0f, QuickSDFTimelineSeekLaneHeight))
+		.Size(FVector2D(1.0f, 11.0f))
 		[
 			SNew(SBorder)
 			.Visibility(EVisibility::HitTestInvisible)
 			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-			.BorderBackgroundColor(FLinearColor(0.8f, 0.8f, 0.8f, 0.18f))
+			.BorderBackgroundColor(FLinearColor(0.85f, 0.85f, 0.85f, 0.28f))
 		];
 	}
 
@@ -1203,8 +1236,8 @@ void SQuickSDFTimeline::RebuildTimeline()
 				if (bSymmetry && CurrentAngle > MaxAngle) return FVector2D(-1000.0f, -1000.0f); // Hide
 
 				float Percent = FMath::Clamp(CurrentAngle / MaxAngle, 0.0f, 1.0f);
-				float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
-				return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 20.0f - (KeyframeWidth * 0.5f), KeyframeLaneTop);
+				float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+				return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + QuickSDFTimelineTrackPadding - (KeyframeWidth * 0.5f), KeyframeLaneTop);
 			}
 			return FVector2D::ZeroVector;
 		}))
@@ -1269,20 +1302,41 @@ void SQuickSDFTimeline::RebuildTimeline()
 		UQuickSDFPaintTool* Tool = this->GetActivePaintTool();
 		bool bSymmetry = Tool && Tool->Properties && Tool->Properties->bSymmetryMode;
 		float MaxAngle = bSymmetry ? 90.0f : 180.0f;
-		
+
 		float SeekAngle = GetCurrentSeekAngle();
 		if (SeekAngle < 0.0f) return FVector2D(-1000.0f, -1000.0f);
 
 		float Percent = FMath::Clamp(SeekAngle / MaxAngle, 0.0f, 1.0f);
-		float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - 40.0f;
-		return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + 19.0f, 2.0f);
+		float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+		return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + QuickSDFTimelineTrackPadding - 1.0f, 2.0f);
 	}))
 	.Size(FVector2D(2.0f, QuickSDFTimelineSeekLaneHeight - 4.0f))
 	[
 		SNew(SBorder)
 		.Visibility(EVisibility::HitTestInvisible)
 		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-		.BorderBackgroundColor(FLinearColor(1.0f, 0.85f, 0.2f, 0.85f))
+		.BorderBackgroundColor(FLinearColor(1.0f, 0.9f, 0.28f, 0.9f))
+	];
+
+	TimelineTrackCanvas->AddSlot()
+	.Position(TAttribute<FVector2D>::CreateLambda([this]() {
+		UQuickSDFPaintTool* Tool = this->GetActivePaintTool();
+		bool bSymmetry = Tool && Tool->Properties && Tool->Properties->bSymmetryMode;
+		float MaxAngle = bSymmetry ? 90.0f : 180.0f;
+
+		float SeekAngle = GetCurrentSeekAngle();
+		if (SeekAngle < 0.0f) return FVector2D(-1000.0f, -1000.0f);
+
+		float Percent = FMath::Clamp(SeekAngle / MaxAngle, 0.0f, 1.0f);
+		float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+		return FVector2D(FMath::Max(0.0f, TrackWidth) * Percent + QuickSDFTimelineTrackPadding - 3.0f, QuickSDFTimelineRailY - 2.0f);
+	}))
+	.Size(FVector2D(6.0f, 7.0f))
+	[
+		SNew(SBorder)
+		.Visibility(EVisibility::HitTestInvisible)
+		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+		.BorderBackgroundColor(FLinearColor(1.0f, 0.9f, 0.28f, 1.0f))
 	];
 }
 
@@ -1398,7 +1452,7 @@ void SQuickSDFTimeline::OnKeyframeAngleChanged(float NewAngle, int32 Index)
 			if (Props->TargetAngles.IsValidIndex(Index))
 			{
 				Props->TargetAngles[Index] = NewAngle;
-				
+
 				UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
 				if (Subsystem && Subsystem->GetActiveSDFAsset())
 				{
@@ -1433,7 +1487,7 @@ void SQuickSDFTimeline::OnKeyframeDragStarted()
 	{
 		Tool->GetToolManager()->BeginUndoTransaction(LOCTEXT("TimelineDrag", "Drag Timeline Keyframe"));
 		bTimelineDragTransactionOpen = true;
-		
+
 		UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
 		if (Subsystem && Subsystem->GetActiveSDFAsset())
 		{
