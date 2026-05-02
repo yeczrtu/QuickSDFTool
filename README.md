@@ -235,6 +235,20 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 - Switching between mesh components should preserve each component's QuickSDF asset/mask state so artists can work on face, hair, clothing, or accessory meshes separately inside one actor.
 - If viewport picking is supported, clicking a surface on a multi-mesh actor should resolve to the hit mesh component when possible and fall back to the component picker when ambiguous.
 
+#### Material Slot Isolation and Bake Scope
+
+- Fix material-slot isolation so hidden non-target slots do not keep blocking paint hits. When artists isolate one slot or body part, paint picking and brush projection should ignore collision or hit results from the slots that are not visible/editable.
+- Treat the isolate state as an edit target filter, not only as a viewport visibility filter, so artists can reliably paint the currently selected slot even when the full mesh still has geometry under the cursor.
+- Avoid a naive `Auto Bake All Slots` workflow for meshes that have multiple material slots with separated UV layouts, because baking unused or unrelated slots can be slow and may not produce meaningful output.
+- Add an explicit per-material-slot bake scope so artists can choose the slots that need baking, skip unused slots, and understand the cost before starting a bake.
+- Preserve separate bake outputs or warnings per slot when UV islands/material slots do not share a useful combined layout.
+
+#### Threshold Map Reverse Conversion
+
+- Add a reverse-conversion workflow that can reconstruct or preview an angle-specific mask from a completed threshold map by entering a target light angle.
+- The reverse conversion should support at least preview, extraction to the current mask, and extraction to a new mask so artists can inspect or repair completed threshold maps.
+- Clarify how Monopolar and Bipolar threshold maps are interpreted during reverse conversion, including which channel or value pair is used for the requested angle.
+
 #### Mask Freeze
 
 - Add a `Mask Freeze` workflow to reduce VRAM usage by releasing paint render targets for masks that are not actively being edited.
@@ -259,6 +273,8 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 - `Quick Reshape` should support multiple boundary lines such as `0 / 30 / 60 / 90` degrees on one guide layer, update only the matching angle masks, keep the guide layer editable after baking, and warn for lines that do not split a UV island or close a region.
 - `Brush Projection Mode` should let artists switch between the current `Surface / UV` behavior and a `View Projected` brush, preserve the visible brush shape in screen space, and avoid painting hidden or back-facing surfaces.
 - `Actor Mesh Component Selection` should let a single actor with multiple mesh components choose one target component, paint and bake only that component, and preserve separate QuickSDF state when switching between components.
+- `Material Slot Isolation and Bake Scope` should let artists paint an isolated material slot without hidden slots stealing hit detection, and should bake only the explicitly selected material slots when UV layouts are separated.
+- `Threshold Map Reverse Conversion` should let artists specify an angle, preview the reconstructed mask from a completed threshold map, and extract it for repair or reuse.
 - `Mask Freeze` should lower VRAM usage in a high-resolution, multi-mask setup, restore frozen masks without visual changes, and automatically thaw every affected mask before applying multi-mask edits.
 - `Stroke Auto Fill` should be verified for current-only edits, `Before / After / All` edits, UV-island isolation, and left/right or inside/outside fill selection.
 - The English and Japanese README entries should stay synchronized and clearly marked as planned, not implemented.
