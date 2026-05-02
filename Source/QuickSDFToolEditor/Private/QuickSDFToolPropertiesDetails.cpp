@@ -11,8 +11,10 @@
 #include "QuickSDFPaintTool.h"
 #include "QuickSDFToolProperties.h"
 #include "QuickSDFToolSubsystem.h"
+#include "QuickSDFToolStyle.h"
 #include "QuickSDFToolUI.h"
 #include "Styling/AppStyle.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
@@ -113,117 +115,302 @@ UQuickSDFPaintTool* GetActiveQuickSDFPaintTool()
 	return QuickSDFToolUI::GetActivePaintTool();
 }
 
-FText GetTextureSetSlotText(const FQuickSDFTextureSetData& TextureSet)
+const UQuickSDFAsset* GetActiveQuickSDFAsset()
 {
-	return FText::Format(
-		LOCTEXT("TextureSetSlotFormat", "{0}: {1}"),
-		FText::AsNumber(TextureSet.MaterialSlotIndex),
-		FText::FromName(TextureSet.SlotName));
+	const UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	return Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+}
+
+const FQuickSDFTextureSetData* GetTextureSetData(int32 TextureSetIndex)
+{
+	const UQuickSDFAsset* Asset = GetActiveQuickSDFAsset();
+	return Asset && Asset->TextureSets.IsValidIndex(TextureSetIndex)
+		? &Asset->TextureSets[TextureSetIndex]
+		: nullptr;
+}
+
+bool IsTextureSetActive(int32 TextureSetIndex)
+{
+	const UQuickSDFPaintTool* Tool = GetActiveQuickSDFPaintTool();
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	if (Props)
+	{
+		return Props->ActiveTextureSetIndex == TextureSetIndex;
+	}
+
+	const UQuickSDFAsset* Asset = GetActiveQuickSDFAsset();
+	return Asset && Asset->ActiveTextureSetIndex == TextureSetIndex;
+}
+
+FText GetTextureSetIndexText(int32 TextureSetIndex)
+{
+	if (const FQuickSDFTextureSetData* TextureSet = GetTextureSetData(TextureSetIndex))
+	{
+		return FText::AsNumber(TextureSet->MaterialSlotIndex);
+	}
+	return FText::AsNumber(TextureSetIndex);
+}
+
+FText GetTextureSetSlotNameText(int32 TextureSetIndex)
+{
+	if (const FQuickSDFTextureSetData* TextureSet = GetTextureSetData(TextureSetIndex))
+	{
+		return FText::FromName(TextureSet->SlotName);
+	}
+	return LOCTEXT("MissingTextureSetRow", "Missing");
+}
+
+FText GetTextureSetMaterialText(int32 TextureSetIndex)
+{
+	if (const FQuickSDFTextureSetData* TextureSet = GetTextureSetData(TextureSetIndex))
+	{
+		return TextureSet->MaterialName.IsEmpty()
+			? LOCTEXT("TextureSetNoMaterial", "No material")
+			: FText::FromString(TextureSet->MaterialName);
+	}
+	return FText::GetEmpty();
+}
+
+FName GetTextureSetStatusBrushName(int32 TextureSetIndex)
+{
+	static const FName BakedBrushName(TEXT("QuickSDF.MaterialSlot.Status.Baked"));
+	static const FName EmptyBrushName(TEXT("QuickSDF.MaterialSlot.Status.Empty"));
+	static const FName DirtyBrushName(TEXT("QuickSDF.MaterialSlot.Status.Dirty"));
+	static const FName WarningBrushName(TEXT("QuickSDF.MaterialSlot.Status.Warning"));
+	static const FName MissingBrushName(TEXT("QuickSDF.MaterialSlot.Status.Missing"));
+
+	const FQuickSDFTextureSetData* TextureSet = GetTextureSetData(TextureSetIndex);
+	if (!TextureSet)
+	{
+		return MissingBrushName;
+	}
+	if (TextureSet->bHasWarning)
+	{
+		return WarningBrushName;
+	}
+	if (TextureSet->bDirty)
+	{
+		return DirtyBrushName;
+	}
+	if (TextureSet->bInitialBakeComplete)
+	{
+		return BakedBrushName;
+	}
+	return EmptyBrushName;
+}
+
+FName GetTextureSetIndexBadgeBrushName(int32 TextureSetIndex)
+{
+	return IsTextureSetActive(TextureSetIndex)
+		? FName(TEXT("QuickSDF.MaterialSlot.IndexBadge.Active"))
+		: FName(TEXT("QuickSDF.MaterialSlot.IndexBadge"));
+}
+
+FSlateColor GetTextureSetPrimaryTextColor(int32 TextureSetIndex)
+{
+	return IsTextureSetActive(TextureSetIndex)
+		? FSlateColor(FLinearColor(0.96f, 0.98f, 1.0f, 1.0f))
+		: FSlateColor(FLinearColor(0.82f, 0.84f, 0.86f, 1.0f));
+}
+
+FSlateColor GetTextureSetSecondaryTextColor(int32 TextureSetIndex)
+{
+	return IsTextureSetActive(TextureSetIndex)
+		? FSlateColor(FLinearColor(0.64f, 0.82f, 0.90f, 1.0f))
+		: FSlateColor(FLinearColor(0.55f, 0.56f, 0.58f, 1.0f));
+}
+
+FLinearColor GetTextureSetAccentColor(int32 TextureSetIndex)
+{
+	return IsTextureSetActive(TextureSetIndex)
+		? FLinearColor(0.35f, 0.82f, 1.0f, 1.0f)
+		: FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+FReply SelectTextureSet(int32 TextureSetIndex)
+{
+	if (UQuickSDFPaintTool* Tool = GetActiveQuickSDFPaintTool())
+	{
+		Tool->SelectTextureSet(TextureSetIndex);
+	}
+	return FReply::Handled();
+}
+
+FReply BakeTextureSet(int32 TextureSetIndex)
+{
+	if (UQuickSDFPaintTool* Tool = GetActiveQuickSDFPaintTool())
+	{
+		Tool->SelectTextureSet(TextureSetIndex);
+		Tool->BakeSelectedTextureSet();
+	}
+	return FReply::Handled();
+}
+
+TSharedRef<SWidget> MakeTextureSetStatusPill(int32 TextureSetIndex)
+{
+	return SNew(SBorder)
+		.BorderImage_Lambda([TextureSetIndex]()
+		{
+			return FQuickSDFToolStyle::GetBrush(GetTextureSetStatusBrushName(TextureSetIndex));
+		})
+		.Padding(FMargin(7.0f, 2.0f))
+		[
+			SNew(STextBlock)
+			.Text_Lambda([TextureSetIndex]()
+			{
+				const UQuickSDFPaintTool* Tool = GetActiveQuickSDFPaintTool();
+				return Tool ? Tool->GetTextureSetStatusText(TextureSetIndex) : LOCTEXT("TextureSetNoTool", "Idle");
+			})
+			.Font(FAppStyle::GetFontStyle("SmallFont"))
+			.ColorAndOpacity(FLinearColor(0.92f, 0.94f, 0.95f, 1.0f))
+		];
+}
+
+TSharedRef<SWidget> MakeTextureSetBakeButton(int32 TextureSetIndex)
+{
+	return SNew(SBox)
+		.WidthOverride(30.0f)
+		.HeightOverride(26.0f)
+		[
+			SNew(SButton)
+			.ButtonStyle(FQuickSDFToolStyle::Get().Get(), "QuickSDF.MaterialSlot.ActionButton")
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Center)
+			.ContentPadding(FMargin(0.0f))
+			.ToolTipText(LOCTEXT("BakeTextureSetTooltip", "Bake only this material slot."))
+			.OnClicked_Lambda([TextureSetIndex]()
+			{
+				return BakeTextureSet(TextureSetIndex);
+			})
+			[
+				SNew(SBox)
+				.WidthOverride(16.0f)
+				.HeightOverride(16.0f)
+				[
+					SNew(SImage)
+					.Image(FQuickSDFToolStyle::GetBrush("QuickSDF.Action.Rebake"))
+					.ColorAndOpacity(FLinearColor(0.82f, 0.86f, 0.88f, 1.0f))
+				]
+			]
+		];
 }
 
 TSharedRef<SWidget> MakeTextureSetRow(TWeakObjectPtr<UQuickSDFToolProperties> WeakProperties, int32 TextureSetIndex)
 {
-	return SNew(SBorder)
-		.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-		.BorderBackgroundColor_Lambda([TextureSetIndex]()
+	(void)WeakProperties;
+
+	return SNew(SCheckBox)
+		.Style(FQuickSDFToolStyle::Get().Get(), "QuickSDF.MaterialSlot.Row")
+		.ToolTipText(LOCTEXT("SelectTextureSetTooltip", "Make this material slot active for painting, baking, preview, and SDF generation."))
+		.IsChecked_Lambda([TextureSetIndex]()
 		{
-			const UQuickSDFPaintTool* Tool = GetActiveQuickSDFPaintTool();
-			const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
-			return Props && Props->ActiveTextureSetIndex == TextureSetIndex
-				? FLinearColor(0.08f, 0.16f, 0.22f, 1.0f)
-				: FLinearColor(0.025f, 0.025f, 0.025f, 1.0f);
+			return IsTextureSetActive(TextureSetIndex) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 		})
-		.Padding(5.0f)
+		.OnCheckStateChanged_Lambda([TextureSetIndex](ECheckBoxState NewState)
+		{
+			if (NewState == ECheckBoxState::Checked)
+			{
+				SelectTextureSet(TextureSetIndex);
+			}
+		})
+		.Padding(FMargin(0.0f))
 		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.FillWidth(0.38f)
-			.VAlign(VAlign_Center)
+			SNew(SBox)
+			.MinDesiredHeight(45.0f)
 			[
-				SNew(STextBlock)
-				.Text_Lambda([TextureSetIndex]()
-				{
-					const UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
-					const UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
-					return Asset && Asset->TextureSets.IsValidIndex(TextureSetIndex)
-						? GetTextureSetSlotText(Asset->TextureSets[TextureSetIndex])
-						: LOCTEXT("MissingTextureSetRow", "Missing");
-				})
-				.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
-			]
-			+ SHorizontalBox::Slot()
-			.FillWidth(0.34f)
-			.VAlign(VAlign_Center)
-			.Padding(4.0f, 0.0f)
-			[
-				SNew(STextBlock)
-				.Text_Lambda([TextureSetIndex]()
-				{
-					const UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
-					const UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
-					return Asset && Asset->TextureSets.IsValidIndex(TextureSetIndex)
-						? FText::FromString(Asset->TextureSets[TextureSetIndex].MaterialName)
-						: FText::GetEmpty();
-				})
-				.Font(FAppStyle::GetFontStyle("SmallFont"))
-				.ColorAndOpacity(FLinearColor(0.72f, 0.72f, 0.72f, 1.0f))
-			]
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			.Padding(3.0f, 0.0f)
-			[
-				SNew(SBorder)
-				.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-				.BorderBackgroundColor_Lambda([TextureSetIndex]()
-				{
-					const UQuickSDFPaintTool* Tool = GetActiveQuickSDFPaintTool();
-					return Tool ? Tool->GetTextureSetStatusColor(TextureSetIndex) : FLinearColor(0.45f, 0.45f, 0.45f, 1.0f);
-				})
-				.Padding(FMargin(6.0f, 2.0f))
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Fill)
 				[
-					SNew(STextBlock)
-					.Text_Lambda([TextureSetIndex]()
-					{
-						const UQuickSDFPaintTool* Tool = GetActiveQuickSDFPaintTool();
-						return Tool ? Tool->GetTextureSetStatusText(TextureSetIndex) : LOCTEXT("TextureSetNoTool", "Idle");
-					})
-					.Font(FAppStyle::GetFontStyle("SmallFont"))
-					.ColorAndOpacity(FLinearColor::Black)
+					SNew(SBox)
+					.WidthOverride(3.0f)
+					[
+						SNew(SBorder)
+						.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+						.BorderBackgroundColor_Lambda([TextureSetIndex]()
+						{
+							return GetTextureSetAccentColor(TextureSetIndex);
+						})
+					]
 				]
-			]
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(2.0f, 0.0f)
-			[
-				SNew(SButton)
-				.Text(LOCTEXT("SelectTextureSetButton", "Select"))
-				.ToolTipText(LOCTEXT("SelectTextureSetTooltip", "Make this material slot the active Texture Set for painting, baking, preview, and SDF generation."))
-				.OnClicked_Lambda([TextureSetIndex]()
-				{
-					if (UQuickSDFPaintTool* Tool = GetActiveQuickSDFPaintTool())
-					{
-						Tool->SelectTextureSet(TextureSetIndex);
-					}
-					return FReply::Handled();
-				})
-			]
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(2.0f, 0.0f)
-			[
-				SNew(SButton)
-				.Text(LOCTEXT("BakeTextureSetButton", "Bake"))
-				.ToolTipText(LOCTEXT("BakeTextureSetTooltip", "Select this Texture Set and bake only its material slot."))
-				.OnClicked_Lambda([TextureSetIndex]()
-				{
-					if (UQuickSDFPaintTool* Tool = GetActiveQuickSDFPaintTool())
-					{
-						Tool->SelectTextureSet(TextureSetIndex);
-						Tool->BakeSelectedTextureSet();
-					}
-					return FReply::Handled();
-				})
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				.VAlign(VAlign_Center)
+				.Padding(8.0f, 5.0f, 6.0f, 5.0f)
+				[
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+						[
+							SNew(SBorder)
+							.BorderImage_Lambda([TextureSetIndex]()
+							{
+								return FQuickSDFToolStyle::GetBrush(GetTextureSetIndexBadgeBrushName(TextureSetIndex));
+							})
+							.Padding(FMargin(6.0f, 1.0f))
+							[
+								SNew(STextBlock)
+								.Text_Lambda([TextureSetIndex]()
+								{
+									return GetTextureSetIndexText(TextureSetIndex);
+								})
+								.Font(FAppStyle::GetFontStyle("SmallFont"))
+								.ColorAndOpacity(FLinearColor(0.90f, 0.93f, 0.95f, 1.0f))
+							]
+						]
+						+ SHorizontalBox::Slot()
+						.FillWidth(1.0f)
+						.VAlign(VAlign_Center)
+						[
+							SNew(STextBlock)
+							.Text_Lambda([TextureSetIndex]()
+							{
+								return GetTextureSetSlotNameText(TextureSetIndex);
+							})
+							.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+							.ColorAndOpacity_Lambda([TextureSetIndex]()
+							{
+								return GetTextureSetPrimaryTextColor(TextureSetIndex);
+							})
+						]
+					]
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(0.0f, 2.0f, 0.0f, 0.0f)
+					[
+						SNew(STextBlock)
+						.Text_Lambda([TextureSetIndex]()
+						{
+							return GetTextureSetMaterialText(TextureSetIndex);
+						})
+						.Font(FAppStyle::GetFontStyle("SmallFont"))
+						.ColorAndOpacity_Lambda([TextureSetIndex]()
+						{
+							return GetTextureSetSecondaryTextColor(TextureSetIndex);
+						})
+					]
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+				[
+					MakeTextureSetStatusPill(TextureSetIndex)
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+				[
+					MakeTextureSetBakeButton(TextureSetIndex)
+				]
 			]
 		];
 }
@@ -259,11 +446,14 @@ TSharedRef<SWidget> MakeTextureSetList(TWeakObjectPtr<UQuickSDFToolProperties> W
 		}
 	}
 
-	return SNew(SVerticalBox)
-		+ SVerticalBox::Slot()
-		.AutoHeight()
+	return SNew(SBox)
+		.MaxDesiredHeight(244.0f)
 		[
-			Rows
+			SNew(SScrollBox)
+			+ SScrollBox::Slot()
+			[
+				Rows
+			]
 		];
 }
 }
@@ -325,7 +515,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
 	];
 
-	QuickCategory.AddCustomRow(LOCTEXT("TextureSetsFilter", "Texture Sets Material Slots Select Bake"))
+	QuickCategory.AddCustomRow(LOCTEXT("TextureSetsFilter", "Material Slots Texture Sets Bake"))
 	.WholeRowContent()
 	[
 		SNew(SVerticalBox)
@@ -334,7 +524,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		.Padding(0.0f, 4.0f, 0.0f, 2.0f)
 		[
 			SNew(STextBlock)
-			.Text(LOCTEXT("TextureSetsLabel", "Texture Sets"))
+			.Text(LOCTEXT("TextureSetsLabel", "Material Slots"))
 			.Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
 		]
 		+ SVerticalBox::Slot()

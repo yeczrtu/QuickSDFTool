@@ -107,6 +107,48 @@ void FQuickSDFToolStyle::Initialize()
 		.SetPadding(FMargin(2.0f));
 	StyleSet->Set("QuickSDF.Timeline.ToggleButton", TimelineToggleStyle);
 
+	const float MaterialSlotRadius = 4.0f;
+	const float MaterialSlotActionRadius = 3.0f;
+	const FLinearColor MaterialSlotBorderColor(0.18f, 0.18f, 0.18f, 1.0f);
+	const FLinearColor MaterialSlotActiveBorderColor(0.24f, 0.57f, 0.72f, 1.0f);
+
+	const FCheckBoxStyle MaterialSlotRowStyle = FCheckBoxStyle()
+		.SetCheckBoxType(ESlateCheckBoxType::ToggleButton)
+		.SetUncheckedImage(FSlateRoundedBoxBrush(FLinearColor(0.030f, 0.032f, 0.034f, 1.0f), MaterialSlotRadius, MaterialSlotBorderColor, 1.0f))
+		.SetUncheckedHoveredImage(FSlateRoundedBoxBrush(FLinearColor(0.055f, 0.058f, 0.062f, 1.0f), MaterialSlotRadius, FLinearColor(0.24f, 0.24f, 0.24f, 1.0f), 1.0f))
+		.SetUncheckedPressedImage(FSlateRoundedBoxBrush(FLinearColor(0.020f, 0.022f, 0.025f, 1.0f), MaterialSlotRadius, FLinearColor(0.20f, 0.20f, 0.20f, 1.0f), 1.0f))
+		.SetCheckedImage(FSlateRoundedBoxBrush(FLinearColor(0.060f, 0.082f, 0.096f, 1.0f), MaterialSlotRadius, MaterialSlotActiveBorderColor, 1.0f))
+		.SetCheckedHoveredImage(FSlateRoundedBoxBrush(FLinearColor(0.075f, 0.105f, 0.122f, 1.0f), MaterialSlotRadius, MaterialSlotActiveBorderColor, 1.0f))
+		.SetCheckedPressedImage(FSlateRoundedBoxBrush(FLinearColor(0.045f, 0.066f, 0.080f, 1.0f), MaterialSlotRadius, MaterialSlotActiveBorderColor, 1.0f))
+		.SetForegroundColor(FStyleColors::Foreground)
+		.SetHoveredForegroundColor(FStyleColors::ForegroundHover)
+		.SetPressedForegroundColor(FStyleColors::ForegroundHover)
+		.SetCheckedForegroundColor(FStyleColors::ForegroundHover)
+		.SetCheckedHoveredForegroundColor(FStyleColors::ForegroundHover)
+		.SetCheckedPressedForegroundColor(FStyleColors::ForegroundHover)
+		.SetPadding(FMargin(0.0f));
+	StyleSet->Set("QuickSDF.MaterialSlot.Row", MaterialSlotRowStyle);
+
+	const FButtonStyle MaterialSlotActionButtonStyle = FButtonStyle()
+		.SetNormal(FSlateRoundedBoxBrush(FLinearColor(0.105f, 0.108f, 0.112f, 1.0f), MaterialSlotActionRadius, FLinearColor(0.20f, 0.20f, 0.20f, 1.0f), 1.0f))
+		.SetHovered(FSlateRoundedBoxBrush(FLinearColor(0.145f, 0.150f, 0.156f, 1.0f), MaterialSlotActionRadius, FLinearColor(0.31f, 0.31f, 0.31f, 1.0f), 1.0f))
+		.SetPressed(FSlateRoundedBoxBrush(FLinearColor(0.070f, 0.074f, 0.080f, 1.0f), MaterialSlotActionRadius, MaterialSlotActiveBorderColor, 1.0f))
+		.SetNormalForeground(FStyleColors::Foreground)
+		.SetHoveredForeground(FStyleColors::ForegroundHover)
+		.SetPressedForeground(FStyleColors::ForegroundHover)
+		.SetDisabledForeground(FStyleColors::Foreground)
+		.SetNormalPadding(FMargin(1.0f))
+		.SetPressedPadding(FMargin(1.0f));
+	StyleSet->Set("QuickSDF.MaterialSlot.ActionButton", MaterialSlotActionButtonStyle);
+
+	StyleSet->Set("QuickSDF.MaterialSlot.Status.Baked", new FSlateRoundedBoxBrush(FLinearColor(0.18f, 0.42f, 0.25f, 1.0f), 3.0f, FLinearColor(0.25f, 0.56f, 0.34f, 1.0f), 1.0f));
+	StyleSet->Set("QuickSDF.MaterialSlot.Status.Empty", new FSlateRoundedBoxBrush(FLinearColor(0.155f, 0.155f, 0.155f, 1.0f), 3.0f, FLinearColor(0.24f, 0.24f, 0.24f, 1.0f), 1.0f));
+	StyleSet->Set("QuickSDF.MaterialSlot.Status.Dirty", new FSlateRoundedBoxBrush(FLinearColor(0.42f, 0.32f, 0.12f, 1.0f), 3.0f, FLinearColor(0.62f, 0.48f, 0.20f, 1.0f), 1.0f));
+	StyleSet->Set("QuickSDF.MaterialSlot.Status.Warning", new FSlateRoundedBoxBrush(FLinearColor(0.45f, 0.20f, 0.10f, 1.0f), 3.0f, FLinearColor(0.70f, 0.36f, 0.16f, 1.0f), 1.0f));
+	StyleSet->Set("QuickSDF.MaterialSlot.Status.Missing", new FSlateRoundedBoxBrush(FLinearColor(0.13f, 0.13f, 0.13f, 1.0f), 3.0f, FLinearColor(0.22f, 0.22f, 0.22f, 1.0f), 1.0f));
+	StyleSet->Set("QuickSDF.MaterialSlot.IndexBadge", new FSlateRoundedBoxBrush(FLinearColor(0.105f, 0.108f, 0.112f, 1.0f), 3.0f, FLinearColor(0.20f, 0.20f, 0.20f, 1.0f), 1.0f));
+	StyleSet->Set("QuickSDF.MaterialSlot.IndexBadge.Active", new FSlateRoundedBoxBrush(FLinearColor(0.12f, 0.32f, 0.42f, 1.0f), 3.0f, FLinearColor(0.24f, 0.57f, 0.72f, 1.0f), 1.0f));
+
 	FSlateStyleRegistry::RegisterSlateStyle(*StyleSet.Get());
 }
 
