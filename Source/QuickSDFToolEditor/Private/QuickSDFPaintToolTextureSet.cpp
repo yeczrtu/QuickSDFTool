@@ -57,6 +57,60 @@ FString GetMaterialDisplayName(const UMeshComponent* Component, int32 MaterialSl
 	return Material ? Material->GetName() : FString(TEXT("None"));
 }
 
+bool TextureSetHasStoredBakeData(const FQuickSDFTextureSetData& TextureSet)
+{
+	if (TextureSet.FinalSDFTexture)
+	{
+		return true;
+	}
+
+	for (const FQuickSDFAngleData& AngleData : TextureSet.AngleDataList)
+	{
+		if (AngleData.TextureMask)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool TextureSetHasNonWhitePaintData(const UQuickSDFPaintTool& Tool, const FQuickSDFTextureSetData& TextureSet)
+{
+	TArray<FColor> Pixels;
+	for (const FQuickSDFAngleData& AngleData : TextureSet.AngleDataList)
+	{
+		if (!AngleData.PaintRenderTarget || !Tool.CaptureRenderTargetPixels(AngleData.PaintRenderTarget, Pixels))
+		{
+			continue;
+		}
+
+		for (const FColor& Pixel : Pixels)
+		{
+			if (Pixel.R < 250 || Pixel.G < 250 || Pixel.B < 250)
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+void NormalizeTextureSetBakeState(const UQuickSDFPaintTool& Tool, FQuickSDFTextureSetData& TextureSet)
+{
+	if (!TextureSet.bInitialBakeComplete || TextureSetHasStoredBakeData(TextureSet))
+	{
+		return;
+	}
+
+	if (!TextureSetHasNonWhitePaintData(Tool, TextureSet))
+	{
+		TextureSet.bInitialBakeComplete = false;
+		TextureSet.bDirty = false;
+	}
+}
+
 }
 
 void UQuickSDFPaintTool::InitializeDefaultAngleData(TArray<FQuickSDFAngleData>& AngleData, bool bResetExisting) const
@@ -132,6 +186,7 @@ void UQuickSDFPaintTool::RefreshTextureSetsForCurrentComponent()
 			{
 				InitializeDefaultAngleData(TextureSet.AngleDataList, true);
 			}
+			NormalizeTextureSetBakeState(*this, TextureSet);
 		}
 	}
 	else if (Asset->TextureSets.Num() == 0)

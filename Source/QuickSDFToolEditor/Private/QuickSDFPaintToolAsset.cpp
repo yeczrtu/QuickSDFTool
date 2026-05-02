@@ -976,7 +976,7 @@ void UQuickSDFPaintTool::SaveQuickSDFAsset()
 
 void UQuickSDFPaintTool::EnsureInitialMasksReady()
 {
-	if (!Properties || !CurrentComponent.IsValid())
+	if (!Properties)
 	{
 		return;
 	}
@@ -991,6 +991,7 @@ void UQuickSDFPaintTool::EnsureInitialMasksReady()
 	FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet();
 	if (ActiveSet && ActiveSet->bInitialBakeComplete)
 	{
+		Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
 		return;
 	}
 
@@ -1007,44 +1008,38 @@ void UQuickSDFPaintTool::EnsureInitialMasksReady()
 		return;
 	}
 
-	GetToolManager()->BeginUndoTransaction(LOCTEXT("InitialQuickSDFBake", "Initial Quick SDF Bake"));
 	Asset->Modify();
 	Properties->Modify();
 
-	const int32 PresetSize = GetQuickSDFPresetSize(EQuickSDFQualityPreset::Standard1024);
-	Properties->QualityPreset = EQuickSDFQualityPreset::Standard1024;
-	Properties->Resolution = FIntPoint(PresetSize, PresetSize);
-	Properties->UVChannel = 0;
-	Properties->bSymmetryMode = true;
-	Properties->bAutoSyncLight = true;
-	Properties->bOverwriteExistingSDF = false;
-	Properties->NumAngles = QuickSDFDefaultAngleCount;
-
-	Asset->Resolution = Properties->Resolution;
-	Asset->UVChannel = Properties->UVChannel;
-	Asset->AngleDataList.Reset();
-	InitializeDefaultAngleData(Asset->AngleDataList, true);
-	Properties->TargetAngles.SetNum(QuickSDFDefaultAngleCount);
-	Properties->TargetTextures.SetNum(QuickSDFDefaultAngleCount);
-
-	for (int32 Index = 0; Index < QuickSDFDefaultAngleCount; ++Index)
+	if (Asset->Resolution.X <= 0 || Asset->Resolution.Y <= 0)
 	{
-		Asset->AngleDataList[Index].TextureMask = nullptr;
-		Asset->AngleDataList[Index].PaintRenderTarget = nullptr;
+		const int32 PresetSize = GetQuickSDFPresetSize(EQuickSDFQualityPreset::Standard1024);
+		Asset->Resolution = FIntPoint(PresetSize, PresetSize);
+		Properties->Resolution = Asset->Resolution;
+	}
+
+	if (Asset->AngleDataList.Num() == 0)
+	{
+		InitializeDefaultAngleData(Asset->AngleDataList, true);
+	}
+
+	Properties->NumAngles = Asset->AngleDataList.Num();
+	Properties->TargetAngles.SetNum(Properties->NumAngles);
+	Properties->TargetTextures.SetNum(Properties->NumAngles);
+
+	for (int32 Index = 0; Index < Asset->AngleDataList.Num(); ++Index)
+	{
 		Properties->TargetAngles[Index] = Asset->AngleDataList[Index].Angle;
-		Properties->TargetTextures[Index] = nullptr;
+		Properties->TargetTextures[Index] = Asset->AngleDataList[Index].TextureMask;
 	}
 
 	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
-	FillOriginalShadingAll();
-	ActiveSet = Asset->GetActiveTextureSet();
 	if (ActiveSet)
 	{
-		ActiveSet->bInitialBakeComplete = true;
+		ActiveSet->bInitialBakeComplete = false;
 		ActiveSet->bDirty = false;
 		Asset->SyncActiveTextureSetFromLegacy();
 	}
-	GetToolManager()->EndUndoTransaction();
 }
 
 void UQuickSDFPaintTool::RebakeCurrentMask()

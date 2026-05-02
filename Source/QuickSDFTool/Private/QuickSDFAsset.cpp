@@ -95,6 +95,16 @@ void UQuickSDFAsset::MigrateLegacyDataToTextureSetsIfNeeded()
 		return;
 	}
 
+	bool bHasStoredLegacyBakeData = FinalSDFTexture != nullptr;
+	for (const FQuickSDFAngleData& AngleData : AngleDataList)
+	{
+		if (AngleData.TextureMask)
+		{
+			bHasStoredLegacyBakeData = true;
+			break;
+		}
+	}
+
 	FQuickSDFTextureSetData& TextureSet = TextureSets.AddDefaulted_GetRef();
 	TextureSet.MaterialSlotIndex = INDEX_NONE;
 	TextureSet.SlotName = TEXT("Default");
@@ -103,7 +113,7 @@ void UQuickSDFAsset::MigrateLegacyDataToTextureSetsIfNeeded()
 	TextureSet.Resolution = Resolution;
 	TextureSet.AngleDataList = AngleDataList;
 	TextureSet.FinalSDFTexture = FinalSDFTexture;
-	TextureSet.bInitialBakeComplete = true;
+	TextureSet.bInitialBakeComplete = bHasStoredLegacyBakeData;
 	TextureSet.bDirty = false;
 	ActiveTextureSetIndex = 0;
 }
