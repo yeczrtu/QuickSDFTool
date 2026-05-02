@@ -121,12 +121,12 @@ TArray<FQuickSDFGuardStrokeEntry> MakeSortedGuardStrokeEntries(
 	Entries.Reserve(GuardAngleIndices.Num());
 	for (int32 AngleIndex : GuardAngleIndices)
 	{
-		if (!Asset->AngleDataList.IsValidIndex(AngleIndex))
+		if (!Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex))
 		{
 			continue;
 		}
 
-		FQuickSDFAngleData& AngleData = Asset->AngleDataList[AngleIndex];
+		FQuickSDFAngleData& AngleData = Asset->GetActiveAngleDataList()[AngleIndex];
 		UTextureRenderTarget2D* PaintRenderTarget = AngleData.PaintRenderTarget;
 		if (!PaintRenderTarget)
 		{
@@ -353,12 +353,12 @@ bool UQuickSDFPaintTool::RestoreStrokeStartPixels() const
 	for (int32 Index = 0; Index < StrokeTransactionAngleIndices.Num() && Index < StrokeBeforeRenderTargetsByAngle.Num(); ++Index)
 	{
 		const int32 AngleIndex = StrokeTransactionAngleIndices[Index];
-		if (!Asset->AngleDataList.IsValidIndex(AngleIndex))
+		if (!Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex))
 		{
 			continue;
 		}
 
-		UTextureRenderTarget2D* PaintRenderTarget = Asset->AngleDataList[AngleIndex].PaintRenderTarget;
+		UTextureRenderTarget2D* PaintRenderTarget = Asset->GetActiveAngleDataList()[AngleIndex].PaintRenderTarget;
 		UTextureRenderTarget2D* BeforeRenderTarget = StrokeBeforeRenderTargetsByAngle[Index];
 		if (!PaintRenderTarget || !BeforeRenderTarget)
 		{
@@ -408,9 +408,9 @@ bool UQuickSDFPaintTool::ApplyRenderTargetPixels(int32 AngleIndex, const TArray<
 	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return false;
 
 	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
-	if (!Asset->AngleDataList.IsValidIndex(AngleIndex)) return false;
+	if (!Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex)) return false;
 	
-	const bool bRestored = RestoreRenderTargetPixels(Asset->AngleDataList[AngleIndex].PaintRenderTarget, Pixels);
+	const bool bRestored = RestoreRenderTargetPixels(Asset->GetActiveAngleDataList()[AngleIndex].PaintRenderTarget, Pixels);
 	if (bRestored)
 	{
 		RefreshPreviewMaterial();
@@ -440,9 +440,9 @@ bool UQuickSDFPaintTool::ApplyRenderTargetPixelsInRect(int32 AngleIndex, const F
 	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return false;
 
 	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
-	if (!Asset->AngleDataList.IsValidIndex(AngleIndex)) return false;
+	if (!Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex)) return false;
 
-	const bool bRestored = RestoreRenderTargetPixelsInRect(Asset->AngleDataList[AngleIndex].PaintRenderTarget, Rect, Pixels);
+	const bool bRestored = RestoreRenderTargetPixelsInRect(Asset->GetActiveAngleDataList()[AngleIndex].PaintRenderTarget, Rect, Pixels);
 	if (bRestored)
 	{
 		RefreshPreviewMaterial();
@@ -483,12 +483,12 @@ bool UQuickSDFPaintTool::ApplyTextureSlotChange(const FGuid& AngleGuid, int32 Fa
 
 	const int32 GuidIndex = FindAngleIndexByGuid(Asset, AngleGuid);
 	const int32 AngleIndex = GuidIndex != INDEX_NONE ? GuidIndex : (AngleGuid.IsValid() ? INDEX_NONE : FallbackIndex);
-	if (!Asset->AngleDataList.IsValidIndex(AngleIndex))
+	if (!Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex))
 	{
 		return false;
 	}
 
-	FQuickSDFAngleData& AngleData = Asset->AngleDataList[AngleIndex];
+	FQuickSDFAngleData& AngleData = Asset->GetActiveAngleDataList()[AngleIndex];
 	if (!AngleData.PaintRenderTarget)
 	{
 		Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
@@ -543,10 +543,10 @@ void UQuickSDFPaintTool::RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, 
 		return;
 	}
 
-	Asset->AngleDataList.SetNum(MaskGuids.Num());
+	Asset->GetActiveAngleDataList().SetNum(MaskGuids.Num());
 	for (int32 SnapshotIndex = 0; SnapshotIndex < MaskGuids.Num(); ++SnapshotIndex)
 	{
-		FQuickSDFAngleData& AngleData = Asset->AngleDataList[SnapshotIndex];
+		FQuickSDFAngleData& AngleData = Asset->GetActiveAngleDataList()[SnapshotIndex];
 		AngleData.Angle = Angles.IsValidIndex(SnapshotIndex) ? Angles[SnapshotIndex] : 0.0f;
 		AngleData.MaskGuid = MaskGuids[SnapshotIndex].IsValid() ? MaskGuids[SnapshotIndex] : FGuid::NewGuid();
 		AngleData.TextureMask = Textures.IsValidIndex(SnapshotIndex) ? Textures[SnapshotIndex] : nullptr;
@@ -558,12 +558,12 @@ void UQuickSDFPaintTool::RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, 
 
 	for (int32 SnapshotIndex = 0; SnapshotIndex < MaskGuids.Num(); ++SnapshotIndex)
 	{
-		if (!Asset->AngleDataList.IsValidIndex(SnapshotIndex))
+		if (!Asset->GetActiveAngleDataList().IsValidIndex(SnapshotIndex))
 		{
 			continue;
 		}
 
-		FQuickSDFAngleData& AngleData = Asset->AngleDataList[SnapshotIndex];
+		FQuickSDFAngleData& AngleData = Asset->GetActiveAngleDataList()[SnapshotIndex];
 		if (PixelsByMask.IsValidIndex(SnapshotIndex) && PixelsByMask[SnapshotIndex].Num() > 0 && AngleData.PaintRenderTarget)
 		{
 			RestoreRenderTargetPixels(AngleData.PaintRenderTarget, PixelsByMask[SnapshotIndex]);
@@ -588,13 +588,13 @@ bool UQuickSDFPaintTool::ApplyPixelsWithUndo(int32 AngleIndex, const TArray<FCol
 
 	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
 	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
-	if (!Asset || !Asset->AngleDataList.IsValidIndex(AngleIndex))
+	if (!Asset || !Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex))
 	{
 		return false;
 	}
 	EnsureMaskGuids(Asset);
 
-	UTextureRenderTarget2D* RenderTarget = Asset->AngleDataList[AngleIndex].PaintRenderTarget;
+	UTextureRenderTarget2D* RenderTarget = Asset->GetActiveAngleDataList()[AngleIndex].PaintRenderTarget;
 	TArray<FColor> BeforePixels;
 	if (!RenderTarget || !CaptureRenderTargetPixels(RenderTarget, BeforePixels) || BeforePixels.Num() != Pixels.Num())
 	{
@@ -615,7 +615,7 @@ bool UQuickSDFPaintTool::ApplyPixelsWithUndo(int32 AngleIndex, const TArray<FCol
 	{
 		TUniquePtr<FQuickSDFRenderTargetsChange> Change = MakeUnique<FQuickSDFRenderTargetsChange>();
 		Change->AngleIndices.Add(AngleIndex);
-		Change->AngleGuids.Add(Asset->AngleDataList[AngleIndex].MaskGuid);
+		Change->AngleGuids.Add(Asset->GetActiveAngleDataList()[AngleIndex].MaskGuid);
 		Change->BeforePixelsByAngle.Add(MoveTemp(BeforePixels));
 		Change->AfterPixelsByAngle.Add(Pixels);
 		GetToolManager()->EmitObjectChange(this, MoveTemp(Change), ChangeDescription);
@@ -629,22 +629,22 @@ bool UQuickSDFPaintTool::CopyNearestMaskToAngle(int32 DestinationIndex)
 {
 	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
 	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
-	if (!Asset || !Asset->AngleDataList.IsValidIndex(DestinationIndex))
+	if (!Asset || !Asset->GetActiveAngleDataList().IsValidIndex(DestinationIndex))
 	{
 		return false;
 	}
 
-	const float DestinationAngle = Asset->AngleDataList[DestinationIndex].Angle;
+	const float DestinationAngle = Asset->GetActiveAngleDataList()[DestinationIndex].Angle;
 	int32 SourceIndex = INDEX_NONE;
 	float BestDistance = TNumericLimits<float>::Max();
-	for (int32 Index = 0; Index < Asset->AngleDataList.Num(); ++Index)
+	for (int32 Index = 0; Index < Asset->GetActiveAngleDataList().Num(); ++Index)
 	{
-		if (Index == DestinationIndex || !Asset->AngleDataList[Index].PaintRenderTarget)
+		if (Index == DestinationIndex || !Asset->GetActiveAngleDataList()[Index].PaintRenderTarget)
 		{
 			continue;
 		}
 
-		const float Distance = FMath::Abs(Asset->AngleDataList[Index].Angle - DestinationAngle);
+		const float Distance = FMath::Abs(Asset->GetActiveAngleDataList()[Index].Angle - DestinationAngle);
 		if (Distance < BestDistance)
 		{
 			BestDistance = Distance;
@@ -652,14 +652,14 @@ bool UQuickSDFPaintTool::CopyNearestMaskToAngle(int32 DestinationIndex)
 		}
 	}
 
-	UTextureRenderTarget2D* DestinationRT = Asset->AngleDataList[DestinationIndex].PaintRenderTarget;
+	UTextureRenderTarget2D* DestinationRT = Asset->GetActiveAngleDataList()[DestinationIndex].PaintRenderTarget;
 	if (!DestinationRT)
 	{
 		return false;
 	}
 
 	TArray<FColor> Pixels;
-	if (SourceIndex != INDEX_NONE && CaptureRenderTargetPixels(Asset->AngleDataList[SourceIndex].PaintRenderTarget, Pixels))
+	if (SourceIndex != INDEX_NONE && CaptureRenderTargetPixels(Asset->GetActiveAngleDataList()[SourceIndex].PaintRenderTarget, Pixels))
 	{
 		return ApplyPixelsWithUndo(DestinationIndex, Pixels, LOCTEXT("CopyNearestMaskChange", "Copy Nearest Quick SDF Mask"));
 	}
@@ -696,8 +696,8 @@ void UQuickSDFPaintTool::AddStrokeDirtyRect(UTextureRenderTarget2D* RenderTarget
 		for (int32 Index = 0; Index < StrokeTransactionAngleIndices.Num(); ++Index)
 		{
 			const int32 AngleIndex = StrokeTransactionAngleIndices[Index];
-			if (Asset->AngleDataList.IsValidIndex(AngleIndex) &&
-				Asset->AngleDataList[AngleIndex].PaintRenderTarget == RenderTarget)
+			if (Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex) &&
+				Asset->GetActiveAngleDataList()[AngleIndex].PaintRenderTarget == RenderTarget)
 			{
 				TransactionIndex = Index;
 				break;
@@ -746,12 +746,12 @@ void UQuickSDFPaintTool::BeginStrokeTransaction()
 	for (int32 AngleIndex : CandidateAngleIndices)
 	{
 		UQuickSDFAsset* Asset = ActiveAsset;
-		if (!Asset || !Asset->AngleDataList.IsValidIndex(AngleIndex))
+		if (!Asset || !Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex))
 		{
 			continue;
 		}
 
-		UTextureRenderTarget2D* PaintRenderTarget = Asset->AngleDataList[AngleIndex].PaintRenderTarget;
+		UTextureRenderTarget2D* PaintRenderTarget = Asset->GetActiveAngleDataList()[AngleIndex].PaintRenderTarget;
 		if (!PaintRenderTarget)
 		{
 			continue;
@@ -1021,12 +1021,12 @@ int32 UQuickSDFPaintTool::ValidateMonotonicGuardForAsset(UQuickSDFAsset* Asset, 
 	Entries.Reserve(ProcessableIndices.Num());
 	for (int32 AngleIndex : ProcessableIndices)
 	{
-		if (!Asset->AngleDataList.IsValidIndex(AngleIndex))
+		if (!Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex))
 		{
 			continue;
 		}
 
-		const FQuickSDFAngleData& AngleData = Asset->AngleDataList[AngleIndex];
+		const FQuickSDFAngleData& AngleData = Asset->GetActiveAngleDataList()[AngleIndex];
 		if (!AngleData.PaintRenderTarget)
 		{
 			continue;
@@ -1201,12 +1201,12 @@ void UQuickSDFPaintTool::EndStrokeTransaction()
 		for (int32 Index = 0; Index < StrokeTransactionAngleIndices.Num() && Index < StrokeBeforeRenderTargetsByAngle.Num(); ++Index)
 		{
 			const int32 AngleIndex = StrokeTransactionAngleIndices[Index];
-			if (!Asset->AngleDataList.IsValidIndex(AngleIndex))
+			if (!Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex))
 			{
 				continue;
 			}
 
-			UTextureRenderTarget2D* PaintRenderTarget = Asset->AngleDataList[AngleIndex].PaintRenderTarget;
+			UTextureRenderTarget2D* PaintRenderTarget = Asset->GetActiveAngleDataList()[AngleIndex].PaintRenderTarget;
 			if (!PaintRenderTarget)
 			{
 				continue;
@@ -1235,7 +1235,7 @@ void UQuickSDFPaintTool::EndStrokeTransaction()
 					AfterPixels != BeforePixels)
 				{
 					Change->AngleIndices.Add(AngleIndex);
-					Change->AngleGuids.Add(Asset->AngleDataList[AngleIndex].MaskGuid);
+					Change->AngleGuids.Add(Asset->GetActiveAngleDataList()[AngleIndex].MaskGuid);
 					Change->PixelRects.Add(ClampedRect);
 					Change->BeforePixelsByAngle.Add(MoveTemp(BeforePixels));
 					Change->AfterPixelsByAngle.Add(MoveTemp(AfterPixels));
@@ -1268,10 +1268,10 @@ UTextureRenderTarget2D* UQuickSDFPaintTool::GetActiveRenderTarget() const
 	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return nullptr;
 
 	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
-	if (Asset->AngleDataList.Num() == 0) return nullptr;
+	if (Asset->GetActiveAngleDataList().Num() == 0) return nullptr;
 
-	const int32 AngleIdx = FMath::Clamp(Properties->EditAngleIndex, 0, Asset->AngleDataList.Num() - 1);
-	return Asset->AngleDataList[AngleIdx].PaintRenderTarget;
+	const int32 AngleIdx = FMath::Clamp(Properties->EditAngleIndex, 0, Asset->GetActiveAngleDataList().Num() - 1);
+	return Asset->GetActiveAngleDataList()[AngleIdx].PaintRenderTarget;
 }
 
 TArray<int32> UQuickSDFPaintTool::GetPaintTargetAngleIndices() const
@@ -1284,12 +1284,12 @@ TArray<int32> UQuickSDFPaintTool::GetPaintTargetAngleIndices() const
 
 	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
 	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
-	if (!Asset || Asset->AngleDataList.Num() == 0)
+	if (!Asset || Asset->GetActiveAngleDataList().Num() == 0)
 	{
 		return TargetIndices;
 	}
 
-	const int32 CurrentAngleIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Asset->AngleDataList.Num() - 1);
+	const int32 CurrentAngleIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Asset->GetActiveAngleDataList().Num() - 1);
 	const EQuickSDFPaintTargetMode TargetMode =
 		(Properties->bPaintAllAngles && Properties->PaintTargetMode == EQuickSDFPaintTargetMode::CurrentOnly)
 			? EQuickSDFPaintTargetMode::All
@@ -1297,7 +1297,7 @@ TArray<int32> UQuickSDFPaintTool::GetPaintTargetAngleIndices() const
 
 	if (TargetMode == EQuickSDFPaintTargetMode::CurrentOnly)
 	{
-		if (Asset->AngleDataList[CurrentAngleIndex].PaintRenderTarget)
+		if (Asset->GetActiveAngleDataList()[CurrentAngleIndex].PaintRenderTarget)
 		{
 			TargetIndices.Add(CurrentAngleIndex);
 		}
@@ -1305,16 +1305,16 @@ TArray<int32> UQuickSDFPaintTool::GetPaintTargetAngleIndices() const
 	}
 
 	TArray<int32> SortedIndices;
-	for (int32 Index = 0; Index < Asset->AngleDataList.Num(); ++Index)
+	for (int32 Index = 0; Index < Asset->GetActiveAngleDataList().Num(); ++Index)
 	{
-		if (Asset->AngleDataList[Index].PaintRenderTarget)
+		if (Asset->GetActiveAngleDataList()[Index].PaintRenderTarget)
 		{
 			SortedIndices.Add(Index);
 		}
 	}
 	SortedIndices.Sort([Asset](int32 A, int32 B)
 	{
-		return Asset->AngleDataList[A].Angle < Asset->AngleDataList[B].Angle;
+		return Asset->GetActiveAngleDataList()[A].Angle < Asset->GetActiveAngleDataList()[B].Angle;
 	});
 
 	if (TargetMode == EQuickSDFPaintTargetMode::All)
@@ -1336,115 +1336,6 @@ TArray<int32> UQuickSDFPaintTool::GetPaintTargetAngleIndices() const
 	}
 
 	return TargetIndices;
-}
-
-namespace QuickSDFPaintToolPrivate
-{
-void FQuickSDFRenderTargetChange::Apply(UObject* Object)
-{
-	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
-	{
-		if (!AngleGuid.IsValid() || !Tool->ApplyRenderTargetPixelsByGuid(AngleGuid, AfterPixels))
-		{
-			if (!AngleGuid.IsValid())
-			{
-				Tool->ApplyRenderTargetPixels(AngleIndex, AfterPixels);
-			}
-		}
-	}
-}
-
-void FQuickSDFRenderTargetChange::Revert(UObject* Object)
-{
-	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
-	{
-		if (!AngleGuid.IsValid() || !Tool->ApplyRenderTargetPixelsByGuid(AngleGuid, BeforePixels))
-		{
-			if (!AngleGuid.IsValid())
-			{
-				Tool->ApplyRenderTargetPixels(AngleIndex, BeforePixels);
-			}
-		}
-	}
-}
-
-void FQuickSDFRenderTargetsChange::Apply(UObject* Object)
-{
-	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
-	{
-		for (int32 Index = 0; Index < AngleIndices.Num() && Index < AfterPixelsByAngle.Num(); ++Index)
-		{
-			const FGuid AngleGuid = AngleGuids.IsValidIndex(Index) ? AngleGuids[Index] : FGuid();
-			if (PixelRects.IsValidIndex(Index) && PixelRects[Index].Width() > 0 && PixelRects[Index].Height() > 0)
-			{
-				Tool->ApplyRenderTargetPixelsInRectByGuid(AngleGuid, AngleIndices[Index], PixelRects[Index], AfterPixelsByAngle[Index]);
-				continue;
-			}
-			if (!AngleGuid.IsValid() || !Tool->ApplyRenderTargetPixelsByGuid(AngleGuid, AfterPixelsByAngle[Index]))
-			{
-				if (!AngleGuid.IsValid())
-				{
-					Tool->ApplyRenderTargetPixels(AngleIndices[Index], AfterPixelsByAngle[Index]);
-				}
-			}
-		}
-	}
-}
-
-void FQuickSDFRenderTargetsChange::Revert(UObject* Object)
-{
-	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
-	{
-		for (int32 Index = 0; Index < AngleIndices.Num() && Index < BeforePixelsByAngle.Num(); ++Index)
-		{
-			const FGuid AngleGuid = AngleGuids.IsValidIndex(Index) ? AngleGuids[Index] : FGuid();
-			if (PixelRects.IsValidIndex(Index) && PixelRects[Index].Width() > 0 && PixelRects[Index].Height() > 0)
-			{
-				Tool->ApplyRenderTargetPixelsInRectByGuid(AngleGuid, AngleIndices[Index], PixelRects[Index], BeforePixelsByAngle[Index]);
-				continue;
-			}
-			if (!AngleGuid.IsValid() || !Tool->ApplyRenderTargetPixelsByGuid(AngleGuid, BeforePixelsByAngle[Index]))
-			{
-				if (!AngleGuid.IsValid())
-				{
-					Tool->ApplyRenderTargetPixels(AngleIndices[Index], BeforePixelsByAngle[Index]);
-				}
-			}
-		}
-	}
-}
-
-void FQuickSDFTextureSlotChange::Apply(UObject* Object)
-{
-	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
-	{
-		Tool->ApplyTextureSlotChange(AngleGuid, AngleIndex, AfterTexture, bAfterAllowSourceTextureOverwrite, AfterPixels);
-	}
-}
-
-void FQuickSDFTextureSlotChange::Revert(UObject* Object)
-{
-	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
-	{
-		Tool->ApplyTextureSlotChange(AngleGuid, AngleIndex, BeforeTexture, bBeforeAllowSourceTextureOverwrite, BeforePixels);
-	}
-}
-
-void FQuickSDFMaskStateChange::Apply(UObject* Object)
-{
-	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
-	{
-		RestoreMaskStateOnNextTick(Tool, AfterGuids, AfterAngles, AfterTextures, AfterAllowSourceTextureOverwrites, AfterPixelsByMask);
-	}
-}
-
-void FQuickSDFMaskStateChange::Revert(UObject* Object)
-{
-	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
-	{
-		RestoreMaskStateOnNextTick(Tool, BeforeGuids, BeforeAngles, BeforeTextures, BeforeAllowSourceTextureOverwrites, BeforePixelsByMask);
-	}
-}
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -1,4 +1,4 @@
-ï»¿#include "QuickSDFToolSubsystem.h"
+#include "QuickSDFToolSubsystem.h"
 #include "QuickSDFAsset.h"
 #include "QuickSDFPaintTool.h" 
 #include "Engine/TextureRenderTarget2D.h"
@@ -151,17 +151,17 @@ UQuickSDFAsset* CreateDefaultQuickSDFAsset(UObject* Outer)
 	}
 
 	NewAsset->SetFlags(RF_Transactional);
-	NewAsset->Resolution = FIntPoint(1024, 1024);
-	NewAsset->UVChannel = 0;
-	NewAsset->AngleDataList.SetNum(QuickSDFSubsystemDefaultAngleCount);
+	NewAsset->GetActiveResolution() = FIntPoint(1024, 1024);
+	NewAsset->GetActiveUVChannel() = 0;
+	NewAsset->GetActiveAngleDataList().SetNum(QuickSDFSubsystemDefaultAngleCount);
 
 	const float MaxAngle = 90.0f;
 	for (int32 Index = 0; Index < QuickSDFSubsystemDefaultAngleCount; ++Index)
 	{
-		NewAsset->AngleDataList[Index].Angle = QuickSDFSubsystemDefaultAngleCount > 1
+		NewAsset->GetActiveAngleDataList()[Index].Angle = QuickSDFSubsystemDefaultAngleCount > 1
 			? (static_cast<float>(Index) / static_cast<float>(QuickSDFSubsystemDefaultAngleCount - 1)) * MaxAngle
 			: 0.0f;
-		NewAsset->AngleDataList[Index].MaskGuid = FGuid::NewGuid();
+		NewAsset->GetActiveAngleDataList()[Index].MaskGuid = FGuid::NewGuid();
 	}
 
 	return NewAsset;
@@ -255,33 +255,6 @@ bool UQuickSDFToolSubsystem::RestoreRenderTargetPixels(class UTextureRenderTarge
 		});
 	FlushRenderingCommands();
 	return true;
-}
-
-void UQuickSDFToolSubsystem::StampSamplesToRenderTarget(class UTextureRenderTarget2D* RT, class UTexture2D* BrushMask,
-	const TArray<FQuickSDFStrokeSample>& Samples, float BrushPixelSize, bool bIsShadow)
-{/*
-	if (!RT || !BrushMask || Samples.Num() == 0) return;
-
-	FTextureRenderTargetResource* RTResource = RT->GameThread_GetRenderTargetResource();
-	if (!RTResource) return;
-
-	UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
-	FCanvas Canvas(RTResource, nullptr, World, GMaxRHIFeatureLevel);
-
-	const FVector2D RTSize(RT->SizeX, RT->SizeY);
-	const FLinearColor PaintColor = bIsShadow ? FLinearColor::Black : FLinearColor::White;
-
-	for (const FQuickSDFStrokeSample& Sample : Samples)
-	{
-		const FVector2D PixelPos(Sample.UV.X * RTSize.X, Sample.UV.Y * RTSize.Y);
-		const FVector2D StampPos = PixelPos - (BrushPixelSize * 0.5f);
-		
-		FCanvasTileItem BrushItem(StampPos, BrushMask->GetResource(), BrushPixelSize, PaintColor);
-		BrushItem.BlendMode = SE_BLEND_Translucent;
-		Canvas.DrawItem(BrushItem);
-	}
-
-	Canvas.Flush_GameThread(false);*/
 }
 
 UTexture2D* UQuickSDFToolSubsystem::CreateMaskTexture(UTextureRenderTarget2D* RT, const FString& FolderPath, const FString& TextureName, bool bOverwriteExisting, FText* OutError)
@@ -392,7 +365,7 @@ UTexture2D* UQuickSDFToolSubsystem::CreateSDFTexture(const TArray<FFloat16Color>
 
 	if (!NewTex) return nullptr;
 
-	// ãƒ¢ãƒŽãƒãƒ¼ãƒ©è¨­å®šæ™‚ã¯ R ãƒãƒ£ãƒ³ãƒãƒ«ã®å€¤ã‚’æŠ½å‡ºã— 16bit ã‚°ãƒ¬ãƒ¼ã‚¹ã‚±ãƒ¼ãƒ« (G16) ã§ä½œæˆ
+	// ƒ‚ƒmƒ|[ƒ‰Ý’èŽž‚Í R ƒ`ƒƒƒ“ƒlƒ‹‚Ì’l‚ð’Šo‚µ 16bit ƒOƒŒ[ƒXƒP[ƒ‹ (G16) ‚Åì¬
 	if (Format == ESDFOutputFormat::Monopolar)
 	{
 		NewTex->Source.Init(Width, Height, 1, 1, TSF_G16);
@@ -404,7 +377,7 @@ UTexture2D* UQuickSDFToolSubsystem::CreateSDFTexture(const TArray<FFloat16Color>
 		NewTex->Source.UnlockMip(0);
 		NewTex->CompressionSettings = TC_Grayscale;
 	}
-	else // ãƒã‚¤ãƒãƒ¼ãƒ©æ™‚ã¯RGBA16F (HDR)
+	else // ƒoƒCƒ|[ƒ‰Žž‚ÍRGBA16F (HDR)
 	{
 		NewTex->Source.Init(Width, Height, 1, 1, TSF_RGBA16F);
 		FFloat16Color* MipData = (FFloat16Color*)NewTex->Source.LockMip(0);
@@ -428,7 +401,7 @@ void UQuickSDFToolSubsystem::DrawTextureToRenderTarget(UTexture2D* SourceTex, UT
 	if (!RTResource) return;
 
 	FCanvas Canvas(RTResource, nullptr, GEditor->GetEditorWorldContext().World(), GMaxRHIFeatureLevel);
-	Canvas.Clear(FLinearColor::White); // èƒŒæ™¯ã‚’ç™½ã§ã‚¯ãƒªã‚¢
+	Canvas.Clear(FLinearColor::White); // ”wŒi‚ð”’‚ÅƒNƒŠƒA
 	
 	FCanvasTileItem TileItem(FVector2D::ZeroVector, SourceTex->GetResource(), FVector2D(TargetRT->SizeX, TargetRT->SizeY), FLinearColor::White);
 	TileItem.BlendMode = SE_BLEND_Opaque;

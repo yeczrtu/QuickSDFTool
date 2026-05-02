@@ -29,8 +29,6 @@ public:
 	bool CaptureRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const;
 	bool RestoreRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, const TArray<FColor>& Pixels) const;
 	
-	void StampSamplesToRenderTarget(class UTextureRenderTarget2D* RT, class UTexture2D* BrushMask, const TArray<FQuickSDFStrokeSample>& Samples, float BrushPixelSize, bool bIsShadow);
-	
 	class UTexture2D* CreateMaskTexture(class UTextureRenderTarget2D* RT, const FString& FolderPath, const FString& TextureName, bool bOverwriteExisting, FText* OutError = nullptr);
 	class UTexture2D* CreateSDFTexture(const TArray<FFloat16Color>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName, ESDFOutputFormat Format, bool bOverwriteExisting, FText* OutError = nullptr);
 	bool OverwriteTextureWithRenderTarget(class UTexture2D* Texture, class UTextureRenderTarget2D* RT, FText* OutError = nullptr);

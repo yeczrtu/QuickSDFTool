@@ -287,7 +287,7 @@ void UQuickSDFPaintTool::BakeSelectedTextureSet()
 		ActiveSet->bHasWarning = false;
 		ActiveSet->WarningMessage = FText::GetEmpty();
 	}
-	Asset->SyncActiveTextureSetFromLegacy();
+	Asset->SyncLegacyFromActiveTextureSet();
 	SyncPropertiesFromActiveAsset();
 	RefreshPreviewMaterial();
 	++MaskRevision;
@@ -418,7 +418,7 @@ void UQuickSDFPaintTool::SyncActiveTextureSetFromProperties()
 		return;
 	}
 
-	Asset->SyncActiveTextureSetFromLegacy();
+	Asset->SyncLegacyFromActiveTextureSet();
 	ActiveSet = Asset->GetActiveTextureSet();
 	if (ActiveSet)
 	{

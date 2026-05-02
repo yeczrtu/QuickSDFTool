@@ -70,7 +70,7 @@ void UQuickSDFPaintTool::FillOriginalShading(int32 AngleIndex)
 	if (!Subsystem || !Subsystem->GetActiveSDFAsset()) return;
 
 	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
-	if (!Asset->AngleDataList.IsValidIndex(AngleIndex)) return;
+	if (!Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex)) return;
 
 	UMaterialInterface* BaseMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/QuickSDFTool/Materials/M_OriginalShading.M_OriginalShading"));
 	if (!BaseMat) return;
@@ -149,7 +149,7 @@ void UQuickSDFPaintTool::FillOriginalShading(int32 AngleIndex)
 	TArray<FMeshData*> MeshSettings;
 	MeshSettings.Add(&MeshData);
 
-	// ベイク実行
+	// ベイク実衁E
 	Module.BakeMaterials(MaterialSettings, MeshSettings, BakeOutputs);
 
 	if (BakeOutputs.Num() > 0)
@@ -157,13 +157,13 @@ void UQuickSDFPaintTool::FillOriginalShading(int32 AngleIndex)
 		TArray<FColor> FinalPixels;
 		bool bGotPixels = false;
 
-		// Emissive をチェック (LDR)
+		// Emissive をチェチE�� (LDR)
 		if (BakeOutputs[0].PropertyData.Contains(MP_EmissiveColor) && BakeOutputs[0].PropertyData[MP_EmissiveColor].Num() > 1)
 		{
 			FinalPixels = BakeOutputs[0].PropertyData[MP_EmissiveColor];
 			bGotPixels = true;
 		}
-		// BaseColor をチェック (LDR)
+		// BaseColor をチェチE�� (LDR)
 		else if (BakeOutputs[0].PropertyData.Contains(MP_BaseColor) && BakeOutputs[0].PropertyData[MP_BaseColor].Num() > 1)
 		{
 			FinalPixels = BakeOutputs[0].PropertyData[MP_BaseColor];
@@ -191,10 +191,10 @@ void UQuickSDFPaintTool::FillOriginalShadingAll()
 
 	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
 	
-	FScopedSlowTask SlowTask(Asset->AngleDataList.Num(), LOCTEXT("BakingAllShading", "Baking All Original Shading..."));
+	FScopedSlowTask SlowTask(Asset->GetActiveAngleDataList().Num(), LOCTEXT("BakingAllShading", "Baking All Original Shading..."));
 	SlowTask.MakeDialog();
 
-	for (int32 i = 0; i < Asset->AngleDataList.Num(); ++i)
+	for (int32 i = 0; i < Asset->GetActiveAngleDataList().Num(); ++i)
 	{
 		SlowTask.EnterProgressFrame(1.0f);
 		FillOriginalShading(i);

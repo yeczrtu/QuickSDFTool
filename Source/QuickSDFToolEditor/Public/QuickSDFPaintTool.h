@@ -87,7 +87,6 @@ class UQuickSDFPaintTool : public UBaseBrushTool
 	GENERATED_BODY()
 	friend class UQuickSDFBrushResizeInputBehavior;
 	friend class UQuickSDFPreviewWidget;
-	friend class SQuickSDFTimeline;
 	
 public:
 	UQuickSDFPaintTool();
@@ -148,6 +147,7 @@ public:
 	int32 GetMaskRevision() const { return MaskRevision; }
 	bool SelectTextureSet(int32 TextureSetIndex);
 	void RefreshTextureSetsForCurrentComponent();
+	class UMeshComponent* GetCurrentComponent() const { return CurrentComponent.Get(); }
 	FText GetActiveTextureSetLabel() const;
 	FText GetTextureSetStatusText(int32 TextureSetIndex) const;
 	FLinearColor GetTextureSetStatusColor(int32 TextureSetIndex) const;

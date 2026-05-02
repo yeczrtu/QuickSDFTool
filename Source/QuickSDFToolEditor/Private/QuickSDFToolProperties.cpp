@@ -34,9 +34,9 @@ void UQuickSDFToolProperties::ExportToTexture()
 		EffectiveMaskExportFolder /= ExportFolderName;
 	}
 
-	for (int32 AngleIndex = 0; AngleIndex < Asset->AngleDataList.Num(); ++AngleIndex)
+	for (int32 AngleIndex = 0; AngleIndex < Asset->GetActiveAngleDataList().Num(); ++AngleIndex)
 	{
-		UTextureRenderTarget2D* RenderTarget = Asset->AngleDataList[AngleIndex].PaintRenderTarget;
+		UTextureRenderTarget2D* RenderTarget = Asset->GetActiveAngleDataList()[AngleIndex].PaintRenderTarget;
 		if (!RenderTarget)
 		{
 			continue;
@@ -47,7 +47,7 @@ void UQuickSDFToolProperties::ExportToTexture()
 		UTexture2D* NewTexture = Subsystem->CreateMaskTexture(RenderTarget, EffectiveMaskExportFolder, AssetName, bOverwriteExistingMasks, &Error);
 		if (NewTexture)
 		{
-			Asset->AngleDataList[AngleIndex].TextureMask = NewTexture;
+			Asset->GetActiveAngleDataList()[AngleIndex].TextureMask = NewTexture;
 			++ExportedCount;
 		}
 		else if (!Error.IsEmpty())
@@ -59,7 +59,7 @@ void UQuickSDFToolProperties::ExportToTexture()
 
 	if (ExportedCount > 0)
 	{
-		Asset->SyncActiveTextureSetFromLegacy();
+		Asset->SyncLegacyFromActiveTextureSet();
 		Asset->MarkPackageDirty();
 	}
 }

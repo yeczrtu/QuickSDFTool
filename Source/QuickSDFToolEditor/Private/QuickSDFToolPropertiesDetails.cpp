@@ -84,7 +84,7 @@ bool HasActiveSourceMasks()
 		return false;
 	}
 
-	for (const FQuickSDFAngleData& AngleData : Asset->AngleDataList)
+	for (const FQuickSDFAngleData& AngleData : Asset->GetActiveAngleDataList())
 	{
 		if (AngleData.TextureMask)
 		{

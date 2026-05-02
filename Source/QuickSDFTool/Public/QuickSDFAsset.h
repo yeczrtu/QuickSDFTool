@@ -77,6 +77,7 @@ class QUICKSDFTOOL_API UQuickSDFAsset : public UDataAsset
 
 public:
 	UQuickSDFAsset();
+	virtual void PostLoad() override;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SDF settings")
 	FIntPoint Resolution;
@@ -103,6 +104,15 @@ public:
 
 	FQuickSDFTextureSetData* GetActiveTextureSet();
 	const FQuickSDFTextureSetData* GetActiveTextureSet() const;
+	FQuickSDFTextureSetData& EnsureActiveTextureSet();
+	TArray<FQuickSDFAngleData>& GetActiveAngleDataList();
+	const TArray<FQuickSDFAngleData>& GetActiveAngleDataList() const;
+	FIntPoint& GetActiveResolution();
+	const FIntPoint& GetActiveResolution() const;
+	int32& GetActiveUVChannel();
+	const int32& GetActiveUVChannel() const;
+	UTexture2D*& GetActiveFinalSDFTexture();
+	UTexture2D* GetActiveFinalSDFTexture() const;
 	bool SetActiveTextureSetIndex(int32 NewIndex);
 	void MigrateLegacyDataToTextureSetsIfNeeded();
 	void SyncActiveTextureSetFromLegacy();
