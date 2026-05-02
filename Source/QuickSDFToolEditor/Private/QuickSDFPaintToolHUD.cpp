@@ -188,6 +188,109 @@ void UQuickSDFPaintTool::RebuildUVOverlayRenderTarget(int32 Width, int32 Height)
 	bUVOverlayDirty = false;
 }
 
+void UQuickSDFPaintTool::DrawQuickLineHUDPreview(FCanvas* Canvas)
+{
+	if (!Canvas ||
+		ActiveStrokeInputMode != EQuickSDFStrokeInputMode::TexturePreview ||
+		!bQuickLineActive ||
+		!bHasQuickLineStartSample ||
+		!bHasQuickLineEndSample ||
+		QuickLineSourceSamples.Num() < 2)
+	{
+		return;
+	}
+
+	const FVector2D PreviewOrigin = GetPreviewOrigin();
+	const FVector2D PreviewSize = GetPreviewSize();
+	auto UVToScreen = [&PreviewOrigin, &PreviewSize](const FVector2f& UV) -> FVector2D
+	{
+		return FVector2D(
+			PreviewOrigin.X + static_cast<double>(UV.X) * PreviewSize.X,
+			PreviewOrigin.Y + static_cast<double>(UV.Y) * PreviewSize.Y);
+	};
+
+	const FQuickSDFStrokeSample& SourceStart = QuickLineSourceSamples[0];
+	const FQuickSDFStrokeSample& SourceEnd = QuickLineSourceSamples.Last();
+	TArray<FVector2D> ControlPoints;
+	ControlPoints.Reserve(QuickLineSourceSamples.Num());
+
+	for (const FQuickSDFStrokeSample& SourceSample : QuickLineSourceSamples)
+	{
+		const FQuickSDFStrokeSample PreviewSample = TransformQuickLineSample(
+			SourceSample,
+			SourceStart,
+			SourceEnd,
+			QuickLineStartSample,
+			QuickLineEndSample);
+		const FVector2D ScreenPoint = UVToScreen(PreviewSample.UV);
+
+		if (ControlPoints.Num() == 0 || FVector2D::Distance(ControlPoints.Last(), ScreenPoint) >= 2.0)
+		{
+			ControlPoints.Add(ScreenPoint);
+		}
+		else
+		{
+			ControlPoints.Last() = ScreenPoint;
+		}
+	}
+
+	if (ControlPoints.Num() < 2)
+	{
+		return;
+	}
+
+	TArray<FVector2D> DrawPoints;
+	const int32 MaxDrawPoints = 96;
+	DrawPoints.Reserve(FMath::Min(MaxDrawPoints, ControlPoints.Num() * 4));
+	auto AddDrawPoint = [&DrawPoints, MaxDrawPoints](const FVector2D& Point)
+	{
+		if (DrawPoints.Num() < MaxDrawPoints)
+		{
+			DrawPoints.Add(Point);
+		}
+		else if (DrawPoints.Num() > 0)
+		{
+			DrawPoints.Last() = Point;
+		}
+	};
+
+	AddDrawPoint(ControlPoints[0]);
+	for (int32 Index = 0; Index < ControlPoints.Num() - 1; ++Index)
+	{
+		const FVector2D& P0 = Index > 0 ? ControlPoints[Index - 1] : ControlPoints[Index];
+		const FVector2D& P1 = ControlPoints[Index];
+		const FVector2D& P2 = ControlPoints[Index + 1];
+		const FVector2D& P3 = Index + 2 < ControlPoints.Num() ? ControlPoints[Index + 2] : ControlPoints[Index + 1];
+		const FVector2D Tangent1 = (P2 - P0) * 0.5;
+		const FVector2D Tangent2 = (P3 - P1) * 0.5;
+		const int32 StepCount = FMath::Clamp(FMath::CeilToInt(FVector2D::Distance(P1, P2) / 8.0), 1, 8);
+		for (int32 Step = 1; Step <= StepCount; ++Step)
+		{
+			const float Alpha = static_cast<float>(Step) / static_cast<float>(StepCount);
+			AddDrawPoint(FMath::CubicInterp(P1, Tangent1, P2, Tangent2, Alpha));
+		}
+	}
+
+	const FLinearColor PreviewColor = IsPaintingShadow()
+		? FLinearColor(0.05f, 0.05f, 0.05f, 0.95f)
+		: FLinearColor(1.0f, 0.78f, 0.12f, 0.95f);
+	const FLinearColor ShadowColor(0.0f, 0.0f, 0.0f, 0.55f);
+	for (int32 Index = 1; Index < DrawPoints.Num(); ++Index)
+	{
+		FCanvasLineItem ShadowLine(DrawPoints[Index - 1], DrawPoints[Index]);
+		ShadowLine.SetColor(ShadowColor);
+		ShadowLine.BlendMode = SE_BLEND_Translucent;
+		ShadowLine.LineThickness = 5.0f;
+		Canvas->DrawItem(ShadowLine);
+
+		FCanvasLineItem Line(DrawPoints[Index - 1], DrawPoints[Index]);
+		Line.SetColor(PreviewColor);
+		Line.BlendMode = SE_BLEND_Translucent;
+		Line.LineThickness = 3.0f;
+		Canvas->DrawItem(Line);
+	}
+}
+
 void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI)
 {
     Super::DrawHUD(Canvas, RenderAPI);
@@ -315,6 +418,7 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
         }
     }
 
+	DrawQuickLineHUDPreview(Canvas);
 
 	const FString PaintModeLabel = IsPaintingShadow() ? TEXT("Shadow") : TEXT("Light");
 	const FString MeshLabel = CurrentComponent.IsValid()

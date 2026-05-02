@@ -214,6 +214,7 @@ protected:
 	void InvalidateUVOverlayCache();
 	class UTextureRenderTarget2D* GetUVOverlayRenderTarget();
 	void RebuildUVOverlayRenderTarget(int32 Width, int32 Height);
+	void DrawQuickLineHUDPreview(class FCanvas* Canvas);
 	bool RestoreStrokeStartPixels() const;
 	void BeginStrokeTransaction();
 	void EndStrokeTransaction();
@@ -229,7 +230,7 @@ protected:
 	double GetToolCurrentTime() const;
 	void UpdateQuickLineHoldState(const FVector2D& ScreenPosition);
 	void TryActivateQuickLine();
-	void RedrawQuickLinePreview();
+	void RedrawQuickLinePreview(bool bForce = false);
 	void StampQuickLineSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample);
 	void StampQuickLineSurfaceSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample);
 	void StampQuickLineResampledSamples(const TArray<FQuickSDFStrokeSample>& CurveSamples);

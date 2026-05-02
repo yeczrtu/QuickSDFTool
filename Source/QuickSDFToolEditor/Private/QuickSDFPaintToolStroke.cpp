@@ -401,9 +401,14 @@ void UQuickSDFPaintTool::TryActivateQuickLine()
 	RedrawQuickLinePreview();
 }
 
-void UQuickSDFPaintTool::RedrawQuickLinePreview()
+void UQuickSDFPaintTool::RedrawQuickLinePreview(bool bForce)
 {
 	if (!bQuickLineActive || !bHasQuickLineStartSample || !bHasQuickLineEndSample)
+	{
+		return;
+	}
+
+	if (ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview && !bForce)
 	{
 		return;
 	}
@@ -555,40 +560,135 @@ void UQuickSDFPaintTool::StampQuickLineResampledSamples(const TArray<FQuickSDFSt
 	}
 
 	const double SpacingPixels = FMath::Max(GetCurrentStrokeSpacing(RT), 1.0);
-	TArray<FQuickSDFStrokeSample> ResampledSamples;
-	ResampledSamples.Reserve(CurveSamples.Num() * 4);
-	ResampledSamples.Add(CurveSamples[0]);
+	const double MinControlSpacingPixels = FMath::Max(SpacingPixels * 0.5, 1.0);
+	const int32 MaxResampledSamples = ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ? 512 : 2048;
 
-	auto FlushResampledSamples = [&ResampledSamples, this]()
+	TArray<FQuickSDFStrokeSample> ControlSamples;
+	ControlSamples.Reserve(CurveSamples.Num());
+	for (int32 Index = 0; Index < CurveSamples.Num(); ++Index)
 	{
-		if (ResampledSamples.Num() > 0)
+		const FQuickSDFStrokeSample& Sample = CurveSamples[Index];
+		const bool bIsLastSample = Index == CurveSamples.Num() - 1;
+		bool bShouldAdd = ControlSamples.Num() == 0 || bIsLastSample;
+		if (!bShouldAdd)
 		{
-			StampSamples(ResampledSamples);
-			ResampledSamples.Reset();
-		}
-	};
-
-	for (int32 Index = 1; Index < CurveSamples.Num(); ++Index)
-	{
-		const FQuickSDFStrokeSample& Prev = CurveSamples[Index - 1];
-		const FQuickSDFStrokeSample& Curr = CurveSamples[Index];
-		if (!CanInterpolateStrokeSamples(Prev, Curr))
-		{
-			FlushResampledSamples();
-			ResampledSamples.Add(Curr);
-			continue;
+			const FQuickSDFStrokeSample& LastSample = ControlSamples.Last();
+			bShouldAdd = !CanInterpolateStrokeSamples(LastSample, Sample) ||
+				GetSamplePixelDistance(LastSample, Sample, RT) >= MinControlSpacingPixels;
 		}
 
-		const double SegmentPixels = GetSamplePixelDistance(Prev, Curr, RT);
-		const int32 StepCount = FMath::Max(FMath::CeilToInt(SegmentPixels / SpacingPixels), 1);
-		for (int32 Step = 1; Step <= StepCount; ++Step)
+		if (bShouldAdd)
 		{
-			const float Alpha = static_cast<float>(Step) / static_cast<float>(StepCount);
-			ResampledSamples.Add(LerpStrokeSample(Prev, Curr, Alpha));
+			if (ControlSamples.Num() > 0 &&
+				CanInterpolateStrokeSamples(ControlSamples.Last(), Sample) &&
+				GetSamplePixelDistance(ControlSamples.Last(), Sample, RT) < KINDA_SMALL_NUMBER)
+			{
+				ControlSamples.Last() = Sample;
+			}
+			else
+			{
+				ControlSamples.Add(Sample);
+			}
 		}
 	}
 
-	FlushResampledSamples();
+	if (ControlSamples.Num() == 0)
+	{
+		return;
+	}
+
+	double TotalLengthPixels = 0.0;
+	for (int32 Index = 1; Index < ControlSamples.Num(); ++Index)
+	{
+		if (CanInterpolateStrokeSamples(ControlSamples[Index - 1], ControlSamples[Index]))
+		{
+			TotalLengthPixels += GetSamplePixelDistance(ControlSamples[Index - 1], ControlSamples[Index], RT);
+		}
+	}
+	const double EffectiveSpacingPixels = TotalLengthPixels > 0.0
+		? FMath::Max(SpacingPixels, TotalLengthPixels / static_cast<double>(FMath::Max(MaxResampledSamples - 1, 1)))
+		: SpacingPixels;
+
+	TArray<FQuickSDFStrokeSample> ResampledSamples;
+	ResampledSamples.Reserve(FMath::Min(MaxResampledSamples, FMath::Max(ControlSamples.Num() * 4, 1)));
+
+	auto AddResampledSample = [&ResampledSamples, MaxResampledSamples](const FQuickSDFStrokeSample& Sample)
+	{
+		if (ResampledSamples.Num() < MaxResampledSamples)
+		{
+			ResampledSamples.Add(Sample);
+		}
+		else if (ResampledSamples.Num() > 0)
+		{
+			ResampledSamples.Last() = Sample;
+		}
+	};
+
+	auto EvaluateSpline = [this](const FQuickSDFStrokeSample& P0,
+		const FQuickSDFStrokeSample& P1,
+		const FQuickSDFStrokeSample& P2,
+		const FQuickSDFStrokeSample& P3,
+		float Alpha) -> FQuickSDFStrokeSample
+	{
+		const FVector3d WorldTangent1 = (P2.WorldPos - P0.WorldPos) * 0.5;
+		const FVector3d WorldTangent2 = (P3.WorldPos - P1.WorldPos) * 0.5;
+		const FVector2f UVTangent1 = (P2.UV - P0.UV) * 0.5f;
+		const FVector2f UVTangent2 = (P3.UV - P1.UV) * 0.5f;
+		const FVector2D ScreenTangent1 = (P2.ScreenPosition - P0.ScreenPosition) * 0.5;
+		const FVector2D ScreenTangent2 = (P3.ScreenPosition - P1.ScreenPosition) * 0.5;
+		const FVector3d RayOriginTangent1 = (P2.RayOrigin - P0.RayOrigin) * 0.5;
+		const FVector3d RayOriginTangent2 = (P3.RayOrigin - P1.RayOrigin) * 0.5;
+
+		FQuickSDFStrokeSample OutSample;
+		OutSample.WorldPos = FMath::CubicInterp(P1.WorldPos, WorldTangent1, P2.WorldPos, WorldTangent2, Alpha);
+		OutSample.UV = FMath::CubicInterp(P1.UV, UVTangent1, P2.UV, UVTangent2, Alpha);
+		OutSample.LocalUVScale = FMath::Max(FMath::CubicInterp(P1.LocalUVScale, (P2.LocalUVScale - P0.LocalUVScale) * 0.5f, P2.LocalUVScale, (P3.LocalUVScale - P1.LocalUVScale) * 0.5f, Alpha), KINDA_SMALL_NUMBER);
+		OutSample.TriangleID = Alpha < 0.5f ? P1.TriangleID : P2.TriangleID;
+		OutSample.PaintChartID = P1.PaintChartID == P2.PaintChartID ? P1.PaintChartID : INDEX_NONE;
+		OutSample.ScreenPosition = FMath::CubicInterp(P1.ScreenPosition, ScreenTangent1, P2.ScreenPosition, ScreenTangent2, Alpha);
+		OutSample.RayOrigin = FMath::CubicInterp(P1.RayOrigin, RayOriginTangent1, P2.RayOrigin, RayOriginTangent2, Alpha);
+		OutSample.RayDirection = FMath::Lerp(P1.RayDirection, P2.RayDirection, static_cast<double>(Alpha)).GetSafeNormal();
+		return OutSample;
+	};
+
+	int32 RunStart = 0;
+	while (RunStart < ControlSamples.Num())
+	{
+		int32 RunEnd = RunStart;
+		while (RunEnd + 1 < ControlSamples.Num() && CanInterpolateStrokeSamples(ControlSamples[RunEnd], ControlSamples[RunEnd + 1]))
+		{
+			++RunEnd;
+		}
+
+		AddResampledSample(ControlSamples[RunStart]);
+		if (RunEnd == RunStart)
+		{
+			RunStart = RunEnd + 1;
+			continue;
+		}
+
+		for (int32 SegmentIndex = RunStart; SegmentIndex < RunEnd; ++SegmentIndex)
+		{
+			const FQuickSDFStrokeSample& P0 = SegmentIndex > RunStart ? ControlSamples[SegmentIndex - 1] : ControlSamples[SegmentIndex];
+			const FQuickSDFStrokeSample& P1 = ControlSamples[SegmentIndex];
+			const FQuickSDFStrokeSample& P2 = ControlSamples[SegmentIndex + 1];
+			const FQuickSDFStrokeSample& P3 = SegmentIndex + 2 <= RunEnd ? ControlSamples[SegmentIndex + 2] : ControlSamples[SegmentIndex + 1];
+			const double SegmentPixels = GetSamplePixelDistance(P1, P2, RT);
+			const int32 StepCount = FMath::Max(FMath::CeilToInt(SegmentPixels / EffectiveSpacingPixels), 1);
+			for (int32 Step = 1; Step <= StepCount; ++Step)
+			{
+				const float Alpha = static_cast<float>(Step) / static_cast<float>(StepCount);
+				AddResampledSample(EvaluateSpline(P0, P1, P2, P3, Alpha));
+			}
+		}
+
+		RunStart = RunEnd + 1;
+	}
+
+	if (ResampledSamples.Num() > 0)
+	{
+		StampSamples(ResampledSamples);
+	}
 }
 
 FQuickSDFStrokeSample UQuickSDFPaintTool::TransformQuickLineSample(
@@ -981,12 +1081,23 @@ void UQuickSDFPaintTool::OnUpdateDrag(const FRay& Ray)
 			RedrawQuickLinePreview();
 			return;
 		}
-		if (QuickLineSourceSamples.Num() == 0 ||
-			FVector3d::DistSquared(QuickLineSourceSamples.Last().WorldPos, Sample.WorldPos) > 1e-8)
-		{
-			QuickLineSourceSamples.Add(Sample);
-		}
 		const FQuickSDFStrokeSample StabilizedSample = SmoothStrokeSample(Sample);
+		QuickLineEndSample = StabilizedSample;
+		if (QuickLineSourceSamples.Num() == 0 ||
+			!CanInterpolateStrokeSamples(QuickLineSourceSamples.Last(), StabilizedSample))
+		{
+			QuickLineSourceSamples.Add(StabilizedSample);
+		}
+		else
+		{
+			UTextureRenderTarget2D* RT = GetActiveRenderTarget();
+			const double MinQuickLineSourceSpacing = RT ? FMath::Max(GetCurrentStrokeSpacing(RT) * 0.5, 1.0) : 0.0;
+			if (!RT ||
+				GetSamplePixelDistance(QuickLineSourceSamples.Last(), StabilizedSample, RT) >= MinQuickLineSourceSpacing)
+			{
+				QuickLineSourceSamples.Add(StabilizedSample);
+			}
+		}
 		AppendStrokeSample(StabilizedSample);
 	}
 }
@@ -995,7 +1106,7 @@ void UQuickSDFPaintTool::OnEndDrag(const FRay& Ray)
 {
 	if (bQuickLineActive)
 	{
-		RedrawQuickLinePreview();
+		RedrawQuickLinePreview(true);
 		EndStrokeTransaction();
 		PointBuffer.Empty();
 		ResetStrokeState();

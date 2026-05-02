@@ -358,7 +358,36 @@ bool UQuickSDFPaintTool::RestoreStrokeStartPixels() const
 			continue;
 		}
 
-		if (CopyRenderTargetToRenderTarget(StrokeBeforeRenderTargetsByAngle[Index], Asset->AngleDataList[AngleIndex].PaintRenderTarget))
+		UTextureRenderTarget2D* PaintRenderTarget = Asset->AngleDataList[AngleIndex].PaintRenderTarget;
+		UTextureRenderTarget2D* BeforeRenderTarget = StrokeBeforeRenderTargetsByAngle[Index];
+		if (!PaintRenderTarget || !BeforeRenderTarget)
+		{
+			continue;
+		}
+
+		if (ActiveStrokeInputMode == EQuickSDFStrokeInputMode::MeshSurface && bQuickLineActive)
+		{
+			if (CopyRenderTargetToRenderTarget(BeforeRenderTarget, PaintRenderTarget))
+			{
+				bRestoredAny = true;
+			}
+			continue;
+		}
+
+		const FIntRect DirtyRect = StrokeDirtyRectsByAngle.IsValidIndex(Index) ? StrokeDirtyRectsByAngle[Index] : FIntRect();
+		const FIntRect ClampedRect(
+			FMath::Clamp(DirtyRect.Min.X, 0, PaintRenderTarget->SizeX),
+			FMath::Clamp(DirtyRect.Min.Y, 0, PaintRenderTarget->SizeY),
+			FMath::Clamp(DirtyRect.Max.X, 0, PaintRenderTarget->SizeX),
+			FMath::Clamp(DirtyRect.Max.Y, 0, PaintRenderTarget->SizeY));
+		if (ClampedRect.Width() <= 0 || ClampedRect.Height() <= 0)
+		{
+			continue;
+		}
+
+		TArray<FColor> BeforePixels;
+		if (CaptureRenderTargetPixelsInRect(BeforeRenderTarget, ClampedRect, BeforePixels) &&
+			RestoreRenderTargetPixelsInRect(PaintRenderTarget, ClampedRect, BeforePixels))
 		{
 			bRestoredAny = true;
 		}
