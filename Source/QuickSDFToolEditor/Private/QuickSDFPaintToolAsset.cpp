@@ -1377,6 +1377,10 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 			{
 				SelectTextureSet(Properties->ActiveTextureSetIndex);
 			}
+			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, BrushProjectionMode))
+			{
+				ResetStrokeState();
+			}
 		}
 
 		UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();

@@ -62,6 +62,134 @@
 
 using namespace QuickSDFPaintToolPrivate;
 
+void UQuickSDFPaintTool::InvalidatePaintChartCache()
+{
+	TargetTrianglePaintChartIDs.Reset();
+	bPaintChartCacheDirty = true;
+	CachedPaintChartUVChannel = INDEX_NONE;
+	CachedPaintChartMaterialSlot = INDEX_NONE;
+}
+
+void UQuickSDFPaintTool::EnsurePaintChartCache()
+{
+	if (!bPaintChartCacheDirty &&
+		Properties &&
+		CachedPaintChartUVChannel == Properties->UVChannel &&
+		CachedPaintChartMaterialSlot == Properties->TargetMaterialSlot)
+	{
+		return;
+	}
+
+	TargetTrianglePaintChartIDs.Reset();
+	bPaintChartCacheDirty = false;
+	CachedPaintChartUVChannel = Properties ? Properties->UVChannel : INDEX_NONE;
+	CachedPaintChartMaterialSlot = Properties ? Properties->TargetMaterialSlot : INDEX_NONE;
+
+	if (!Properties || !TargetMesh.IsValid() || !TargetMesh->HasAttributes())
+	{
+		return;
+	}
+
+	const UE::Geometry::FDynamicMeshUVOverlay* UVOverlay = TargetMesh->Attributes()->GetUVLayer(Properties->UVChannel);
+	if (!UVOverlay)
+	{
+		return;
+	}
+
+	TSet<int32> EligibleTriangles;
+	TMap<FQuickSDFUVEdgeKey, TArray<int32>> EdgeToTriangles;
+	for (int32 TriangleID : TargetMesh->TriangleIndicesItr())
+	{
+		if (!IsTriangleInTargetMaterialSlot(TriangleID) || !UVOverlay->IsSetTriangle(TriangleID))
+		{
+			continue;
+		}
+
+		const UE::Geometry::FIndex3i UVIndices = UVOverlay->GetTriangle(TriangleID);
+		const FVector2f UV0 = UVOverlay->GetElement(UVIndices.A);
+		const FVector2f UV1 = UVOverlay->GetElement(UVIndices.B);
+		const FVector2f UV2 = UVOverlay->GetElement(UVIndices.C);
+
+		EligibleTriangles.Add(TriangleID);
+		EdgeToTriangles.FindOrAdd(MakeUVEdgeKey(UV0, UV1)).Add(TriangleID);
+		EdgeToTriangles.FindOrAdd(MakeUVEdgeKey(UV1, UV2)).Add(TriangleID);
+		EdgeToTriangles.FindOrAdd(MakeUVEdgeKey(UV2, UV0)).Add(TriangleID);
+	}
+
+	int32 NextChartID = 0;
+	TArray<int32> Queue;
+	for (int32 SeedTriangleID : EligibleTriangles)
+	{
+		if (TargetTrianglePaintChartIDs.Contains(SeedTriangleID))
+		{
+			continue;
+		}
+
+		Queue.Reset();
+		Queue.Add(SeedTriangleID);
+		TargetTrianglePaintChartIDs.Add(SeedTriangleID, NextChartID);
+
+		for (int32 QueueIndex = 0; QueueIndex < Queue.Num(); ++QueueIndex)
+		{
+			const int32 TriangleID = Queue[QueueIndex];
+			const UE::Geometry::FIndex3i UVIndices = UVOverlay->GetTriangle(TriangleID);
+			const FVector2f UV0 = UVOverlay->GetElement(UVIndices.A);
+			const FVector2f UV1 = UVOverlay->GetElement(UVIndices.B);
+			const FVector2f UV2 = UVOverlay->GetElement(UVIndices.C);
+
+			const FQuickSDFUVEdgeKey Edges[3] = {
+				MakeUVEdgeKey(UV0, UV1),
+				MakeUVEdgeKey(UV1, UV2),
+				MakeUVEdgeKey(UV2, UV0)
+			};
+
+			for (const FQuickSDFUVEdgeKey& Edge : Edges)
+			{
+				const TArray<int32>* Neighbors = EdgeToTriangles.Find(Edge);
+				if (!Neighbors)
+				{
+					continue;
+				}
+
+				for (int32 NeighborTriangleID : *Neighbors)
+				{
+					if (!TargetTrianglePaintChartIDs.Contains(NeighborTriangleID))
+					{
+						TargetTrianglePaintChartIDs.Add(NeighborTriangleID, NextChartID);
+						Queue.Add(NeighborTriangleID);
+					}
+				}
+			}
+		}
+
+		++NextChartID;
+	}
+}
+
+int32 UQuickSDFPaintTool::GetPaintChartIDForTriangle(int32 TriangleID)
+{
+	EnsurePaintChartCache();
+	if (const int32* PaintChartID = TargetTrianglePaintChartIDs.Find(TriangleID))
+	{
+		return *PaintChartID;
+	}
+	return INDEX_NONE;
+}
+
+bool UQuickSDFPaintTool::CanInterpolateStrokeSamples(const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B) const
+{
+	if (!Properties ||
+		Properties->BrushProjectionMode == EQuickSDFBrushProjectionMode::ViewProjected ||
+		ActiveStrokeInputMode != EQuickSDFStrokeInputMode::MeshSurface)
+	{
+		return true;
+	}
+
+	return A.PaintChartID != INDEX_NONE &&
+		B.PaintChartID != INDEX_NONE &&
+		A.PaintChartID == B.PaintChartID;
+}
+
 FQuickSDFStrokeSample UQuickSDFPaintTool::SmoothStrokeSample(const FQuickSDFStrokeSample& RawSample)
 {
 	if (!Properties || !Properties->bEnableStrokeStabilizer)
@@ -89,6 +217,13 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::SmoothStrokeSample(const FQuickSDFStro
 	}
 
 	if (!bHasFilteredStrokeSample)
+	{
+		FilteredStrokeSample = RawSample;
+		bHasFilteredStrokeSample = true;
+		return RawSample;
+	}
+
+	if (!CanInterpolateStrokeSamples(FilteredStrokeSample, RawSample))
 	{
 		FilteredStrokeSample = RawSample;
 		bHasFilteredStrokeSample = true;
@@ -198,6 +333,11 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::LerpStrokeSample(const FQuickSDFStroke
 	Result.WorldPos = FMath::Lerp(A.WorldPos, B.WorldPos, static_cast<double>(AlphaFloat));
 	Result.UV = FMath::Lerp(A.UV, B.UV, AlphaFloat);
 	Result.LocalUVScale = FMath::Lerp(A.LocalUVScale, B.LocalUVScale, AlphaFloat);
+	Result.TriangleID = B.TriangleID;
+	Result.PaintChartID = B.PaintChartID;
+	Result.ScreenPosition = FMath::Lerp(A.ScreenPosition, B.ScreenPosition, AlphaFloat);
+	Result.RayOrigin = FMath::Lerp(A.RayOrigin, B.RayOrigin, static_cast<double>(AlphaFloat));
+	Result.RayDirection = FMath::Lerp(A.RayDirection, B.RayDirection, static_cast<double>(AlphaFloat)).GetSafeNormal();
 	return Result;
 }
 
@@ -276,6 +416,30 @@ void UQuickSDFPaintTool::RedrawQuickLinePreview()
 
 void UQuickSDFPaintTool::StampQuickLineSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample)
 {
+	if (Properties &&
+		Properties->BrushProjectionMode == EQuickSDFBrushProjectionMode::ViewProjected &&
+		ActiveStrokeInputMode == EQuickSDFStrokeInputMode::MeshSurface)
+	{
+		UTextureRenderTarget2D* RT = GetActiveRenderTarget();
+		if (!RT)
+		{
+			return;
+		}
+
+		const double Spacing = FMath::Max(GetCurrentStrokeSpacing(RT), 1.0);
+		const double SegmentLength = FVector2D::Distance(StartSample.ScreenPosition, EndSample.ScreenPosition);
+		const int32 StepCount = FMath::Max(FMath::CeilToInt(SegmentLength / Spacing), 1);
+		TArray<FQuickSDFStrokeSample> LineSamples;
+		LineSamples.Reserve(StepCount + 1);
+		for (int32 Index = 0; Index <= StepCount; ++Index)
+		{
+			const float Alpha = static_cast<float>(Index) / static_cast<float>(StepCount);
+			LineSamples.Add(LerpStrokeSample(StartSample, EndSample, Alpha));
+		}
+		StampSamples(LineSamples);
+		return;
+	}
+
 	if (QuickLineSourceSamples.Num() >= 2)
 	{
 		TArray<FQuickSDFStrokeSample> CurveSamples;
@@ -307,14 +471,11 @@ void UQuickSDFPaintTool::StampQuickLineSegment(const FQuickSDFStrokeSample& Star
 			const int32 StepCount = FMath::Max(FMath::CeilToInt(SegmentPixels / SpacingPixels), 1);
 			for (int32 Step = 1; Step <= StepCount; ++Step)
 			{
-				const float Alpha = static_cast<float>(Step) / static_cast<float>(StepCount);
-				FQuickSDFStrokeSample Sample;
-				Sample.WorldPos = FMath::Lerp(Prev.WorldPos, Curr.WorldPos, static_cast<double>(Alpha));
-				Sample.UV = FMath::Lerp(Prev.UV, Curr.UV, Alpha);
-				Sample.LocalUVScale = FMath::Lerp(Prev.LocalUVScale, Curr.LocalUVScale, Alpha);
-				ResampledSamples.Add(Sample);
-			}
+			const float Alpha = static_cast<float>(Step) / static_cast<float>(StepCount);
+			FQuickSDFStrokeSample Sample = LerpStrokeSample(Prev, Curr, Alpha);
+			ResampledSamples.Add(Sample);
 		}
+	}
 
 		StampSamples(ResampledSamples);
 		return;
@@ -332,10 +493,7 @@ void UQuickSDFPaintTool::StampQuickLineSegment(const FQuickSDFStrokeSample& Star
 	for (int32 Index = 0; Index <= StepCount; ++Index)
 	{
 		const float Alpha = static_cast<float>(Index) / static_cast<float>(StepCount);
-		FQuickSDFStrokeSample Sample;
-		Sample.WorldPos = FMath::Lerp(StartSample.WorldPos, EndSample.WorldPos, static_cast<double>(Alpha));
-		Sample.UV = FMath::Lerp(StartSample.UV, EndSample.UV, Alpha);
-		Sample.LocalUVScale = FMath::Lerp(StartSample.LocalUVScale, EndSample.LocalUVScale, Alpha);
+		FQuickSDFStrokeSample Sample = LerpStrokeSample(StartSample, EndSample, Alpha);
 		LineSamples.Add(Sample);
 	}
 
@@ -376,6 +534,7 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::TransformQuickLineSample(const FQuickS
 
 	OutSample.UV = QuickLineStartSample.UV + TargetUnit * (Along * Scale) + TargetPerp * (Across * Scale);
 	OutSample.WorldPos = FVector3d(OutSample.UV.X, OutSample.UV.Y, 0.0);
+	OutSample.ScreenPosition = FMath::Lerp(QuickLineStartSample.ScreenPosition, QuickLineEndSample.ScreenPosition, Along / FMath::Max(SourceLength, KINDA_SMALL_NUMBER));
 	return OutSample;
 }
 
@@ -817,6 +976,11 @@ bool UQuickSDFPaintTool::TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSam
 		UV1 * static_cast<float>(BaryCoords.Y) +
 		UV2 * static_cast<float>(BaryCoords.Z);
 	OutSample.WorldPos = Transform.TransformPosition(LocalRay.PointAt(HitDistance));
+	OutSample.TriangleID = HitTID;
+	OutSample.PaintChartID = GetPaintChartIDForTriangle(HitTID);
+	OutSample.ScreenPosition = LastInputScreenPosition;
+	OutSample.RayOrigin = Ray.Origin;
+	OutSample.RayDirection = Ray.Direction.GetSafeNormal();
 	return true;
 }
 
@@ -827,6 +991,7 @@ bool UQuickSDFPaintTool::TryMakePreviewStrokeSample(const FVector2D& ScreenPosit
 
 	OutSample.UV = ScreenToPreviewUV(ScreenPosition);
 	OutSample.WorldPos = FVector3d(OutSample.UV.X * RT->SizeX, OutSample.UV.Y * RT->SizeY, 0.0);
+	OutSample.ScreenPosition = ScreenPosition;
 	return true;
 }
 
@@ -838,6 +1003,14 @@ void UQuickSDFPaintTool::StampSample(const FQuickSDFStrokeSample& Sample)
 void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Samples)
 {
 	if (Samples.Num() == 0) return;
+
+	if (Properties &&
+		Properties->BrushProjectionMode == EQuickSDFBrushProjectionMode::ViewProjected &&
+		ActiveStrokeInputMode == EQuickSDFStrokeInputMode::MeshSurface)
+	{
+		StampProjectedSamples(Samples);
+		return;
+	}
 
 	const TArray<int32> PaintTargetAngleIndices = GetPaintTargetAngleIndices();
 	if (Properties && PaintTargetAngleIndices.Num() > 1 && !bStampingAllPaintTargets)
@@ -941,8 +1114,309 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 	}
 }
 
+void UQuickSDFPaintTool::StampProjectedSamples(const TArray<FQuickSDFStrokeSample>& Samples)
+{
+	if (Samples.Num() == 0)
+	{
+		return;
+	}
+
+	const TArray<int32> PaintTargetAngleIndices = GetPaintTargetAngleIndices();
+	if (Properties && PaintTargetAngleIndices.Num() > 1 && !bStampingAllPaintTargets)
+	{
+		const int32 PreviousEditAngleIndex = Properties->EditAngleIndex;
+		bStampingAllPaintTargets = true;
+		for (int32 AngleIndex : PaintTargetAngleIndices)
+		{
+			Properties->EditAngleIndex = AngleIndex;
+			StampProjectedSamples(Samples);
+		}
+		Properties->EditAngleIndex = PreviousEditAngleIndex;
+		bStampingAllPaintTargets = false;
+		RefreshPreviewMaterial();
+		return;
+	}
+
+	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
+	if (!RT || !Properties || !TargetMesh.IsValid() || !TargetMeshSpatial.IsValid() || !TargetMesh->HasAttributes() || !CurrentComponent.IsValid())
+	{
+		return;
+	}
+
+	const UE::Geometry::FDynamicMeshUVOverlay* UVOverlay = TargetMesh->Attributes()->GetUVLayer(Properties->UVChannel);
+	if (!UVOverlay)
+	{
+		return;
+	}
+
+	TArray<FColor> Pixels;
+	if (!CaptureRenderTargetPixels(RT, Pixels) || Pixels.Num() != RT->SizeX * RT->SizeY)
+	{
+		return;
+	}
+
+	const FTransform Transform = CurrentComponent->GetComponentTransform();
+	const int32 Width = RT->SizeX;
+	const int32 Height = RT->SizeY;
+	const bool bPaintShadow = IsPaintingShadow();
+	const float BrushRadiusWorld = FMath::Max(static_cast<float>(GetEffectiveBrushRadius()), KINDA_SMALL_NUMBER);
+	const float Strength = FMath::Clamp(BrushProperties ? BrushProperties->BrushStrength : 1.0f, 0.0f, 1.0f);
+	const bool bUseAntialiasing = Properties->bEnableBrushAntialiasing;
+	const float AAWorld = bUseAntialiasing
+		? FMath::Max(BrushRadiusWorld * Properties->BrushAntialiasingWidth / static_cast<float>(QuickSDFBrushMaskResolution), KINDA_SMALL_NUMBER)
+		: 0.0f;
+	const float Falloff = FMath::Clamp(BrushProperties ? BrushProperties->BrushFalloffAmount : 1.0f, 0.0f, 1.0f);
+	const float InnerRadius = BrushRadiusWorld * FMath::Clamp(1.0f - Falloff, 0.0f, 1.0f);
+
+	auto ComputeBarycentricUV = [](const FVector2f& P, const FVector2f& A, const FVector2f& B, const FVector2f& C, FVector3f& OutBary) -> bool
+	{
+		const FVector2f V0 = B - A;
+		const FVector2f V1 = C - A;
+		const FVector2f V2 = P - A;
+		const float D00 = FVector2f::DotProduct(V0, V0);
+		const float D01 = FVector2f::DotProduct(V0, V1);
+		const float D11 = FVector2f::DotProduct(V1, V1);
+		const float D20 = FVector2f::DotProduct(V2, V0);
+		const float D21 = FVector2f::DotProduct(V2, V1);
+		const float Denom = D00 * D11 - D01 * D01;
+		if (FMath::Abs(Denom) <= KINDA_SMALL_NUMBER)
+		{
+			return false;
+		}
+		const float V = (D11 * D20 - D01 * D21) / Denom;
+		const float W = (D00 * D21 - D01 * D20) / Denom;
+		const float U = 1.0f - V - W;
+		OutBary = FVector3f(U, V, W);
+		constexpr float BaryTolerance = -0.0005f;
+		return U >= BaryTolerance && V >= BaryTolerance && W >= BaryTolerance;
+	};
+
+	auto BlendPixel = [bPaintShadow, Strength](FColor& Pixel, float Coverage)
+	{
+		const float Alpha = FMath::Clamp(Coverage * Strength, 0.0f, 1.0f);
+		if (Alpha <= 0.001f)
+		{
+			return;
+		}
+		const float Target = bPaintShadow ? 0.0f : 255.0f;
+		auto BlendChannel = [Alpha, Target](uint8 Value) -> uint8
+		{
+			return static_cast<uint8>(FMath::Clamp(FMath::RoundToInt(FMath::Lerp(static_cast<float>(Value), Target, Alpha)), 0, 255));
+		};
+		Pixel.R = BlendChannel(Pixel.R);
+		Pixel.G = BlendChannel(Pixel.G);
+		Pixel.B = BlendChannel(Pixel.B);
+		Pixel.A = 255;
+	};
+
+	auto IsVisibleFromSample = [this, &Transform](int32 TriangleID, const FVector3d& WorldPosition, const FQuickSDFStrokeSample& Sample) -> bool
+	{
+		const FVector3d LocalOrigin = Transform.InverseTransformPosition(Sample.RayOrigin);
+		const FVector3d LocalTarget = Transform.InverseTransformPosition(WorldPosition);
+		const FVector3d LocalDelta = LocalTarget - LocalOrigin;
+		const double LocalDistance = LocalDelta.Size();
+		if (LocalDistance <= KINDA_SMALL_NUMBER)
+		{
+			return true;
+		}
+
+		const FRay LocalRay(LocalOrigin, LocalDelta / LocalDistance);
+		UE::Geometry::IMeshSpatial::FQueryOptions QueryOptions(LocalDistance + 0.1, [this](int32 CandidateTriangleID)
+		{
+			return IsTriangleInTargetMaterialSlot(CandidateTriangleID);
+		});
+
+		double HitDistance = LocalDistance + 1.0;
+		int32 HitTriangleID = INDEX_NONE;
+		FVector3d BaryCoords;
+		if (!TargetMeshSpatial->FindNearestHitTriangle(LocalRay, HitDistance, HitTriangleID, BaryCoords, QueryOptions))
+		{
+			return true;
+		}
+
+		if (HitTriangleID == TriangleID)
+		{
+			return HitDistance <= LocalDistance + 0.1;
+		}
+
+		return HitDistance >= LocalDistance - 0.1;
+	};
+
+	FIntRect DirtyRect;
+	bool bHasDirtyRect = false;
+	auto IncludeDirtyPixel = [&DirtyRect, &bHasDirtyRect](int32 X, int32 Y)
+	{
+		const FIntRect PixelRect(X, Y, X + 1, Y + 1);
+		if (!bHasDirtyRect)
+		{
+			DirtyRect = PixelRect;
+			bHasDirtyRect = true;
+			return;
+		}
+		DirtyRect.Min.X = FMath::Min(DirtyRect.Min.X, PixelRect.Min.X);
+		DirtyRect.Min.Y = FMath::Min(DirtyRect.Min.Y, PixelRect.Min.Y);
+		DirtyRect.Max.X = FMath::Max(DirtyRect.Max.X, PixelRect.Max.X);
+		DirtyRect.Max.Y = FMath::Max(DirtyRect.Max.Y, PixelRect.Max.Y);
+	};
+
+	for (const FQuickSDFStrokeSample& Sample : Samples)
+	{
+		const FVector3d ViewDir = Sample.RayDirection.GetSafeNormal();
+		if (ViewDir.IsNearlyZero())
+		{
+			continue;
+		}
+
+		FVector3d ViewX = FVector3d::CrossProduct(FVector3d(0.0, 0.0, 1.0), ViewDir);
+		if (ViewX.SizeSquared() <= KINDA_SMALL_NUMBER)
+		{
+			ViewX = FVector3d::CrossProduct(FVector3d(0.0, 1.0, 0.0), ViewDir);
+		}
+		ViewX.Normalize();
+		const FVector3d ViewY = FVector3d::CrossProduct(ViewDir, ViewX).GetSafeNormal();
+
+		for (int32 TriangleID : TargetMesh->TriangleIndicesItr())
+		{
+			if (!IsTriangleInTargetMaterialSlot(TriangleID) || !UVOverlay->IsSetTriangle(TriangleID))
+			{
+				continue;
+			}
+
+			const FVector3d LocalNormal = TargetMesh->GetTriNormal(TriangleID);
+			const FVector3d WorldNormal = Transform.TransformVectorNoScale(LocalNormal).GetSafeNormal();
+			if (FVector3d::DotProduct(WorldNormal, ViewDir) >= 0.0)
+			{
+				continue;
+			}
+
+			const UE::Geometry::FIndex3i TriVertices = TargetMesh->GetTriangle(TriangleID);
+			const FVector3d W0 = Transform.TransformPosition(TargetMesh->GetVertex(TriVertices.A));
+			const FVector3d W1 = Transform.TransformPosition(TargetMesh->GetVertex(TriVertices.B));
+			const FVector3d W2 = Transform.TransformPosition(TargetMesh->GetVertex(TriVertices.C));
+
+			const FVector2D P0(FVector3d::DotProduct(W0 - Sample.WorldPos, ViewX), FVector3d::DotProduct(W0 - Sample.WorldPos, ViewY));
+			const FVector2D P1(FVector3d::DotProduct(W1 - Sample.WorldPos, ViewX), FVector3d::DotProduct(W1 - Sample.WorldPos, ViewY));
+			const FVector2D P2(FVector3d::DotProduct(W2 - Sample.WorldPos, ViewX), FVector3d::DotProduct(W2 - Sample.WorldPos, ViewY));
+			const double MinPX = FMath::Min3(P0.X, P1.X, P2.X);
+			const double MaxPX = FMath::Max3(P0.X, P1.X, P2.X);
+			const double MinPY = FMath::Min3(P0.Y, P1.Y, P2.Y);
+			const double MaxPY = FMath::Max3(P0.Y, P1.Y, P2.Y);
+			if (MaxPX < -BrushRadiusWorld || MinPX > BrushRadiusWorld || MaxPY < -BrushRadiusWorld || MinPY > BrushRadiusWorld)
+			{
+				continue;
+			}
+
+			const UE::Geometry::FIndex3i TriUVs = UVOverlay->GetTriangle(TriangleID);
+			const FVector2f UV0 = UVOverlay->GetElement(TriUVs.A);
+			const FVector2f UV1 = UVOverlay->GetElement(TriUVs.B);
+			const FVector2f UV2 = UVOverlay->GetElement(TriUVs.C);
+
+			const int32 MinX = FMath::Clamp(FMath::FloorToInt(FMath::Min3(UV0.X, UV1.X, UV2.X) * Width), 0, Width - 1);
+			const int32 MaxX = FMath::Clamp(FMath::CeilToInt(FMath::Max3(UV0.X, UV1.X, UV2.X) * Width), 0, Width);
+			const int32 MinY = FMath::Clamp(FMath::FloorToInt(FMath::Min3(UV0.Y, UV1.Y, UV2.Y) * Height), 0, Height - 1);
+			const int32 MaxY = FMath::Clamp(FMath::CeilToInt(FMath::Max3(UV0.Y, UV1.Y, UV2.Y) * Height), 0, Height);
+			if (MaxX <= MinX || MaxY <= MinY)
+			{
+				continue;
+			}
+
+			for (int32 Y = MinY; Y < MaxY; ++Y)
+			{
+				for (int32 X = MinX; X < MaxX; ++X)
+				{
+					const FVector2f PixelUV((static_cast<float>(X) + 0.5f) / static_cast<float>(Width), (static_cast<float>(Y) + 0.5f) / static_cast<float>(Height));
+					FVector3f Bary;
+					if (!ComputeBarycentricUV(PixelUV, UV0, UV1, UV2, Bary))
+					{
+						continue;
+					}
+
+					const FVector3d WorldPosition =
+						W0 * static_cast<double>(Bary.X) +
+						W1 * static_cast<double>(Bary.Y) +
+						W2 * static_cast<double>(Bary.Z);
+					const FVector3d Delta = WorldPosition - Sample.WorldPos;
+					const FVector3d ProjectedDelta = Delta - FVector3d::DotProduct(Delta, ViewDir) * ViewDir;
+					const float ProjectedDistance = static_cast<float>(ProjectedDelta.Size());
+
+					if (ProjectedDistance > BrushRadiusWorld + AAWorld)
+					{
+						continue;
+					}
+
+					if (!IsVisibleFromSample(TriangleID, WorldPosition, Sample))
+					{
+						continue;
+					}
+
+					float Coverage = 1.0f;
+					if (Falloff > 0.0f && ProjectedDistance > InnerRadius)
+					{
+						Coverage *= FMath::Clamp((BrushRadiusWorld - ProjectedDistance) / FMath::Max(BrushRadiusWorld - InnerRadius, KINDA_SMALL_NUMBER), 0.0f, 1.0f);
+					}
+					if (bUseAntialiasing && ProjectedDistance > BrushRadiusWorld - AAWorld)
+					{
+						Coverage *= FMath::Clamp((BrushRadiusWorld + AAWorld - ProjectedDistance) / (2.0f * AAWorld), 0.0f, 1.0f);
+					}
+					else if (!bUseAntialiasing && ProjectedDistance > BrushRadiusWorld)
+					{
+						continue;
+					}
+
+					FColor& Pixel = Pixels[Y * Width + X];
+					const FColor Before = Pixel;
+					BlendPixel(Pixel, Coverage);
+					if (Pixel != Before)
+					{
+						IncludeDirtyPixel(X, Y);
+					}
+				}
+			}
+		}
+	}
+
+	if (!bHasDirtyRect)
+	{
+		return;
+	}
+
+	constexpr int32 DirtyPadding = 2;
+	DirtyRect = FIntRect(
+		FMath::Clamp(DirtyRect.Min.X - DirtyPadding, 0, Width),
+		FMath::Clamp(DirtyRect.Min.Y - DirtyPadding, 0, Height),
+		FMath::Clamp(DirtyRect.Max.X + DirtyPadding, 0, Width),
+		FMath::Clamp(DirtyRect.Max.Y + DirtyPadding, 0, Height));
+
+	TArray<FColor> DirtyPixels;
+	DirtyPixels.SetNum(DirtyRect.Width() * DirtyRect.Height());
+	for (int32 Y = DirtyRect.Min.Y; Y < DirtyRect.Max.Y; ++Y)
+	{
+		for (int32 X = DirtyRect.Min.X; X < DirtyRect.Max.X; ++X)
+		{
+			DirtyPixels[(Y - DirtyRect.Min.Y) * DirtyRect.Width() + (X - DirtyRect.Min.X)] = Pixels[Y * Width + X];
+		}
+	}
+
+	AddStrokeDirtyRect(RT, DirtyRect);
+	RestoreRenderTargetPixelsInRect(RT, DirtyRect, DirtyPixels);
+
+	if (!bStampingAllPaintTargets)
+	{
+		RefreshPreviewMaterial();
+	}
+}
+
 void UQuickSDFPaintTool::AppendStrokeSample(const FQuickSDFStrokeSample& Sample)
 {
+	if (PointBuffer.Num() > 0)
+	{
+		if (!CanInterpolateStrokeSamples(PointBuffer.Last(), Sample))
+		{
+			PointBuffer.Reset();
+			AccumulatedDistance = 0.0;
+		}
+	}
+
 	if (PointBuffer.Num() > 0)
 	{
 		if (FVector2f::DistSquared(PointBuffer.Last().UV, Sample.UV) < 1e-12f)
@@ -974,6 +1448,12 @@ void UQuickSDFPaintTool::AppendStrokeSample(const FQuickSDFStrokeSample& Sample)
 
 void UQuickSDFPaintTool::StampLinearSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample)
 {
+	if (!CanInterpolateStrokeSamples(StartSample, EndSample))
+	{
+		StampSample(EndSample);
+		return;
+	}
+
 	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
 	if (!RT) return;
 
@@ -1022,6 +1502,14 @@ void UQuickSDFPaintTool::StampInterpolatedSegment(
     const FQuickSDFStrokeSample& P2,
     const FQuickSDFStrokeSample& P3)
 {
+	if (!CanInterpolateStrokeSamples(P0, P1) ||
+		!CanInterpolateStrokeSamples(P1, P2) ||
+		!CanInterpolateStrokeSamples(P2, P3))
+	{
+		StampLinearSegment(P2, P3);
+		return;
+	}
+
     UTextureRenderTarget2D* RT = GetActiveRenderTarget();
     if (!RT) return;
 

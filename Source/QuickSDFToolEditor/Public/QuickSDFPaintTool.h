@@ -172,8 +172,10 @@ protected:
 	bool IsTriangleInTargetMaterialSlot(int32 TriangleID) const;
 	bool TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample);
 	bool TryMakePreviewStrokeSample(const FVector2D& ScreenPosition, FQuickSDFStrokeSample& OutSample) const;
+	bool CanInterpolateStrokeSamples(const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B) const;
 	void StampSample(const FQuickSDFStrokeSample& Sample);
 	void StampSamples(const TArray<FQuickSDFStrokeSample>& Samples);
+	void StampProjectedSamples(const TArray<FQuickSDFStrokeSample>& Samples);
 	void AppendStrokeSample(const FQuickSDFStrokeSample& Sample);
 	void StampLinearSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample);
 	void FlushStrokeTail();
@@ -219,6 +221,9 @@ protected:
 	int32 ValidateMonotonicGuardForAsset(class UQuickSDFAsset* Asset, int32* OutTransitionViolations = nullptr) const;
 	void WarnIfMonotonicGuardViolations(const FText& Context);
 	void ResetStrokeState();
+	void InvalidatePaintChartCache();
+	void EnsurePaintChartCache();
+	int32 GetPaintChartIDForTriangle(int32 TriangleID);
 	void AddStrokeDirtyRect(class UTextureRenderTarget2D* RenderTarget, const FIntRect& Rect);
 	void InitializeRenderTargets();
 	double GetToolCurrentTime() const;
@@ -231,6 +236,7 @@ protected:
 	TSharedPtr<UE::Geometry::FDynamicMesh3> TargetMesh;
 	TSharedPtr<UE::Geometry::FDynamicMeshAABBTree3> TargetMeshSpatial;
 	TMap<int32, int32> TargetTriangleMaterialSlots;
+	TMap<int32, int32> TargetTrianglePaintChartIDs;
 
 	TWeakObjectPtr<class UMeshComponent> CurrentComponent;
 	TSet<TWeakObjectPtr<class UMeshComponent>> InitialBakeComponents;
@@ -285,6 +291,9 @@ protected:
 	int32 CachedUVOverlayMaterialSlot = INDEX_NONE;
 	bool bCachedUVOverlayIsolateTargetMaterialSlot = false;
 	FIntPoint CachedUVOverlaySize = FIntPoint::ZeroValue;
+	bool bPaintChartCacheDirty = true;
+	int32 CachedPaintChartUVChannel = INDEX_NONE;
+	int32 CachedPaintChartMaterialSlot = INDEX_NONE;
 	int32 StrokeTransactionAngleIndex = INDEX_NONE;
 	TArray<int32> StrokeTransactionAngleIndices;
 	TArray<FIntRect> StrokeDirtyRectsByAngle;

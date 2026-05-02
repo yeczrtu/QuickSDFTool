@@ -13,6 +13,11 @@ struct FQuickSDFStrokeSample
 	FVector3d WorldPos = FVector3d::Zero();
 	FVector2f UV = FVector2f::ZeroVector;
 	float LocalUVScale = 1.0f;
+	int32 TriangleID = INDEX_NONE;
+	int32 PaintChartID = INDEX_NONE;
+	FVector2D ScreenPosition = FVector2D::ZeroVector;
+	FVector3d RayOrigin = FVector3d::Zero();
+	FVector3d RayDirection = FVector3d(0.0, 0.0, 1.0);
 };
 
 UENUM(BlueprintType)

@@ -26,6 +26,13 @@ enum class EQuickSDFPaintTargetMode : uint8
 	AfterCurrent UMETA(DisplayName = "After Current")
 };
 
+UENUM(BlueprintType)
+enum class EQuickSDFBrushProjectionMode : uint8
+{
+	SurfaceUV UMETA(DisplayName = "Surface / UV"),
+	ViewProjected UMETA(DisplayName = "View Projected")
+};
+
 UCLASS()
 class UQuickSDFToolProperties : public UInteractiveToolPropertySet
 {
@@ -73,6 +80,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint Target Mode"))
 	EQuickSDFPaintTargetMode PaintTargetMode = EQuickSDFPaintTargetMode::CurrentOnly;
+
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Brush Projection Mode"))
+	EQuickSDFBrushProjectionMode BrushProjectionMode = EQuickSDFBrushProjectionMode::SurfaceUV;
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint All Textures", HideInDetailPanel))
 	bool bPaintAllAngles = false;
