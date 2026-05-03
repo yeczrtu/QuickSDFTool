@@ -48,6 +48,7 @@ constexpr float QuickSDFTimelineTrackHeight = QuickSDFTimelineSeekLaneHeight + Q
 constexpr float QuickSDFTimelineKeyframeWidth = 26.0f;
 constexpr float QuickSDFTimelineButtonHeight = 24.0f;
 constexpr float QuickSDFTimelineIconButtonWidth = 28.0f;
+constexpr float QuickSDFTimelineHeaderAngleWidth = 24.0f;
 constexpr float QuickSDFTimelineTrackPadding = 20.0f;
 constexpr float QuickSDFTimelineRailY = 8.0f;
 constexpr float QuickSDFTimelineRailHeight = 3.0f;
@@ -329,10 +330,39 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 						.VAlign(VAlign_Center)
 						.Padding(8.0f, 0.0f, 0.0f, 0.0f)
 						[
-							SNew(STextBlock)
-							.Text(this, &SQuickSDFTimeline::GetHeaderStatusText)
-							.Font(FAppStyle::GetFontStyle("SmallFont"))
-							.ColorAndOpacity(FLinearColor(0.62f, 0.62f, 0.62f, 1.0f))
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot()
+							.AutoWidth()
+							.VAlign(VAlign_Center)
+							[
+								SNew(STextBlock)
+								.Text(this, &SQuickSDFTimeline::GetHeaderMaskCountText)
+								.Font(FAppStyle::GetFontStyle("SmallFont"))
+								.ColorAndOpacity(FLinearColor(0.62f, 0.62f, 0.62f, 1.0f))
+							]
+							+ SHorizontalBox::Slot()
+							.AutoWidth()
+							.VAlign(VAlign_Center)
+							[
+								SNew(SBox)
+								.WidthOverride(QuickSDFTimelineHeaderAngleWidth)
+								.HAlign(HAlign_Right)
+								[
+									SNew(STextBlock)
+									.Text(this, &SQuickSDFTimeline::GetHeaderAngleText)
+									.Font(FAppStyle::GetFontStyle("SmallFont"))
+									.ColorAndOpacity(FLinearColor(0.62f, 0.62f, 0.62f, 1.0f))
+								]
+							]
+							+ SHorizontalBox::Slot()
+							.AutoWidth()
+							.VAlign(VAlign_Center)
+							[
+								SNew(STextBlock)
+								.Text(LOCTEXT("TimelineHeaderAngleSuffix", " deg"))
+								.Font(FAppStyle::GetFontStyle("SmallFont"))
+								.ColorAndOpacity(FLinearColor(0.62f, 0.62f, 0.62f, 1.0f))
+							]
 						]
 					]
 
@@ -691,6 +721,24 @@ FText SQuickSDFTimeline::GetHeaderStatusText() const
 		LOCTEXT("TimelineHeaderStatus", "{0} masks / {1} deg"),
 		FText::AsNumber(MaskCount),
 		FText::AsNumber(FMath::RoundToInt(CurrentAngle)));
+}
+
+FText SQuickSDFTimeline::GetHeaderMaskCountText() const
+{
+	const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	return FText::Format(
+		LOCTEXT("TimelineHeaderMaskCount", "{0} masks / "),
+		FText::AsNumber(Props ? Props->NumAngles : 0));
+}
+
+FText SQuickSDFTimeline::GetHeaderAngleText() const
+{
+	const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	const int32 CurrentIndex = Props ? FMath::Clamp(Props->EditAngleIndex, 0, FMath::Max(Props->NumAngles - 1, 0)) : 0;
+	const float CurrentAngle = Props && Props->TargetAngles.IsValidIndex(CurrentIndex) ? Props->TargetAngles[CurrentIndex] : 0.0f;
+	return FText::AsNumber(FMath::RoundToInt(CurrentAngle));
 }
 
 FText SQuickSDFTimeline::GetCompactSummaryText() const

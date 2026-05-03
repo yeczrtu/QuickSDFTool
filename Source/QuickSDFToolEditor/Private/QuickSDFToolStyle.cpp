@@ -69,7 +69,6 @@ void FQuickSDFToolStyle::Initialize()
 	StyleSet->Set("QuickSDF.Toggle.AutoSyncLight", new IMAGE_BRUSH_SVG("Icons/QuickSDFAutoLight", Icon16x16));
 	StyleSet->Set("QuickSDF.Toggle.ShowPreview", new IMAGE_BRUSH_SVG("Icons/QuickSDFPreview", Icon16x16));
 	StyleSet->Set("QuickSDF.Toggle.OverlayUV", new IMAGE_BRUSH_SVG("Icons/QuickSDFUV", Icon16x16));
-	StyleSet->Set("QuickSDF.Toggle.OverlayOriginalShadow", new IMAGE_BRUSH_SVG("Icons/QuickSDFShadow", Icon16x16));
 	StyleSet->Set("QuickSDF.Toggle.OnionSkin", new IMAGE_BRUSH_SVG("Icons/QuickSDFOnion", Icon16x16));
 	StyleSet->Set("QuickSDF.Toggle.QuickLine", new IMAGE_BRUSH_SVG("Icons/QuickSDFQuickStroke", Icon16x16));
 	StyleSet->Set("QuickSDF.Toggle.Symmetry", new IMAGE_BRUSH_SVG("Icons/QuickSDFSymmetry", Icon16x16));

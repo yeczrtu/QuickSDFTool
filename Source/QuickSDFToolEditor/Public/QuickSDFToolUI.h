@@ -13,7 +13,6 @@ enum class EQuickSDFPaintToggle : uint8
 	AutoSyncLight,
 	ShowPreview,
 	OverlayUV,
-	OverlayOriginalShadow,
 	OnionSkin,
 	QuickLine,
 	Symmetry,

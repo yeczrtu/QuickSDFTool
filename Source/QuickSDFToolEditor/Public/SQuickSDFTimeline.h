@@ -119,6 +119,8 @@ private:
 	EVisibility GetRefineVisibility() const;
 	EVisibility GetCompactVisibility() const;
 	FText GetHeaderStatusText() const;
+	FText GetHeaderMaskCountText() const;
+	FText GetHeaderAngleText() const;
 	FText GetCompactSummaryText() const;
 	FText GetCompleteMaskButtonText() const;
 	FText GetCompleteMaskTooltipText() const;

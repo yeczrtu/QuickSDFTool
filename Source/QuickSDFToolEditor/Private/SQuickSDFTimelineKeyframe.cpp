@@ -19,6 +19,7 @@ constexpr float QuickSDFTimelineAccentG = 0.82f;
 constexpr float QuickSDFTimelineAccentB = 1.0f;
 constexpr float QuickSDFTimelineBadgeSize = 7.0f;
 constexpr float QuickSDFTimelineBadgeInnerSize = 5.0f;
+constexpr float QuickSDFTimelineAngleLabelWidth = 26.0f;
 
 FLinearColor GetQuickSDFTimelineAccentColor(float Alpha = 1.0f)
 {
@@ -164,14 +165,19 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 		.VAlign(VAlign_Bottom)
 		.Padding(0.0f, 0.0f, 0.0f, 1.0f)
 		[
-			SNew(STextBlock)
-			.Text(TAttribute<FText>::CreateLambda([this]() {
-				return FText::FromString(FString::Printf(TEXT("%.0f\u00B0"), Angle.Get()));
-			}))
-			.ColorAndOpacity(ColorAttr)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
-			.ShadowOffset(FVector2D(1.0f, 1.0f))
-			.ShadowColorAndOpacity(FLinearColor::Black)
+			SNew(SBox)
+			.WidthOverride(QuickSDFTimelineAngleLabelWidth)
+			.HAlign(HAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(TAttribute<FText>::CreateLambda([this]() {
+					return FText::FromString(FString::Printf(TEXT("%.0f\u00B0"), Angle.Get()));
+				}))
+				.ColorAndOpacity(ColorAttr)
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+				.ShadowOffset(FVector2D(1.0f, 1.0f))
+				.ShadowColorAndOpacity(FLinearColor::Black)
+			]
 		]
 
 		// Compact status badges: mask, guard, future vector-layer, warning.

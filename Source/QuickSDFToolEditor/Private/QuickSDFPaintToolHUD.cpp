@@ -316,7 +316,6 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
                 PreviewHUDMaterial->SetTextureParameterValue(TEXT("BaseColor"), RT);
                 PreviewHUDMaterial->SetScalarParameterValue(TEXT("PreviewMode"), 0.0f);
                 PreviewHUDMaterial->SetScalarParameterValue(TEXT("UVChannel"), static_cast<float>(Properties->UVChannel));
-                PreviewHUDMaterial->SetScalarParameterValue(TEXT("OverlayOriginalShadow"), 0.0f);
                 FCanvasTileItem TileItem(PreviewOrigin, PreviewHUDMaterial->GetRenderProxy(), PreviewSize);
                 TileItem.BlendMode = SE_BLEND_Opaque;
                 Canvas->DrawItem(TileItem);

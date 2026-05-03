@@ -87,9 +87,6 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bShowPreview = true;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings")
-	bool bOverlayOriginalShadow = false;
-
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Material Preview Mode", HideInDetailPanel))
 	EQuickSDFMaterialPreviewMode MaterialPreviewMode = EQuickSDFMaterialPreviewMode::OriginalMaterial;
 
