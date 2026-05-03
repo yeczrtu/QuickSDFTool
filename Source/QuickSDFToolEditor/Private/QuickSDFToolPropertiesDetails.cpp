@@ -648,7 +648,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 
 	AddPropertyIfValid(QuickCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, QualityPreset)));
 
-	QuickCategory.AddCustomRow(LOCTEXT("QuickActionsFilter", "Create Threshold Map Import Mask Assets Export Assets Export Files Overwrite Source Textures Fill White Fill Black"))
+	QuickCategory.AddCustomRow(LOCTEXT("QuickActionsFilter", "Create Threshold Map Import Assets Export Assets Export Files Overwrite Source Fill White Fill Black"))
 	.WholeRowContent()
 	[
 		SNew(SVerticalBox)
@@ -680,18 +680,41 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		.AutoHeight()
 		.Padding(0.0f, 2.0f)
 		[
-			QuickSDFToolUI::MakeIconLabelButton(
-				"QuickSDF.Action.ImportMasks",
-				LOCTEXT("ImportEditedMasksButton", "Import Mask Assets"),
-				LOCTEXT("ImportEditedMasksTooltip", "Open the mask import panel. Choose Texture2D assets in the panel or drag them onto it."),
-				FOnClicked::CreateLambda([WeakProperties]()
-				{
-					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.Padding(0.0f, 0.0f, 2.0f, 0.0f)
+			[
+				QuickSDFToolUI::MakeIconLabelButton(
+					"QuickSDF.Action.ImportMasks",
+					LOCTEXT("ImportEditedMasksButton", "Import Assets"),
+					LOCTEXT("ImportEditedMasksTooltip", "Open the mask import panel. Choose Texture2D assets in the panel or drag them onto it."),
+					FOnClicked::CreateLambda([WeakProperties]()
 					{
-						Props->ImportEditedMasks();
-					}
-					return FReply::Handled();
-				}))
+						if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+						{
+							Props->ImportEditedMasks();
+						}
+						return FReply::Handled();
+					}))
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.Padding(2.0f, 0.0f, 0.0f, 0.0f)
+			[
+				QuickSDFToolUI::MakeIconLabelButton(
+					"QuickSDF.Action.ExportMasks",
+					LOCTEXT("OverwriteSourceTexturesButton", "Overwrite Source"),
+					LOCTEXT("OverwriteSourceTexturesTooltip", "Write the current masks back to Texture2D assets that were explicitly marked writable during import."),
+					FOnClicked::CreateLambda([WeakProperties]()
+					{
+						if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+						{
+							Props->OverwriteSourceTextures();
+						}
+						return FReply::Handled();
+					}))
+			]
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
@@ -735,24 +758,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
-		.Padding(0.0f, 2.0f)
-		[
-			QuickSDFToolUI::MakeIconLabelButton(
-				"QuickSDF.Action.ExportMasks",
-				LOCTEXT("OverwriteSourceTexturesButton", "Overwrite Source Textures"),
-				LOCTEXT("OverwriteSourceTexturesTooltip", "Write the current masks back to Texture2D assets that were explicitly marked writable during import."),
-				FOnClicked::CreateLambda([WeakProperties]()
-				{
-					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
-					{
-						Props->OverwriteSourceTextures();
-					}
-					return FReply::Handled();
-				}))
-		]
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(0.0f, 2.0f)
+		.Padding(0.0f, 6.0f, 0.0f, 2.0f)
 		[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot()
