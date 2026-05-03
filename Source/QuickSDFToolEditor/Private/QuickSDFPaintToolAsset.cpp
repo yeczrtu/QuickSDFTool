@@ -236,6 +236,7 @@ void UQuickSDFPaintTool::GenerateSDF()
 	UTexture2D* FinalTexture = Subsystem->CreateSDFTexture(FinalPixels, OrigW, OrigH, Properties->SDFOutputFolder, OutputTextureName, EffectiveFormat, Properties->bOverwriteExistingSDF, &SaveError);
 	if (FinalTexture)
 	{
+		const EQuickSDFMaterialPreviewMode PreviousPreviewMode = Properties->MaterialPreviewMode;
 		Asset->Modify();
 		Asset->GetActiveFinalSDFTexture() = FinalTexture;
 		if (FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet())
@@ -246,10 +247,88 @@ void UQuickSDFPaintTool::GenerateSDF()
 		}
 		Asset->SyncLegacyFromActiveTextureSet();
 		Asset->MarkPackageDirty();
+
+		if (Properties->bAutoPreviewGeneratedSDF)
+		{
+			Properties->Modify();
+			Properties->MaterialPreviewMode = EQuickSDFMaterialPreviewMode::GeneratedSDF;
+		}
+		RefreshPreviewMaterial();
+		ShowGeneratedSDFPreviewNotification(PreviousPreviewMode, FinalTexture);
+		if (GEditor)
+		{
+			GEditor->RedrawAllViewports(false);
+		}
 	}
 	else if (!SaveError.IsEmpty())
 	{
 		FMessageDialog::Open(EAppMsgType::Ok, SaveError);
+	}
+}
+
+void UQuickSDFPaintTool::ShowGeneratedSDFPreviewNotification(EQuickSDFMaterialPreviewMode PreviousMode, UTexture2D* FinalTexture)
+{
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	const UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	const FQuickSDFTextureSetData* ActiveSet = Asset ? Asset->GetActiveTextureSet() : nullptr;
+	const FString SlotName = ActiveSet
+		? (ActiveSet->SlotName.IsNone()
+			? FString::Printf(TEXT("Slot_%d"), ActiveSet->MaterialSlotIndex)
+			: ActiveSet->SlotName.ToString())
+		: FString(TEXT("active slot"));
+
+	FNotificationInfo Info(FText::Format(
+		LOCTEXT("GeneratedSDFPreviewComplete", "Generated SDF preview for {0}"),
+		FText::FromString(SlotName)));
+	Info.ExpireDuration = 5.0f;
+	Info.bUseLargeFont = false;
+	Info.ButtonDetails.Add(FNotificationButtonInfo(
+		LOCTEXT("RestorePreviousPreviewButton", "Restore Previous Preview"),
+		LOCTEXT("RestorePreviousPreviewTooltip", "Restore the material preview mode that was active before SDF generation."),
+		FSimpleDelegate::CreateWeakLambda(this, [this, PreviousMode]()
+		{
+			if (!Properties)
+			{
+				return;
+			}
+			Properties->Modify();
+			Properties->MaterialPreviewMode = PreviousMode;
+			FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MaterialPreviewMode));
+			OnPropertyModified(Properties, Prop);
+			if (GEditor)
+			{
+				GEditor->RedrawAllViewports(false);
+			}
+		}),
+		SNotificationItem::CS_Success));
+	Info.ButtonDetails.Add(FNotificationButtonInfo(
+		LOCTEXT("PaintedTexturePreviewButton", "Painted Texture"),
+		LOCTEXT("PaintedTexturePreviewTooltip", "Switch the material preview back to the painted texture."),
+		FSimpleDelegate::CreateWeakLambda(this, [this]()
+		{
+			if (!Properties)
+			{
+				return;
+			}
+			Properties->Modify();
+			Properties->MaterialPreviewMode = EQuickSDFMaterialPreviewMode::Mask;
+			FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MaterialPreviewMode));
+			OnPropertyModified(Properties, Prop);
+			if (GEditor)
+			{
+				GEditor->RedrawAllViewports(false);
+			}
+		}),
+		SNotificationItem::CS_Success));
+
+	if (FinalTexture)
+	{
+		Info.SubText = FText::FromString(FinalTexture->GetName());
+	}
+
+	if (TSharedPtr<SNotificationItem> Notification = FSlateNotificationManager::Get().AddNotification(Info))
+	{
+		Notification->SetCompletionState(SNotificationItem::CS_Success);
 	}
 }
 

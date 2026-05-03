@@ -39,7 +39,8 @@ enum class EQuickSDFMaterialPreviewMode : uint8
 	OriginalMaterial UMETA(DisplayName = "Original + Painted"),
 	Mask UMETA(DisplayName = "Painted Texture"),
 	UV UMETA(DisplayName = "Painted + UV"),
-	OriginalShadow UMETA(DisplayName = "Painted + Shadow")
+	OriginalShadow UMETA(DisplayName = "Painted + Shadow"),
+	GeneratedSDF UMETA(DisplayName = "Generated SDF")
 };
 
 UCLASS()
@@ -83,6 +84,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Material Preview Mode", HideInDetailPanel))
 	EQuickSDFMaterialPreviewMode MaterialPreviewMode = EQuickSDFMaterialPreviewMode::OriginalMaterial;
+
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto SDF Preview", HideInDetailPanel))
+	bool bAutoPreviewGeneratedSDF = true;
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bOverlayUV = true;

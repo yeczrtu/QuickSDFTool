@@ -150,6 +150,10 @@ public:
 	FText GetActiveTextureSetLabel() const;
 	FText GetTextureSetStatusText(int32 TextureSetIndex) const;
 	FLinearColor GetTextureSetStatusColor(int32 TextureSetIndex) const;
+	class UTexture2D* GetActiveFinalSDFTexture() const;
+	bool CanUseGeneratedSDFPreview() const;
+	FText GetGeneratedSDFPreviewUnavailableText() const;
+	FText GetMaterialPreviewStatusText() const;
 	
 	void AddKeyframe();
 	void AddKeyframeAtAngle(float Angle);
@@ -173,6 +177,8 @@ protected:
 	void RestoreOriginalComponentOverlayMaterial();
 	void ApplyMaterialPreviewMode();
 	void UpdatePreviewMaterialParameters(class UMaterialInstanceDynamic* Material);
+	void UpdateGeneratedSDFMaterialParameters();
+	void ShowGeneratedSDFPreviewNotification(EQuickSDFMaterialPreviewMode PreviousMode, class UTexture2D* FinalTexture);
 	void ApplyTargetMaterialSlotIsolation();
 	bool IsTriangleInTargetMaterialSlot(int32 TriangleID) const;
 	bool TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample);
@@ -274,6 +280,12 @@ protected:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> PreviewOverlayMaterial;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> SDFToonBaseMaterial;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> SDFToonPreviewMaterial;
 
 	UPROPERTY(Transient)
 	class UTexture2D* BrushMaskTexture;

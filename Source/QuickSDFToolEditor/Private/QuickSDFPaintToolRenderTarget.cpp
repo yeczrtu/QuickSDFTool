@@ -76,9 +76,37 @@ float GetQuickSDFMaterialPreviewModeValue(EQuickSDFMaterialPreviewMode Mode)
 		return 2.0f;
 	case EQuickSDFMaterialPreviewMode::Mask:
 	case EQuickSDFMaterialPreviewMode::OriginalMaterial:
+	case EQuickSDFMaterialPreviewMode::GeneratedSDF:
 	default:
 		return 0.0f;
 	}
+}
+
+float GetQuickSDFCurrentPreviewAngle(const UQuickSDFToolProperties* Properties)
+{
+	if (!Properties)
+	{
+		return 0.0f;
+	}
+
+	if (Properties->TargetAngles.IsValidIndex(Properties->EditAngleIndex))
+	{
+		return Properties->TargetAngles[Properties->EditAngleIndex];
+	}
+
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	const UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	if (!Asset)
+	{
+		return 0.0f;
+	}
+
+	const int32 AngleIndex = Asset->GetActiveAngleDataList().Num() > 0
+		? FMath::Clamp(Properties->EditAngleIndex, 0, Asset->GetActiveAngleDataList().Num() - 1)
+		: INDEX_NONE;
+	return Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex)
+		? Asset->GetActiveAngleDataList()[AngleIndex].Angle
+		: 0.0f;
 }
 
 bool CaptureRenderTargetPixelsInRect(UTextureRenderTarget2D* RenderTarget, const FIntRect& Rect, TArray<FColor>& OutPixels)
@@ -235,25 +263,7 @@ void UQuickSDFPaintTool::UpdatePreviewMaterialParameters(UMaterialInstanceDynami
 		Material->SetTextureParameterValue(TEXT("BaseColor"), ActiveRT);
 	}
 
-	float Angle = 0.0f;
-	if (Properties->TargetAngles.IsValidIndex(Properties->EditAngleIndex))
-	{
-		Angle = Properties->TargetAngles[Properties->EditAngleIndex];
-	}
-	else if (UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr)
-	{
-		if (UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset())
-		{
-			const int32 AngleIndex = Asset->GetActiveAngleDataList().Num() > 0
-				? FMath::Clamp(Properties->EditAngleIndex, 0, Asset->GetActiveAngleDataList().Num() - 1)
-				: INDEX_NONE;
-			if (Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex))
-			{
-				Angle = Asset->GetActiveAngleDataList()[AngleIndex].Angle;
-			}
-		}
-	}
-
+	const float Angle = GetQuickSDFCurrentPreviewAngle(Properties);
 	const FQuickSDFMeshBakeBasis BakeBasis = FQuickSDFMeshComponentAdapter::GetBakeBasisForComponent(CurrentComponent.Get());
 	const EQuickSDFMaterialPreviewMode PreviewMode = Properties->MaterialPreviewMode;
 
@@ -263,10 +273,93 @@ void UQuickSDFPaintTool::UpdatePreviewMaterialParameters(UMaterialInstanceDynami
 	Material->SetScalarParameterValue(TEXT("BakeForwardAngleOffset"), BakeBasis.ForwardAngleOffsetDegrees);
 }
 
+UTexture2D* UQuickSDFPaintTool::GetActiveFinalSDFTexture() const
+{
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	const UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	return Asset ? Asset->GetActiveFinalSDFTexture() : nullptr;
+}
+
+bool UQuickSDFPaintTool::CanUseGeneratedSDFPreview() const
+{
+	return GetActiveFinalSDFTexture() != nullptr;
+}
+
+FText UQuickSDFPaintTool::GetGeneratedSDFPreviewUnavailableText() const
+{
+	return LOCTEXT("GeneratedSDFPreviewUnavailable", "SDFテクスチャがまだありません。Generate Selected SDF を実行すると、この表示で生成結果を確認できます。");
+}
+
+FText UQuickSDFPaintTool::GetMaterialPreviewStatusText() const
+{
+	const EQuickSDFMaterialPreviewMode PreviewMode = Properties
+		? Properties->MaterialPreviewMode
+		: EQuickSDFMaterialPreviewMode::OriginalMaterial;
+
+	if (PreviewMode == EQuickSDFMaterialPreviewMode::GeneratedSDF)
+	{
+		if (UTexture2D* FinalTexture = GetActiveFinalSDFTexture())
+		{
+			return FText::Format(
+				LOCTEXT("GeneratedSDFPreviewStatusWithTexture", "Generated SDF ({0})"),
+				FText::FromString(FinalTexture->GetName()));
+		}
+		return LOCTEXT("GeneratedSDFPreviewStatusMissing", "Generated SDF (missing)");
+	}
+
+	switch (PreviewMode)
+	{
+	case EQuickSDFMaterialPreviewMode::OriginalMaterial:
+		return LOCTEXT("OriginalPaintPreviewStatus", "Original + Painted");
+	case EQuickSDFMaterialPreviewMode::Mask:
+		return LOCTEXT("PaintedTexturePreviewStatus", "Painted Texture");
+	case EQuickSDFMaterialPreviewMode::UV:
+		return LOCTEXT("PaintUVPreviewStatus", "Painted + UV");
+	case EQuickSDFMaterialPreviewMode::OriginalShadow:
+		return LOCTEXT("PaintShadowPreviewStatus", "Painted + Shadow");
+	default:
+		return LOCTEXT("UnknownPreviewStatus", "Unknown");
+	}
+}
+
+void UQuickSDFPaintTool::UpdateGeneratedSDFMaterialParameters()
+{
+	if (!SDFToonPreviewMaterial || !Properties)
+	{
+		return;
+	}
+
+	UTexture2D* FinalTexture = GetActiveFinalSDFTexture();
+	if (FinalTexture)
+	{
+		SDFToonPreviewMaterial->SetTextureParameterValue(TEXT("ThresholdMap"), FinalTexture);
+		SDFToonPreviewMaterial->SetTextureParameterValue(TEXT("ThresholdMapGray"), FinalTexture);
+	}
+
+	const bool bSymmetryUV = Properties->bSymmetryMode;
+	const bool bUseGrayscaleTexture = FinalTexture && FinalTexture->CompressionSettings == TC_Grayscale;
+
+	const FQuickSDFMeshBakeBasis BakeBasis = FQuickSDFMeshComponentAdapter::GetBakeBasisForComponent(CurrentComponent.Get());
+	const FVector ForwardVector = BakeBasis.Forward.GetSafeNormal();
+
+	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("UVChannel"), static_cast<float>(Properties->UVChannel));
+	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("SymmetryUV"), bSymmetryUV ? 1.0f : 0.0f);
+	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("UseGrayscaleTexture"), bUseGrayscaleTexture ? 1.0f : 0.0f);
+	SDFToonPreviewMaterial->SetVectorParameterValue(TEXT("ForwardVector"), FLinearColor(ForwardVector.X, ForwardVector.Y, ForwardVector.Z, 0.0f));
+}
+
 void UQuickSDFPaintTool::RefreshPreviewMaterial()
 {
+	if (Properties &&
+		Properties->MaterialPreviewMode == EQuickSDFMaterialPreviewMode::GeneratedSDF &&
+		!CanUseGeneratedSDFPreview())
+	{
+		Properties->MaterialPreviewMode = EQuickSDFMaterialPreviewMode::OriginalMaterial;
+	}
+
 	UpdatePreviewMaterialParameters(PreviewMaterial);
 	UpdatePreviewMaterialParameters(PreviewOverlayMaterial);
+	UpdateGeneratedSDFMaterialParameters();
 	ApplyMaterialPreviewMode();
 	ClearPreviewMaterialDirtyState();
 }

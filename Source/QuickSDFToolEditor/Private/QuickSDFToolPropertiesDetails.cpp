@@ -560,6 +560,15 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 				}, WeakProperties)
 			]
 		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, 4.0f, 0.0f, 0.0f)
+		[
+			QuickSDFToolUI::MakeAutoSDFPreviewToggle([]()
+			{
+				return QuickSDFToolUI::GetActivePaintTool();
+			}, WeakProperties)
+		]
 	];
 
 	QuickCategory.AddCustomRow(LOCTEXT("PaintTogglesFilter", "Paint Toggles"))

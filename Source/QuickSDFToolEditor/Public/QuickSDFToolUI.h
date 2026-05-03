@@ -49,6 +49,7 @@ void SetToggleValue(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Propertie
 void ToggleValue(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties, EQuickSDFPaintToggle Toggle);
 TSharedRef<SWidget> MakeIconLabelButton(const FName IconName, const FText& Label, const FText& ToolTip, FOnClicked OnClicked);
 TSharedRef<SWidget> MakeMaterialPreviewModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
+TSharedRef<SWidget> MakeAutoSDFPreviewToggle(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
 TSharedRef<SWidget> MakePaintTargetModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
 TSharedRef<SWidget> MakePaintToggleButton(EQuickSDFPaintToggle Toggle, FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
 TSharedRef<SWidget> MakePaintToggleBar(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());

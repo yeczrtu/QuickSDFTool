@@ -48,8 +48,18 @@ FText GetPaintTargetModeToolTip(UQuickSDFToolProperties* Properties, EQuickSDFPa
 		QuickSDFToolUI::GetPaintTargetModeDescription(Mode));
 }
 
-FText GetMaterialPreviewModeToolTip(UQuickSDFToolProperties* Properties, EQuickSDFMaterialPreviewMode Mode)
+bool IsMaterialPreviewModeEnabled(UQuickSDFPaintTool* Tool, EQuickSDFMaterialPreviewMode Mode)
 {
+	return Mode != EQuickSDFMaterialPreviewMode::GeneratedSDF || (Tool && Tool->CanUseGeneratedSDFPreview());
+}
+
+FText GetMaterialPreviewModeToolTip(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties, EQuickSDFMaterialPreviewMode Mode)
+{
+	if (Mode == EQuickSDFMaterialPreviewMode::GeneratedSDF && Tool && !Tool->CanUseGeneratedSDFPreview())
+	{
+		return Tool->GetGeneratedSDFPreviewUnavailableText();
+	}
+
 	const bool bSelected = QuickSDFToolUI::GetMaterialPreviewMode(Properties) == Mode;
 	return FText::Format(
 		LOCTEXT("MaterialPreviewModeTooltipFormat", "{0}: {1}\n{2}"),
@@ -81,6 +91,7 @@ const TArray<EQuickSDFMaterialPreviewMode>& QuickSDFToolUI::GetMaterialPreviewMo
 		EQuickSDFMaterialPreviewMode::Mask,
 		EQuickSDFMaterialPreviewMode::UV,
 		EQuickSDFMaterialPreviewMode::OriginalShadow,
+		EQuickSDFMaterialPreviewMode::GeneratedSDF,
 	};
 	return Modes;
 }
@@ -119,6 +130,8 @@ FText QuickSDFToolUI::GetMaterialPreviewModeLabel(EQuickSDFMaterialPreviewMode M
 		return LOCTEXT("MaterialPreviewUVLabel", "Paint+UV");
 	case EQuickSDFMaterialPreviewMode::OriginalShadow:
 		return LOCTEXT("MaterialPreviewShadowLabel", "Paint+Shadow");
+	case EQuickSDFMaterialPreviewMode::GeneratedSDF:
+		return LOCTEXT("MaterialPreviewGeneratedSDFLabel", "SDF Result");
 	default:
 		return FText::GetEmpty();
 	}
@@ -136,6 +149,8 @@ FText QuickSDFToolUI::GetMaterialPreviewModeDescription(EQuickSDFMaterialPreview
 		return LOCTEXT("MaterialPreviewUVDesc", "Shows the active painted texture over the active UV channel with an opaque preview material.");
 	case EQuickSDFMaterialPreviewMode::OriginalShadow:
 		return LOCTEXT("MaterialPreviewShadowDesc", "Shows the active painted texture over the original baked shadow with an opaque preview material.");
+	case EQuickSDFMaterialPreviewMode::GeneratedSDF:
+		return LOCTEXT("MaterialPreviewGeneratedSDFDesc", "Shows the generated SDF threshold map through M_SDFToon for the active texture set.");
 	default:
 		return FText::GetEmpty();
 	}
@@ -153,6 +168,8 @@ FName QuickSDFToolUI::GetMaterialPreviewModeIconName(EQuickSDFMaterialPreviewMod
 		return "QuickSDF.MaterialPreview.PaintUV";
 	case EQuickSDFMaterialPreviewMode::OriginalShadow:
 		return "QuickSDF.MaterialPreview.PaintShadow";
+	case EQuickSDFMaterialPreviewMode::GeneratedSDF:
+		return "QuickSDF.Action.CreateThresholdMap";
 	default:
 		return NAME_None;
 	}
@@ -161,6 +178,11 @@ FName QuickSDFToolUI::GetMaterialPreviewModeIconName(EQuickSDFMaterialPreviewMod
 void QuickSDFToolUI::SetMaterialPreviewMode(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties, EQuickSDFMaterialPreviewMode Mode)
 {
 	if (!Properties || Properties->MaterialPreviewMode == Mode)
+	{
+		return;
+	}
+
+	if (Mode == EQuickSDFMaterialPreviewMode::GeneratedSDF && (!Tool || !Tool->CanUseGeneratedSDFPreview()))
 	{
 		return;
 	}
@@ -189,8 +211,15 @@ void QuickSDFToolUI::CycleMaterialPreviewMode(UQuickSDFPaintTool* Tool, UQuickSD
 
 	const TArray<EQuickSDFMaterialPreviewMode>& Modes = GetMaterialPreviewModes();
 	const int32 CurrentIndex = Modes.IndexOfByKey(GetMaterialPreviewMode(Properties));
-	const int32 NextIndex = CurrentIndex == INDEX_NONE ? 0 : (CurrentIndex + 1) % Modes.Num();
-	SetMaterialPreviewMode(Tool, Properties, Modes[NextIndex]);
+	for (int32 Step = 1; Step <= Modes.Num(); ++Step)
+	{
+		const int32 NextIndex = CurrentIndex == INDEX_NONE ? 0 : (CurrentIndex + Step) % Modes.Num();
+		if (IsMaterialPreviewModeEnabled(Tool, Modes[NextIndex]))
+		{
+			SetMaterialPreviewMode(Tool, Properties, Modes[NextIndex]);
+			return;
+		}
+	}
 }
 
 EQuickSDFPaintTargetMode QuickSDFToolUI::GetPaintTargetMode(const UQuickSDFToolProperties* Properties)
@@ -531,7 +560,12 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeMaterialPreviewModeSelector(FGetPaintToo
 				.Style(FQuickSDFToolStyle::Get().Get(), "QuickSDF.Timeline.ToggleButton")
 				.ToolTipText_Lambda([Mode, GetPaintTool, FallbackProperties]()
 				{
-					return GetMaterialPreviewModeToolTip(GetProperties(GetPaintTool(), FallbackProperties), Mode);
+					UQuickSDFPaintTool* Tool = GetPaintTool();
+					return GetMaterialPreviewModeToolTip(Tool, GetProperties(Tool, FallbackProperties), Mode);
+				})
+				.IsEnabled_Lambda([Mode, GetPaintTool]()
+				{
+					return IsMaterialPreviewModeEnabled(GetPaintTool(), Mode);
 				})
 				.IsChecked_Lambda([Mode, GetPaintTool, FallbackProperties]()
 				{
@@ -567,6 +601,39 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeMaterialPreviewModeSelector(FGetPaintToo
 		];
 	}
 	return ModeRow;
+}
+
+TSharedRef<SWidget> QuickSDFToolUI::MakeAutoSDFPreviewToggle(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties)
+{
+	return SNew(SCheckBox)
+		.ToolTipText(LOCTEXT("AutoSDFPreviewTooltip", "Automatically switch Material Preview to Generated SDF after Generate Selected SDF succeeds."))
+		.IsChecked_Lambda([GetPaintTool, FallbackProperties]()
+		{
+			const UQuickSDFToolProperties* Properties = GetProperties(GetPaintTool(), FallbackProperties);
+			return Properties && Properties->bAutoPreviewGeneratedSDF ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+		})
+		.OnCheckStateChanged_Lambda([GetPaintTool, FallbackProperties](ECheckBoxState NewState)
+		{
+			UQuickSDFPaintTool* Tool = GetPaintTool();
+			UQuickSDFToolProperties* Properties = GetProperties(Tool, FallbackProperties);
+			if (!Properties)
+			{
+				return;
+			}
+
+			Properties->Modify();
+			Properties->bAutoPreviewGeneratedSDF = NewState == ECheckBoxState::Checked;
+			if (Tool)
+			{
+				FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bAutoPreviewGeneratedSDF));
+				Tool->OnPropertyModified(Properties, Prop);
+			}
+		})
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("AutoSDFPreviewLabel", "Auto SDF Preview"))
+			.Font(FAppStyle::GetFontStyle("SmallFont"))
+		];
 }
 
 TSharedRef<SWidget> QuickSDFToolUI::MakePaintTargetModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties)
@@ -722,7 +789,11 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeQuickToggleMenu(FGetPaintTool GetPaintTo
 				.ToolTipText_Lambda([Mode, GetPaintTool]()
 				{
 					UQuickSDFPaintTool* Tool = GetPaintTool();
-					return GetMaterialPreviewModeToolTip(Tool ? Tool->Properties : nullptr, Mode);
+					return GetMaterialPreviewModeToolTip(Tool, Tool ? Tool->Properties : nullptr, Mode);
+				})
+				.IsEnabled_Lambda([Mode, GetPaintTool]()
+				{
+					return IsMaterialPreviewModeEnabled(GetPaintTool(), Mode);
 				})
 				.IsChecked_Lambda([Mode, GetPaintTool]()
 				{
@@ -905,6 +976,12 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeQuickToggleMenu(FGetPaintTool GetPaintTo
 			.AutoHeight()
 			[
 				PreviewModeGrid
+			]
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(3.0f, 4.0f, 0.0f, 0.0f)
+			[
+				MakeAutoSDFPreviewToggle(GetPaintTool)
 			]
 			+ SVerticalBox::Slot()
 			.AutoHeight()

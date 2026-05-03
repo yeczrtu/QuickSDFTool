@@ -70,6 +70,8 @@ const TCHAR* QuickSDFPreviewMaterialObjectPath = TEXT("/QuickSDFTool/Materials/M
 const TCHAR* QuickSDFPreviewMaterialPackagePath = TEXT("/QuickSDFTool/Materials/M_PreviewMat");
 const TCHAR* QuickSDFPreviewOverlayMaterialObjectPath = TEXT("/QuickSDFTool/Materials/M_PreviewSceneColorOverlay.M_PreviewSceneColorOverlay");
 const TCHAR* QuickSDFPreviewOverlayMaterialPackagePath = TEXT("/QuickSDFTool/Materials/M_PreviewSceneColorOverlay");
+const TCHAR* QuickSDFSDFToonMaterialObjectPath = TEXT("/QuickSDFTool/Materials/M_SDFToon.M_SDFToon");
+const TCHAR* QuickSDFSDFToonMaterialPackagePath = TEXT("/QuickSDFTool/Materials/M_SDFToon");
 
 void ClearMaterialPackageDirtyState(UPackage* Package)
 {
@@ -152,6 +154,9 @@ void UQuickSDFPaintTool::ClearPreviewMaterialDirtyState() const
 
 	UPackage* PreviewOverlayPackage = PreviewOverlayBaseMaterial ? PreviewOverlayBaseMaterial->GetOutermost() : FindPackage(nullptr, QuickSDFPreviewOverlayMaterialPackagePath);
 	ClearMaterialPackageDirtyState(PreviewOverlayPackage);
+
+	UPackage* SDFToonPackage = SDFToonBaseMaterial ? SDFToonBaseMaterial->GetOutermost() : FindPackage(nullptr, QuickSDFSDFToonMaterialPackagePath);
+	ClearMaterialPackageDirtyState(SDFToonPackage);
 }
 
 void UQuickSDFPaintTool::RegisterActions(FInteractiveToolActionSet& ActionSet)
@@ -459,6 +464,27 @@ void UQuickSDFPaintTool::ApplyMaterialPreviewMode()
 		}
 		break;
 
+	case EQuickSDFMaterialPreviewMode::GeneratedSDF:
+		CurrentComponent->SetOverlayMaterial(nullptr);
+		CurrentComponent->SetOverlayMaterialMaxDrawDistance(0.0f);
+		RestoreOriginalComponentMaterialSlots();
+		if (SDFToonPreviewMaterial && CanUseGeneratedSDFPreview())
+		{
+			const int32 TargetMaterialSlot = Properties ? Properties->TargetMaterialSlot : INDEX_NONE;
+			if (TargetMaterialSlot >= 0 && TargetMaterialSlot < CurrentComponent->GetNumMaterials())
+			{
+				CurrentComponent->SetMaterial(TargetMaterialSlot, SDFToonPreviewMaterial);
+			}
+			else
+			{
+				for (int32 i = 0; i < CurrentComponent->GetNumMaterials(); ++i)
+				{
+					CurrentComponent->SetMaterial(i, SDFToonPreviewMaterial);
+				}
+			}
+		}
+		break;
+
 	default:
 		RestoreOriginalComponentMaterialSlots();
 		RestoreOriginalComponentOverlayMaterial();
@@ -488,6 +514,8 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 	PreviewBaseMaterial = nullptr;
 	PreviewOverlayMaterial = nullptr;
 	PreviewOverlayBaseMaterial = nullptr;
+	SDFToonPreviewMaterial = nullptr;
+	SDFToonBaseMaterial = nullptr;
 	OriginalMaterials.Empty();
 	OriginalOverlayMaterial = nullptr;
 	OriginalOverlayMaterialMaxDrawDistance = 0.0f;
@@ -534,6 +562,10 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 	PreviewOverlayMaterial = PreviewOverlayBaseMaterial
 		? UMaterialInstanceDynamic::Create(PreviewOverlayBaseMaterial, GetTransientPackage())
 		: nullptr;
+	SDFToonBaseMaterial = LoadObject<UMaterialInterface>(nullptr, QuickSDFSDFToonMaterialObjectPath);
+	SDFToonPreviewMaterial = SDFToonBaseMaterial
+		? UMaterialInstanceDynamic::Create(SDFToonBaseMaterial, GetTransientPackage())
+		: nullptr;
 
 	if (PreviewMaterial)
 	{
@@ -546,6 +578,10 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 	if (PreviewOverlayMaterial)
 	{
 		PreviewOverlayMaterial->SetFlags(RF_Transient);
+	}
+	if (SDFToonPreviewMaterial)
+	{
+		SDFToonPreviewMaterial->SetFlags(RF_Transient);
 	}
 	ClearPreviewMaterialDirtyState();
 
