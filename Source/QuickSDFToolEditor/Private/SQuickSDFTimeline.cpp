@@ -61,6 +61,43 @@ FLinearColor GetQuickSDFTimelineAccentColor(float Alpha = 1.0f)
 	return FLinearColor(QuickSDFTimelineAccentR, QuickSDFTimelineAccentG, QuickSDFTimelineAccentB, Alpha);
 }
 
+float GetQuickSDFTimelineMaxAngle(const UQuickSDFToolProperties* Props)
+{
+	return Props && Props->bSymmetryMode ? 90.0f : 180.0f;
+}
+
+TArray<int32> BuildQuickSDFTimelineVisualIndices(const UQuickSDFToolProperties* Props)
+{
+	TArray<int32> Indices;
+	if (!Props)
+	{
+		return Indices;
+	}
+
+	const bool bSymmetry = Props->bSymmetryMode;
+	const float MaxAngle = GetQuickSDFTimelineMaxAngle(Props);
+	for (int32 Index = 0; Index < Props->TargetAngles.Num(); ++Index)
+	{
+		if (!bSymmetry || Props->TargetAngles[Index] <= MaxAngle)
+		{
+			Indices.Add(Index);
+		}
+	}
+	Indices.Sort([Props](int32 A, int32 B) { return Props->TargetAngles[A] < Props->TargetAngles[B]; });
+	return Indices;
+}
+
+int32 ResolveQuickSDFTimelineVisualKeyIndex(const UQuickSDFToolProperties* Props, int32 VisualIndex)
+{
+	const TArray<int32> Indices = BuildQuickSDFTimelineVisualIndices(Props);
+	return Indices.IsValidIndex(VisualIndex) ? Indices[VisualIndex] : INDEX_NONE;
+}
+
+bool IsQuickSDFTimelineVisualIndexActive(const UQuickSDFToolProperties* Props, int32 VisualIndex)
+{
+	return Props && Props->EditAngleIndex == ResolveQuickSDFTimelineVisualKeyIndex(Props, VisualIndex);
+}
+
 TSharedRef<SWidget> MakeTimelineIconButton(const FName IconName, const FText& ToolTip, FOnClicked OnClicked)
 {
 	return SNew(SBox)
@@ -181,8 +218,16 @@ UTexture2D* CreateTimelineThumbnailTexture(UQuickSDFPaintTool* Tool, UTextureRen
 
 	for (FColor& Pixel : ThumbnailPixels)
 	{
-		const uint8 Value = FMath::Max3(Pixel.R, Pixel.G, Pixel.B);
-		Pixel = FColor(Value, Value, Value, 255);
+		const float Mask = FMath::Clamp((static_cast<float>(FMath::Max3(Pixel.R, Pixel.G, Pixel.B)) - 4.0f) / 251.0f, 0.0f, 1.0f);
+		if (Mask <= KINDA_SMALL_NUMBER)
+		{
+			Pixel = FColor(214, 226, 232, 0);
+			continue;
+		}
+
+		const uint8 Alpha = static_cast<uint8>(FMath::RoundToInt(36.0f + Mask * 174.0f));
+		const uint8 Shade = static_cast<uint8>(FMath::RoundToInt(204.0f + Mask * 32.0f));
+		Pixel = FColor(Shade, static_cast<uint8>(FMath::Min(255, Shade + 10)), static_cast<uint8>(FMath::Min(255, Shade + 15)), Alpha);
 	}
 
 	UTexture2D* Thumbnail = UTexture2D::CreateTransient(QuickSDFTimelineThumbnailSize, QuickSDFTimelineThumbnailSize, PF_B8G8R8A8);
@@ -192,7 +237,7 @@ UTexture2D* CreateTimelineThumbnailTexture(UQuickSDFPaintTool* Tool, UTextureRen
 	}
 
 	Thumbnail->MipGenSettings = TMGS_NoMipmaps;
-	Thumbnail->Filter = TF_Nearest;
+	Thumbnail->Filter = TF_Bilinear;
 	Thumbnail->SRGB = false;
 	FTexture2DMipMap& Mip = Thumbnail->GetPlatformData()->Mips[0];
 	void* Data = Mip.BulkData.Lock(LOCK_READ_WRITE);
@@ -274,14 +319,14 @@ FLinearColor GetPaintTargetRangeColor(const UQuickSDFPaintTool* Tool)
 	switch (Mode)
 	{
 	case EQuickSDFPaintTargetMode::All:
-		return FLinearColor(0.35f, 0.82f, 1.0f, 0.24f);
+		return FLinearColor(0.35f, 0.82f, 1.0f, 0.15f);
 	case EQuickSDFPaintTargetMode::BeforeCurrent:
-		return FLinearColor(0.36f, 0.64f, 1.0f, 0.23f);
+		return FLinearColor(0.36f, 0.64f, 1.0f, 0.14f);
 	case EQuickSDFPaintTargetMode::AfterCurrent:
-		return FLinearColor(0.28f, 0.86f, 0.64f, 0.23f);
+		return FLinearColor(0.28f, 0.86f, 0.64f, 0.14f);
 	case EQuickSDFPaintTargetMode::CurrentOnly:
 	default:
-		return FLinearColor(0.35f, 0.82f, 1.0f, 0.20f);
+		return FLinearColor(0.35f, 0.82f, 1.0f, 0.12f);
 	}
 }
 }
@@ -1214,7 +1259,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 			float CurrAngle = P->TargetAngles[Indices[i]];
 			float L = (i == 0) ? 0.0f : (PrevAngle + CurrAngle) * 0.5f;
 
-			return FVector2D(FMath::Max(0.0f, TrackWidth) * (L / MaxAngle) + QuickSDFTimelineTrackPadding, KeyframeLaneTop);
+			return FVector2D(FMath::Max(0.0f, TrackWidth) * (L / MaxAngle) + QuickSDFTimelineTrackPadding + 1.0f, KeyframeLaneTop + 2.0f);
 		}))
 		.Size(TAttribute<FVector2D>::CreateLambda([this, i, KeyframeLaneHeight]() {
 			UQuickSDFPaintTool* Tool = this->GetActivePaintTool();
@@ -1241,62 +1286,85 @@ void SQuickSDFTimeline::RebuildTimeline()
 			float L = (i == 0) ? 0.0f : (PrevAngle + CurrAngle) * 0.5f;
 			float R = (i == Indices.Num() - 1) ? MaxAngle : (CurrAngle + NextAngle) * 0.5f;
 
-			return FVector2D(FMath::Max(0.0f, TrackWidth) * ((R - L) / MaxAngle), KeyframeLaneHeight);
+			const float SegmentWidth = FMath::Max(0.0f, TrackWidth) * ((R - L) / MaxAngle);
+			return FVector2D(FMath::Max(1.0f, SegmentWidth - 2.0f), FMath::Max(1.0f, KeyframeLaneHeight - 4.0f));
 		}))
 		[
 			SNew(SBorder)
 			.Visibility(EVisibility::HitTestInvisible)
-			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-			.BorderBackgroundColor(FLinearColor(0.025f, 0.025f, 0.025f, 1.0f))
-			.Padding(FMargin(1.0f, 2.0f))
+			.BorderImage(TAttribute<const FSlateBrush*>::CreateLambda([this, i]()
+			{
+				const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+				const UQuickSDFToolProperties* P = Tool ? Tool->Properties : nullptr;
+				return FQuickSDFToolStyle::GetBrush(IsQuickSDFTimelineVisualIndexActive(P, i)
+					? "QuickSDF.Timeline.ThumbnailCard.Active"
+					: "QuickSDF.Timeline.ThumbnailCard");
+			}))
+			.Padding(FMargin(4.0f, 4.0f, 4.0f, 5.0f))
 			[
-				SNew(SScaleBox)
-				.Stretch(EStretch::ScaleToFill)
+				SNew(SOverlay)
+
+				+ SOverlay::Slot()
+				.HAlign(HAlign_Center)
+				.VAlign(VAlign_Center)
 				[
-					SNew(SImage)
-					.Image(TAttribute<const FSlateBrush*>::CreateLambda([this, i]() -> FSlateBrush* {
-						UQuickSDFPaintTool* Tool = this->GetActivePaintTool();
-						if (!Tool || !Tool->Properties) return nullptr;
-						UQuickSDFToolProperties* P = Tool->Properties;
+					SNew(SScaleBox)
+					.Stretch(EStretch::ScaleToFit)
+					[
+						SNew(SImage)
+						.Image(TAttribute<const FSlateBrush*>::CreateLambda([this, i]() -> FSlateBrush* {
+							const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+							const UQuickSDFToolProperties* P = Tool ? Tool->Properties : nullptr;
+							const int32 KeyIndex = ResolveQuickSDFTimelineVisualKeyIndex(P, i);
+							return KeyframeBrushes.IsValidIndex(KeyIndex) ? KeyframeBrushes[KeyIndex].Get() : nullptr;
+						}))
+						.ColorAndOpacity(TAttribute<FSlateColor>::CreateLambda([this, i]() {
+							const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+							const UQuickSDFToolProperties* P = Tool ? Tool->Properties : nullptr;
+							const float Alpha = IsQuickSDFTimelineVisualIndexActive(P, i) ? 0.95f : 0.72f;
+							return FSlateColor(FLinearColor(0.88f, 0.94f, 0.98f, Alpha));
+						}))
+					]
+				]
 
-						bool bSymmetry = P->bSymmetryMode;
-						float MaxAngle = bSymmetry ? 90.0f : 180.0f;
-
-						TArray<int32> Indices;
-						for (int32 k = 0; k < P->TargetAngles.Num(); ++k)
-						{
-							if (!bSymmetry || P->TargetAngles[k] <= MaxAngle) Indices.Add(k);
-						}
-						Indices.Sort([P](int32 A, int32 B) { return P->TargetAngles[A] < P->TargetAngles[B]; });
-
-						if (Indices.IsValidIndex(i))
-						{
-							int32 KeyIndex = Indices[i];
-							if (KeyframeBrushes.IsValidIndex(KeyIndex)) return KeyframeBrushes[KeyIndex].Get();
-						}
-						return nullptr;
+				+ SOverlay::Slot()
+				.HAlign(HAlign_Fill)
+				.VAlign(VAlign_Top)
+				.Padding(3.0f, 0.0f)
+				[
+					SNew(SBox)
+					.HeightOverride(2.0f)
+					.Visibility(TAttribute<EVisibility>::CreateLambda([this, i]()
+					{
+						const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+						const UQuickSDFToolProperties* P = Tool ? Tool->Properties : nullptr;
+						return IsQuickSDFTimelineVisualIndexActive(P, i) ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 					}))
-					.ColorAndOpacity(TAttribute<FSlateColor>::CreateLambda([this, i]() {
-						UQuickSDFPaintTool* Tool = this->GetActivePaintTool();
-						if (!Tool || !Tool->Properties) return FSlateColor(FLinearColor(0.7f, 0.7f, 0.7f, 0.65f));
-						UQuickSDFToolProperties* P = Tool->Properties;
+					[
+						SNew(SBorder)
+						.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+						.BorderBackgroundColor(GetQuickSDFTimelineAccentColor(0.88f))
+					]
+				]
 
-						bool bSymmetry = P->bSymmetryMode;
-						float MaxAngle = bSymmetry ? 90.0f : 180.0f;
-
-						TArray<int32> Indices;
-						for (int32 k = 0; k < P->TargetAngles.Num(); ++k)
-						{
-							if (!bSymmetry || P->TargetAngles[k] <= MaxAngle) Indices.Add(k);
-						}
-						Indices.Sort([P](int32 A, int32 B) { return P->TargetAngles[A] < P->TargetAngles[B]; });
-
-						if (Indices.IsValidIndex(i) && P->EditAngleIndex == Indices[i])
-						{
-							return FSlateColor(FLinearColor(1.0f, 1.0f, 1.0f, 0.95f));
-						}
-						return FSlateColor(FLinearColor(0.72f, 0.72f, 0.72f, 0.72f));
+				+ SOverlay::Slot()
+				.HAlign(HAlign_Fill)
+				.VAlign(VAlign_Bottom)
+				.Padding(3.0f, 0.0f)
+				[
+					SNew(SBox)
+					.HeightOverride(2.0f)
+					.Visibility(TAttribute<EVisibility>::CreateLambda([this, i]()
+					{
+						const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+						const UQuickSDFToolProperties* P = Tool ? Tool->Properties : nullptr;
+						return IsQuickSDFTimelineVisualIndexActive(P, i) ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 					}))
+					[
+						SNew(SBorder)
+						.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+						.BorderBackgroundColor(GetQuickSDFTimelineAccentColor(0.70f))
+					]
 				]
 			]
 		];
@@ -1333,7 +1401,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 		.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this]()
 		{
 			FLinearColor Color = GetPaintTargetRangeColor(GetActivePaintTool());
-			Color.A *= 0.70f;
+			Color.A *= 0.36f;
 			return FSlateColor(Color);
 		}))
 	];
@@ -1369,7 +1437,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 		.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this]()
 		{
 			FLinearColor Color = GetPaintTargetRangeColor(GetActivePaintTool());
-			Color.A = 0.70f;
+			Color.A = 0.46f;
 			return FSlateColor(Color);
 		}))
 	];
@@ -1405,7 +1473,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 		.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this]()
 		{
 			FLinearColor Color = GetPaintTargetRangeColor(GetActivePaintTool());
-			Color.A = 0.58f;
+			Color.A = 0.34f;
 			return FSlateColor(Color);
 		}))
 	];

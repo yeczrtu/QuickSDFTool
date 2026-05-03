@@ -81,6 +81,9 @@ void FQuickSDFToolStyle::Initialize()
 	const float TimelineButtonRadius = 3.0f;
 	const FLinearColor TimelineBorderColor = FStyleColors::DropdownOutline.GetSpecifiedColor();
 
+	StyleSet->Set("QuickSDF.Timeline.ThumbnailCard", new FSlateRoundedBoxBrush(FLinearColor(0.030f, 0.033f, 0.036f, 1.0f), 3.0f, FLinearColor(0.095f, 0.100f, 0.106f, 1.0f), 1.0f));
+	StyleSet->Set("QuickSDF.Timeline.ThumbnailCard.Active", new FSlateRoundedBoxBrush(FLinearColor(0.034f, 0.044f, 0.050f, 1.0f), 3.0f, FLinearColor(0.24f, 0.57f, 0.72f, 1.0f), 1.0f));
+
 	const FButtonStyle TimelineButtonStyle = FButtonStyle()
 		.SetNormal(FSlateRoundedBoxBrush(FStyleColors::Dropdown, TimelineButtonRadius, TimelineBorderColor, 1.0f))
 		.SetHovered(FSlateRoundedBoxBrush(FStyleColors::Hover, TimelineButtonRadius, TimelineBorderColor, 1.0f))
