@@ -7,7 +7,7 @@
 </p>
 
 > [!NOTE]
-> **Status: Preview / beta.** QuickSDFTool is usable for experimentation and small production tests, but APIs, UI, and saved asset details may still change before a stable release.
+> **Status: Stable 1.0 for UE 5.7.x.** QuickSDFTool is ready for production evaluation on Unreal Engine 5.7.x. UE 5.8+ is intended to be supported, but has not been release-tested for this version.
 
 ## Demo
 
@@ -23,7 +23,7 @@ flowchart LR
     B --> C["Drive toon shader<br>shadow placement"]
 ```
 
-## What Works Today
+## Supported Features
 
 - Dedicated UE5 Editor Mode named `Quick SDF`.
 - Direct painting on Static Mesh and Skeletal Mesh components, including material-slot viewport isolation and slot-aware hit testing.
@@ -78,7 +78,7 @@ See [Examples](./Examples/README.md), [Material Setup](./Docs/MaterialSetup.md),
 
 ## Installation
 
-QuickSDFTool requires Unreal Engine 5.7 or later and a C++ Unreal project.
+QuickSDFTool v1.0 requires Unreal Engine 5.7.x and a C++ Unreal project. UE 5.8+ is intended to be supported, but it is not part of the v1.0 release verification matrix.
 
 1. Clone or download the repository:
 
@@ -114,12 +114,12 @@ QuickSDFTool requires Unreal Engine 5.7 or later and a C++ Unreal project.
 
 | Unreal Engine version | Status |
 | --- | --- |
-| 5.7.4 | Tested development target |
-| 5.7.x | Supported target |
-| 5.8+ | Intended to be supported, but not release-tested yet |
+| 5.7.4 | Required release verification target |
+| 5.7.x | Supported target for v1.0 |
+| 5.8+ | Intended to be supported, but not v1.0 release-tested |
 | 5.6 and earlier | Not supported |
 
-QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Interactive Tools Framework, Modeling Components, Material Baking, and shader module behavior used in UE 5.7 development, so older UE5 releases are outside the supported target range.
+QuickSDFTool v1.0 supports UE 5.7.x. The editor tool relies on the Interactive Tools Framework, Modeling Components, Material Baking, and shader module behavior used in UE 5.7 development, so older UE5 releases are outside the supported target range. Newer engine versions should be treated as unverified until a release note explicitly lists them.
 
 ## Controls
 
@@ -208,23 +208,23 @@ The timeline is split into two interaction lanes to reduce accidental edits.
 - `Current / All / Before / After` still decide which masks receive the stroke. The guard evaluates the relevant processable mask sequence and restores only the pixels changed by the current stroke.
 - Imported masks, rebaked masks, and SDF generation are not automatically modified. Use the `Validate Monotonic Guard` action, or run SDF generation with the guard enabled, to get warnings about existing violations.
 
-## Roadmap
+## Post-1.0 Roadmap
 
 > [!IMPORTANT]
-> The roadmap is ordered by what most improves trust and first-run success for artists trying the plugin.
+> The roadmap is ordered by what most improves trust, compatibility, and first-run success for artists using the stable plugin.
 
-### P0: Make the Preview Release Reliable
+### P0: Stabilize 1.0 Follow-Up
 
 - [x] Document the final SDF output channel layout and island-mirror behavior for the current CPU path.
-- [ ] Improve or document UV-dependent brush-size mismatch.
+- [x] Publish a stable 1.0 release with release notes and install verification steps.
+- [ ] Improve the UV-dependent brush-size mismatch.
 - [ ] Add a short end-to-end video showing mask paint -> SDF texture -> toon shader result.
-- [ ] Publish preview releases with release notes and install verification steps.
 
 ### P1: Improve Performance and Compatibility
 
 - [ ] Enable the GPU JFA SDF path in the user-facing generation flow.
 - [ ] Benchmark 1K, 2K, and 4K mask workflows.
-- [ ] Keep UE 5.7+ compatibility notes current as new engine versions are released.
+- [ ] Verify UE 5.8+ compatibility and update release notes when a tested engine version is added.
 
 ### P2: Deepen Painting Workflow
 
@@ -236,7 +236,7 @@ The timeline is split into two interaction lanes to reduce accidental edits.
 ### Planned Feature Requirements
 
 > [!NOTE]
-> These are roadmap requirements for future work. They are not available in the current preview build and do not change the current C++ API, `UQuickSDFAsset` format, Slate UI, shortcuts, or asset formats unless a future release explicitly says so.
+> These are roadmap requirements for future work. They are not included in the v1.0 stable release and do not change the current C++ API, `UQuickSDFAsset` format, Slate UI, shortcuts, or asset formats unless a future release explicitly says so.
 
 #### Quick Nose
 
@@ -349,9 +349,10 @@ Useful verification commands in the Unreal Editor command line or Session Fronte
 Automation RunTests QuickSDFTool
 Automation RunTests QuickSDFTool.Core.Timeline
 Automation RunTests QuickSDFTool.Core
+Automation RunTests QuickSDFTool.MonotonicGuard
 ```
 
-The recent refactor was validated against `sdfbuildEditor Win64 Development`, focused timeline automation coverage, and the `QuickSDFTool.Core` tests for channel packing and island mirror behavior.
+The v1.0 release candidate should be validated against `sdfbuildEditor Win64 Development`, focused timeline automation coverage, `QuickSDFTool.Core`, and the Monotonic Guard tests.
 
 ## How It Works
 
@@ -370,12 +371,12 @@ For maintainers preparing the GitHub page:
 
 - Add these repository topics: `unreal-engine`, `ue5`, `toon-shading`, `cel-shading`, `sdf`, `editor-plugin`, `technical-art`.
 - Upload `.github/assets/social-preview.svg` as the GitHub Social Preview image, or export it to PNG first.
-- Create preview releases using the matching files under [Docs/ReleaseNotes](./Docs/ReleaseNotes/).
+- Create releases using the matching files under [Docs/ReleaseNotes](./Docs/ReleaseNotes/).
 
-## Known Defects
+## Known Limitations
 
 - UV layout can affect the relationship between brush size and painted area.
-- GPU JFA shader files exist, but the public generation path currently uses the CPU `FSDFProcessor` path.
+- GPU JFA shader files exist, but the v1.0 generation path uses the CPU `FSDFProcessor` path.
 
 ## Contributing
 

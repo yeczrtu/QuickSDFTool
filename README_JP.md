@@ -7,7 +7,7 @@
 </p>
 
 > [!NOTE]
-> **ステータス: プレビュー / ベータ。** QuickSDFTool は実験や小規模な制作検証に使える段階ですが、安定版までは API、UI、保存アセットの細部が変わる可能性があります。
+> **ステータス: UE 5.7.x 向け安定版 1.0。** QuickSDFTool は Unreal Engine 5.7.x での制作検証に使える正式版です。UE 5.8+ は対応予定ですが、このバージョンではリリース検証対象外です。
 
 ## デモ
 
@@ -23,7 +23,7 @@ flowchart LR
     B --> C["トゥーンシェーダーの<br>影位置を制御"]
 ```
 
-## 現在使える機能
+## サポート対象機能
 
 - `Quick SDF` という専用 UE5 エディターモード。
 - Static Mesh / Skeletal Mesh コンポーネントへの直接ペイントと、マテリアルスロットのビューポート分離およびスロット単位のヒットテスト。
@@ -78,7 +78,7 @@ flowchart LR
 
 ## インストール
 
-QuickSDFTool には Unreal Engine 5.7 以降と C++ Unreal プロジェクトが必要です。
+QuickSDFTool v1.0 には Unreal Engine 5.7.x と C++ Unreal プロジェクトが必要です。UE 5.8+ は対応予定ですが、v1.0 のリリース検証マトリクスには含めていません。
 
 1. リポジトリをクローンまたはダウンロードします。
 
@@ -114,12 +114,12 @@ QuickSDFTool には Unreal Engine 5.7 以降と C++ Unreal プロジェクトが
 
 | Unreal Engine version | ステータス |
 | --- | --- |
-| 5.7.4 | 開発・検証ターゲット |
-| 5.7.x | サポート対象 |
-| 5.8+ | 対応予定。ただしリリース検証は未実施 |
+| 5.7.4 | 必須リリース検証ターゲット |
+| 5.7.x | v1.0 のサポート対象 |
+| 5.8+ | 対応予定。ただし v1.0 リリース検証は未実施 |
 | 5.6 以前 | 非対応 |
 
-QuickSDFTool は UE 5.7 以降のみを対象にしています。エディターツールは UE 5.7 開発時点の Interactive Tools Framework、Modeling Components、Material Baking、シェーダーモジュール周辺の挙動に依存しているため、UE 5.6 以前はサポート対象外です。
+QuickSDFTool v1.0 は UE 5.7.x を対象にしています。エディターツールは UE 5.7 開発時点の Interactive Tools Framework、Modeling Components、Material Baking、シェーダーモジュール周辺の挙動に依存しているため、UE 5.6 以前はサポート対象外です。新しいエンジンバージョンは、リリースノートで明示されるまで未検証として扱ってください。
 
 ## 操作方法
 
@@ -208,23 +208,23 @@ QuickSDFTool の SDF 生成には 3 つのモードがあります。
 - `Current / All / Before / After` は、どのマスクへストロークを書き込むかを決めます。Guard は関連する処理対象マスク列で判定し、現在のストロークで変更されたピクセルだけを開始前の状態へ戻します。
 - インポート済みマスク、リベイク済みマスク、SDF 生成は自動修正されません。既存違反は `Validate Monotonic Guard` アクション、または Guard 有効状態での SDF 生成時に警告として確認できます。
 
-## ロードマップ
+## 1.0 以降のロードマップ
 
 > [!IMPORTANT]
-> ロードマップは、初めて触るアーティストが安心して試せるようにするための優先度で並べています。
+> ロードマップは、安定版を使うアーティストにとっての信頼性、互換性、初回成功率を高める優先度で並べています。
 
-### P0: プレビューリリースの信頼性
+### P0: 1.0 フォローアップの安定化
 
 - [x] 現在の CPU 経路における SDF 出力チャンネルレイアウトと UV アイランド反転挙動をドキュメント化する。
-- [ ] UV 依存のブラシサイズ差を改善するか、明確に説明する。
+- [x] リリースノートと導入確認手順を含む安定版 1.0 リリースを公開する。
+- [ ] UV 依存のブラシサイズ差を改善する。
 - [ ] マスクペイント -> SDF テクスチャ -> トゥーンシェーダー結果の短い動画を追加する。
-- [ ] プレビューリリースごとにリリースノートと導入確認手順を添える。
 
 ### P1: パフォーマンスと互換性
 
 - [ ] GPU JFA SDF 経路をユーザー向け生成フローで有効化する。
 - [ ] 1K、2K、4K のマスクワークフローをベンチマークする。
-- [ ] 新しいエンジンバージョンに合わせて UE 5.7+ 互換性メモを更新する。
+- [ ] UE 5.8+ 互換性を検証し、テスト済みエンジンバージョンを追加するタイミングでリリースノートを更新する。
 
 ### P2: ペイント体験の強化
 
@@ -236,7 +236,7 @@ QuickSDFTool の SDF 生成には 3 つのモードがあります。
 ### 計画中の機能要件
 
 > [!NOTE]
-> ここは将来作業の要件です。現在のプレビュー版では利用できず、将来リリースで明示されない限り、現在の C++ API、`UQuickSDFAsset` 形式、Slate UI、ショートカット、アセット形式は変更しません。
+> ここは将来作業の要件です。v1.0 安定版には含まれておらず、将来リリースで明示されない限り、現在の C++ API、`UQuickSDFAsset` 形式、Slate UI、ショートカット、アセット形式は変更しません。
 
 #### Quick Nose
 
@@ -349,9 +349,10 @@ Unreal Editor のコマンドラインまたは Session Frontend で使う主な
 Automation RunTests QuickSDFTool
 Automation RunTests QuickSDFTool.Core.Timeline
 Automation RunTests QuickSDFTool.Core
+Automation RunTests QuickSDFTool.MonotonicGuard
 ```
 
-直近のリファクタリングは `sdfbuildEditor Win64 Development`、タイムライン周辺の重点 Automation Test、チャンネルパッキングと UV アイランド反転を含む `QuickSDFTool.Core` で検証しています。
+v1.0 リリース候補は `sdfbuildEditor Win64 Development`、タイムライン周辺の重点 Automation Test、`QuickSDFTool.Core`、Monotonic Guard テストで検証します。
 
 ## 仕組み
 
@@ -370,12 +371,12 @@ Automation RunTests QuickSDFTool.Core
 
 - Topics に `unreal-engine`, `ue5`, `toon-shading`, `cel-shading`, `sdf`, `editor-plugin`, `technical-art` を追加する。
 - `.github/assets/social-preview.svg` を GitHub Social Preview に設定するか、PNG に書き出して設定する。
-- [Docs/ReleaseNotes](./Docs/ReleaseNotes/) にある対応するリリースノートを使ってプレビューリリースを作成する。
+- [Docs/ReleaseNotes](./Docs/ReleaseNotes/) にある対応するリリースノートを使ってリリースを作成する。
 
-## 既知の不具合
+## 既知の制限
 
 - UV レイアウトによって、ブラシサイズと実際のペイント範囲が一致しない場合があります。
-- GPU JFA シェーダーは存在しますが、公開生成フローは現在 CPU `FSDFProcessor` 経路です。
+- GPU JFA シェーダーは存在しますが、v1.0 の生成フローは CPU `FSDFProcessor` 経路です。
 
 ## コントリビューション
 

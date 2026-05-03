@@ -19,7 +19,7 @@ Use the included `Content/Materials/M_SDFToon.uasset` as the first reference mat
 - Generated maps are saved under `/Game/QuickSDF_GENERATED/` by default.
 - The output is designed for precision, so keep compression and color-space settings appropriate for data textures.
 - Treat the map as threshold data, not as a color/albedo texture.
-- If the shadow appears inverted, verify the material comparison direction first, then check the known SDF output-direction item in the roadmap.
+- If the shadow appears inverted, verify the material comparison direction and the light-angle value first. The built-in Generated SDF preview uses the same exported threshold-map layout as the saved texture.
 
 ## Original Shading Bake Parameters
 

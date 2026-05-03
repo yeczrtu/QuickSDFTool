@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
-	"Version": 3,
-	"VersionName": "0.3.0-preview",
+	"Version": 4,
+	"VersionName": "1.0.0",
 	"FriendlyName": "QuickSDFTool",
 	"Description": "Paint toon-shadow masks in the UE5 editor and generate SDF threshold maps for stylized rendering.",
 	"Category": "Rendering",
@@ -11,7 +11,7 @@
 	"MarketplaceURL": "",
 	"SupportURL": "https://github.com/yeczrtu/QuickSDFTool/issues",
 	"CanContainContent": true,
-	"IsBetaVersion": true,
+	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,
 	"Installed": false,
 	"Modules": [
