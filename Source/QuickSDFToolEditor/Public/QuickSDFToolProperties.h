@@ -96,6 +96,9 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bOverlayUV = true;
 
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint Through Context"))
+	bool bPaintThroughNonTargetGeometry = true;
+
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bAutoSyncLight = true;
 
