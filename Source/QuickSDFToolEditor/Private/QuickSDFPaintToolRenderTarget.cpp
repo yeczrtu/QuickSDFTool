@@ -66,6 +66,21 @@ using namespace QuickSDFPaintToolPrivate;
 
 namespace
 {
+float GetQuickSDFMaterialPreviewModeValue(EQuickSDFMaterialPreviewMode Mode)
+{
+	switch (Mode)
+	{
+	case EQuickSDFMaterialPreviewMode::UV:
+		return 1.0f;
+	case EQuickSDFMaterialPreviewMode::OriginalShadow:
+		return 2.0f;
+	case EQuickSDFMaterialPreviewMode::Mask:
+	case EQuickSDFMaterialPreviewMode::OriginalMaterial:
+	default:
+		return 0.0f;
+	}
+}
+
 bool CaptureRenderTargetPixelsInRect(UTextureRenderTarget2D* RenderTarget, const FIntRect& Rect, TArray<FColor>& OutPixels)
 {
 	if (!RenderTarget || Rect.Width() <= 0 || Rect.Height() <= 0 ||
@@ -208,20 +223,51 @@ void UQuickSDFPaintTool::BuildBrushMaskTexture()
 	BrushMaskTexture->UpdateResource();
 }
 
-void UQuickSDFPaintTool::RefreshPreviewMaterial()
+void UQuickSDFPaintTool::UpdatePreviewMaterialParameters(UMaterialInstanceDynamic* Material)
 {
-	if (!PreviewMaterial)
+	if (!Material || !Properties)
 	{
 		return;
 	}
 
 	if (UTextureRenderTarget2D* ActiveRT = GetActiveRenderTarget())
 	{
-		PreviewMaterial->SetTextureParameterValue(TEXT("BaseColor"), ActiveRT);
-		PreviewMaterial->SetScalarParameterValue(TEXT("UVChannel"), (float)Properties->UVChannel);
-		PreviewMaterial->SetScalarParameterValue(TEXT("OverlayOriginalShadow"), Properties->bOverlayOriginalShadow);
+		Material->SetTextureParameterValue(TEXT("BaseColor"), ActiveRT);
 	}
 
+	float Angle = 0.0f;
+	if (Properties->TargetAngles.IsValidIndex(Properties->EditAngleIndex))
+	{
+		Angle = Properties->TargetAngles[Properties->EditAngleIndex];
+	}
+	else if (UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr)
+	{
+		if (UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset())
+		{
+			const int32 AngleIndex = Asset->GetActiveAngleDataList().Num() > 0
+				? FMath::Clamp(Properties->EditAngleIndex, 0, Asset->GetActiveAngleDataList().Num() - 1)
+				: INDEX_NONE;
+			if (Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex))
+			{
+				Angle = Asset->GetActiveAngleDataList()[AngleIndex].Angle;
+			}
+		}
+	}
+
+	const FQuickSDFMeshBakeBasis BakeBasis = FQuickSDFMeshComponentAdapter::GetBakeBasisForComponent(CurrentComponent.Get());
+	const EQuickSDFMaterialPreviewMode PreviewMode = Properties->MaterialPreviewMode;
+
+	Material->SetScalarParameterValue(TEXT("PreviewMode"), GetQuickSDFMaterialPreviewModeValue(PreviewMode));
+	Material->SetScalarParameterValue(TEXT("UVChannel"), static_cast<float>(Properties->UVChannel));
+	Material->SetScalarParameterValue(TEXT("Angle"), Angle);
+	Material->SetScalarParameterValue(TEXT("BakeForwardAngleOffset"), BakeBasis.ForwardAngleOffsetDegrees);
+}
+
+void UQuickSDFPaintTool::RefreshPreviewMaterial()
+{
+	UpdatePreviewMaterialParameters(PreviewMaterial);
+	UpdatePreviewMaterialParameters(PreviewOverlayMaterial);
+	ApplyMaterialPreviewMode();
 	ClearPreviewMaterialDirtyState();
 }
 

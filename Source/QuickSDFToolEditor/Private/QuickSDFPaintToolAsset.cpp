@@ -1557,7 +1557,9 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 		}
 
 		if (Property && (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex) ||
-				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bOverlayOriginalShadow)))
+				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngles) ||
+				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bOverlayOriginalShadow) ||
+				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MaterialPreviewMode)))
 		{
 			RefreshPreviewMaterial();
 		}

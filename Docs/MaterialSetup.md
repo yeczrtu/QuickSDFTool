@@ -30,6 +30,38 @@ Use the included `Content/Materials/M_SDFToon.uasset` as the first reference mat
 
 For actor-rotation-independent output, build the bake direction from `Angle + BakeForwardAngleOffset` and compare it with normalized `PixelNormalWS.rg` in the material baking space. QuickSDF neutralizes the primitive transform for this bake, so do not transform `PixelNormalWS` from world to local in `M_OriginalShading`.
 
+## Mesh Preview Material Parameters
+
+QuickSDF loads two mesh preview material interfaces:
+
+- Opaque replacement: `/QuickSDFTool/Materials/M_PreviewMat.M_PreviewMat`
+- SceneColor multiply overlay: `/QuickSDFTool/Materials/M_PreviewSceneColorOverlay.M_PreviewSceneColorOverlay`
+
+The opaque material is used for replacement preview and for the upper-left 2D texture preview. The overlay material is used only for the original-material overlay preview. Blend mode is not changed dynamically from C++; `M_PreviewSceneColorOverlay` must be a real material asset whose Blend Mode is Translucent. Do not make it a material instance of opaque `M_PreviewMat`, because opaque parents cannot use `SceneColor`.
+
+Preview modes:
+
+- `Original + Painted`: restores the original material slots and applies the translucent preview with `UMeshComponent::SetOverlayMaterial()`.
+- `Painted Texture`: applies the opaque preview as a replacement material.
+- `Painted + UV`: applies the opaque preview as a replacement material.
+- `Painted + Shadow`: applies the opaque preview as a replacement material.
+
+The default mesh preview mode is `Original + Painted`.
+
+Both dynamic material instances receive these parameters:
+
+- Texture `BaseColor`: active mask render target.
+- Scalar `PreviewMode`: `0 = Painted Texture`, `1 = Painted + UV`, `2 = Painted + Shadow`.
+- Scalar `UVChannel`: active UV channel index.
+- Scalar `Angle`: active timeline angle in degrees. This matches `M_OriginalShading`.
+- Scalar `BakeForwardAngleOffset`: forward-axis offset in degrees. This matches `M_OriginalShading`.
+
+For `Painted + Shadow`, use the same `Angle + BakeForwardAngleOffset` direction calculation as `M_OriginalShading` so the mesh preview matches the baked mask. Only `M_PreviewSceneColorOverlay` should be translucent. `M_PreviewMat` should stay opaque and should not contain a `SceneColor` node.
+
+For `Original + Painted`, implement `M_PreviewSceneColorOverlay` with `SceneColor` multiplied by the black/white painted mask from `BaseColor`. C++ always sends `PreviewMode = 0` to this overlay path.
+
+The upper-left 2D texture preview uses a separate dynamic instance of `M_PreviewMat` and always forces `PreviewMode = 0`, so it remains a black/white painted texture preview regardless of the selected mesh preview mode.
+
 ## Monopolar vs Bipolar
 
 - **Monopolar** is the simpler symmetric case. The same threshold can be used across the main channels.

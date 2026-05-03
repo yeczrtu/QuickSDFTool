@@ -311,10 +311,13 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
             const FVector2D PreviewOrigin = GetPreviewOrigin();
             const FVector2D PreviewSize = GetPreviewSize();
             
-            if (PreviewMaterial)
+            if (PreviewHUDMaterial)
             {
-                PreviewMaterial->SetTextureParameterValue(TEXT("BaseColor"), RT);
-                FCanvasTileItem TileItem(PreviewOrigin, PreviewMaterial->GetRenderProxy(), PreviewSize);
+                PreviewHUDMaterial->SetTextureParameterValue(TEXT("BaseColor"), RT);
+                PreviewHUDMaterial->SetScalarParameterValue(TEXT("PreviewMode"), 0.0f);
+                PreviewHUDMaterial->SetScalarParameterValue(TEXT("UVChannel"), static_cast<float>(Properties->UVChannel));
+                PreviewHUDMaterial->SetScalarParameterValue(TEXT("OverlayOriginalShadow"), 0.0f);
+                FCanvasTileItem TileItem(PreviewOrigin, PreviewHUDMaterial->GetRenderProxy(), PreviewSize);
                 TileItem.BlendMode = SE_BLEND_Opaque;
                 Canvas->DrawItem(TileItem);
             }
@@ -357,14 +360,14 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
                     }
                 }
             }
-            
+
             if (UTextureRenderTarget2D* UVOverlayRT = GetUVOverlayRenderTarget())
             {
                 FCanvasTileItem UVTile(PreviewOrigin, UVOverlayRT->GetResource(), PreviewSize, FLinearColor::White);
                 UVTile.BlendMode = SE_BLEND_Translucent;
                 Canvas->DrawItem(UVTile);
             }
-
+            
             if (false && TargetMesh.IsValid() && TargetMesh->HasAttributes() && Properties->bOverlayUV)
             {
                 const UE::Geometry::FDynamicMeshUVOverlay* UVOverlay = TargetMesh->Attributes()->GetUVLayer(Properties->UVChannel);

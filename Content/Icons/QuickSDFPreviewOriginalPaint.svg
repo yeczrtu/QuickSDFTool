@@ -1,0 +1,8 @@
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <rect x="4" y="4" width="13" height="13" rx="2" fill="#FFFFFF" fill-opacity=".35"/>
+  <path fill="#FFFFFF" fill-opacity=".72" d="M6 6h2v2H6V6zm4 0h2v2h-2V6zm4 0h1v2h-1V6zM8 8h2v2H8V8zm4 0h2v2h-2V8zM6 10h2v2H6v-2zm4 0h2v2h-2v-2zm4 0h1v2h-1v-2zM8 12h2v2H8v-2zm4 0h2v2h-2v-2z"/>
+  <rect x="4" y="4" width="13" height="13" rx="2" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+  <rect x="8" y="8" width="12" height="12" rx="2" fill="#FFFFFF"/>
+  <path fill="#111111" fill-opacity=".88" d="M8 8h12v12H8V8zm6.1 2.1c-2.2 0-4 1.8-4 4 0 2.4 1.8 3.9 4 3.9 2.3 0 4-1.6 4-3.9 0-2.2-1.8-4-4-4z"/>
+  <path fill="#FFFFFF" d="M10 10h8v8h-8v-8zm4.1 1.6c-1.4 0-2.5 1.1-2.5 2.5 0 1.5 1.1 2.4 2.5 2.4s2.5-1 2.5-2.4c0-1.4-1.1-2.5-2.5-2.5z"/>
+</svg>

@@ -168,6 +168,11 @@ protected:
 	void ClearPreviewMaterialDirtyState() const;
 	FQuickSDFStrokeSample SmoothStrokeSample(const FQuickSDFStrokeSample& RawSample);
 	void ChangeTargetComponent(class UMeshComponent* NewComponent);
+	void RestoreOriginalComponentMaterials();
+	void RestoreOriginalComponentMaterialSlots();
+	void RestoreOriginalComponentOverlayMaterial();
+	void ApplyMaterialPreviewMode();
+	void UpdatePreviewMaterialParameters(class UMaterialInstanceDynamic* Material);
 	void ApplyTargetMaterialSlotIsolation();
 	bool IsTriangleInTargetMaterialSlot(int32 TriangleID) const;
 	bool TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample);
@@ -252,11 +257,23 @@ protected:
 	UPROPERTY()
 	TArray<UMaterialInterface*> OriginalMaterials;
 
+	UPROPERTY()
+	TObjectPtr<UMaterialInterface> OriginalOverlayMaterial;
+
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInterface> PreviewBaseMaterial;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> PreviewMaterial;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> PreviewHUDMaterial;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> PreviewOverlayBaseMaterial;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> PreviewOverlayMaterial;
 
 	UPROPERTY(Transient)
 	class UTexture2D* BrushMaskTexture;
@@ -294,6 +311,8 @@ protected:
 	bool bHasQuickLineEndSample = false;
 	bool bSuppressMaskPixelUndo = false;
 	bool bImportPanelRequested = false;
+	bool bHasOriginalOverlayMaterialState = false;
+	float OriginalOverlayMaterialMaxDrawDistance = 0.0f;
 	int32 MaskRevision = 0;
 	int32 CachedUVOverlayUVChannel = INDEX_NONE;
 	int32 CachedUVOverlayMaterialSlot = INDEX_NONE;

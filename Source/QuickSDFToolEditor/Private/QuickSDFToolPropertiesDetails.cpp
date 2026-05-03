@@ -534,6 +534,34 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		]
 	];
 
+	QuickCategory.AddCustomRow(LOCTEXT("MaterialPreviewFilter", "Material Preview"))
+	.WholeRowContent()
+	[
+		SNew(SVerticalBox)
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, 4.0f, 0.0f, 2.0f)
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("MaterialPreviewLabel", "Material Preview"))
+			.Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				QuickSDFToolUI::MakeMaterialPreviewModeSelector([]()
+				{
+					return QuickSDFToolUI::GetActivePaintTool();
+				}, WeakProperties)
+			]
+		]
+	];
+
 	QuickCategory.AddCustomRow(LOCTEXT("PaintTogglesFilter", "Paint Toggles"))
 	.WholeRowContent()
 	[

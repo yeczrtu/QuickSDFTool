@@ -68,6 +68,22 @@ namespace
 {
 const TCHAR* QuickSDFPreviewMaterialObjectPath = TEXT("/QuickSDFTool/Materials/M_PreviewMat.M_PreviewMat");
 const TCHAR* QuickSDFPreviewMaterialPackagePath = TEXT("/QuickSDFTool/Materials/M_PreviewMat");
+const TCHAR* QuickSDFPreviewOverlayMaterialObjectPath = TEXT("/QuickSDFTool/Materials/M_PreviewSceneColorOverlay.M_PreviewSceneColorOverlay");
+const TCHAR* QuickSDFPreviewOverlayMaterialPackagePath = TEXT("/QuickSDFTool/Materials/M_PreviewSceneColorOverlay");
+
+void ClearMaterialPackageDirtyState(UPackage* Package)
+{
+	if (!Package)
+	{
+		return;
+	}
+
+	if (Package->IsDirty())
+	{
+		Package->SetDirtyFlag(false);
+	}
+	Package->ClearDirtyFlag();
+}
 }
 
 
@@ -132,14 +148,10 @@ void UQuickSDFPaintTool::RequestBrushResizeMode()
 void UQuickSDFPaintTool::ClearPreviewMaterialDirtyState() const
 {
 	UPackage* PreviewPackage = PreviewBaseMaterial ? PreviewBaseMaterial->GetOutermost() : FindPackage(nullptr, QuickSDFPreviewMaterialPackagePath);
-	if (PreviewPackage)
-	{
-		if (PreviewPackage->IsDirty())
-		{
-			PreviewPackage->SetDirtyFlag(false);
-		}
-		PreviewPackage->ClearDirtyFlag();
-	}
+	ClearMaterialPackageDirtyState(PreviewPackage);
+
+	UPackage* PreviewOverlayPackage = PreviewOverlayBaseMaterial ? PreviewOverlayBaseMaterial->GetOutermost() : FindPackage(nullptr, QuickSDFPreviewOverlayMaterialPackagePath);
+	ClearMaterialPackageDirtyState(PreviewOverlayPackage);
 }
 
 void UQuickSDFPaintTool::RegisterActions(FInteractiveToolActionSet& ActionSet)
@@ -355,6 +367,108 @@ void UQuickSDFPaintTool::OnTick(float DeltaTime)
 	TryActivateQuickLine();
 }
 
+void UQuickSDFPaintTool::RestoreOriginalComponentMaterialSlots()
+{
+	if (!CurrentComponent.IsValid())
+	{
+		return;
+	}
+
+	for (int32 i = 0; i < OriginalMaterials.Num(); ++i)
+	{
+		if (CurrentComponent->GetNumMaterials() > i)
+		{
+			CurrentComponent->SetMaterial(i, OriginalMaterials[i]);
+		}
+	}
+}
+
+void UQuickSDFPaintTool::RestoreOriginalComponentOverlayMaterial()
+{
+	if (!CurrentComponent.IsValid() || !bHasOriginalOverlayMaterialState)
+	{
+		return;
+	}
+
+	CurrentComponent->SetOverlayMaterial(OriginalOverlayMaterial);
+	CurrentComponent->SetOverlayMaterialMaxDrawDistance(OriginalOverlayMaterialMaxDrawDistance);
+}
+
+void UQuickSDFPaintTool::RestoreOriginalComponentMaterials()
+{
+	if (!CurrentComponent.IsValid())
+	{
+		return;
+	}
+
+	if (UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(CurrentComponent.Get()))
+	{
+		StaticMeshComponent->SetMaterialPreview(INDEX_NONE);
+	}
+	else if (USkinnedMeshComponent* SkinnedMeshComponent = Cast<USkinnedMeshComponent>(CurrentComponent.Get()))
+	{
+		SkinnedMeshComponent->SetMaterialPreview(INDEX_NONE);
+	}
+
+	RestoreOriginalComponentMaterialSlots();
+	RestoreOriginalComponentOverlayMaterial();
+}
+
+void UQuickSDFPaintTool::ApplyMaterialPreviewMode()
+{
+	if (!CurrentComponent.IsValid())
+	{
+		return;
+	}
+
+	const EQuickSDFMaterialPreviewMode PreviewMode = Properties
+		? Properties->MaterialPreviewMode
+		: EQuickSDFMaterialPreviewMode::OriginalMaterial;
+
+	switch (PreviewMode)
+	{
+	case EQuickSDFMaterialPreviewMode::OriginalMaterial:
+		RestoreOriginalComponentMaterialSlots();
+		if (PreviewOverlayMaterial)
+		{
+			CurrentComponent->SetOverlayMaterial(PreviewOverlayMaterial);
+			CurrentComponent->SetOverlayMaterialMaxDrawDistance(0.0f);
+		}
+		else
+		{
+			CurrentComponent->SetOverlayMaterial(nullptr);
+			CurrentComponent->SetOverlayMaterialMaxDrawDistance(0.0f);
+		}
+		break;
+
+	case EQuickSDFMaterialPreviewMode::Mask:
+	case EQuickSDFMaterialPreviewMode::UV:
+	case EQuickSDFMaterialPreviewMode::OriginalShadow:
+		CurrentComponent->SetOverlayMaterial(nullptr);
+		CurrentComponent->SetOverlayMaterialMaxDrawDistance(0.0f);
+		if (PreviewMaterial)
+		{
+			for (int32 i = 0; i < CurrentComponent->GetNumMaterials(); ++i)
+			{
+				CurrentComponent->SetMaterial(i, PreviewMaterial);
+			}
+		}
+		else
+		{
+			RestoreOriginalComponentMaterialSlots();
+		}
+		break;
+
+	default:
+		RestoreOriginalComponentMaterialSlots();
+		RestoreOriginalComponentOverlayMaterial();
+		break;
+	}
+
+	ApplyTargetMaterialSlotIsolation();
+	ClearPreviewMaterialDirtyState();
+}
+
 void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 {
 	if (CurrentComponent.Get() == NewComponent)
@@ -365,28 +479,19 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 	// 莉･蜑阪・繧ｳ繝ｳ繝昴・繝阪Φ繝医・繝槭ユ繝ｪ繧｢繝ｫ繧貞ｾｩ蜈・
 	if (CurrentComponent.IsValid())
 	{
-		if (UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(CurrentComponent.Get()))
-		{
-			StaticMeshComponent->SetMaterialPreview(INDEX_NONE);
-		}
-		else if (USkinnedMeshComponent* SkinnedMeshComponent = Cast<USkinnedMeshComponent>(CurrentComponent.Get()))
-		{
-			SkinnedMeshComponent->SetMaterialPreview(INDEX_NONE);
-		}
-
-		for (int32 i = 0; i < OriginalMaterials.Num(); ++i)
-		{
-			if (CurrentComponent->GetNumMaterials() > i)
-			{
-				CurrentComponent->SetMaterial(i, OriginalMaterials[i]);
-			}
-		}
+		RestoreOriginalComponentMaterials();
 	}
 
 	ClearPreviewMaterialDirtyState();
 	PreviewMaterial = nullptr;
+	PreviewHUDMaterial = nullptr;
 	PreviewBaseMaterial = nullptr;
+	PreviewOverlayMaterial = nullptr;
+	PreviewOverlayBaseMaterial = nullptr;
 	OriginalMaterials.Empty();
+	OriginalOverlayMaterial = nullptr;
+	OriginalOverlayMaterialMaxDrawDistance = 0.0f;
+	bHasOriginalOverlayMaterialState = false;
 	CurrentComponent = NewComponent;
 	if (UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>())
 	{
@@ -422,24 +527,41 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 	PreviewMaterial = PreviewBaseMaterial
 		? UMaterialInstanceDynamic::Create(PreviewBaseMaterial, GetTransientPackage())
 		: nullptr;
+	PreviewHUDMaterial = PreviewBaseMaterial
+		? UMaterialInstanceDynamic::Create(PreviewBaseMaterial, GetTransientPackage())
+		: nullptr;
+	PreviewOverlayBaseMaterial = LoadObject<UMaterialInterface>(nullptr, QuickSDFPreviewOverlayMaterialObjectPath);
+	PreviewOverlayMaterial = PreviewOverlayBaseMaterial
+		? UMaterialInstanceDynamic::Create(PreviewOverlayBaseMaterial, GetTransientPackage())
+		: nullptr;
 
-	if (!PreviewMaterial)
+	if (PreviewMaterial)
 	{
-		return;
+		PreviewMaterial->SetFlags(RF_Transient);
 	}
-	PreviewMaterial->SetFlags(RF_Transient);
+	if (PreviewHUDMaterial)
+	{
+		PreviewHUDMaterial->SetFlags(RF_Transient);
+	}
+	if (PreviewOverlayMaterial)
+	{
+		PreviewOverlayMaterial->SetFlags(RF_Transient);
+	}
 	ClearPreviewMaterialDirtyState();
 
 	// 譁ｰ縺励＞繧ｳ繝ｳ繝昴・繝阪Φ繝医・繝槭ユ繝ｪ繧｢繝ｫ繧偵・繝ｬ繝薙Η繝ｼ逕ｨ縺ｫ蟾ｮ縺玲崛縺・
 	for (int32 i = 0; i < CurrentComponent->GetNumMaterials(); ++i)
 	{
 		OriginalMaterials.Add(CurrentComponent->GetMaterial(i));
-		CurrentComponent->SetMaterial(i, PreviewMaterial);
 	}
+	OriginalOverlayMaterial = CurrentComponent->GetOverlayMaterial();
+	OriginalOverlayMaterialMaxDrawDistance = CurrentComponent->GetOverlayMaterialMaxDrawDistance();
+	bHasOriginalOverlayMaterialState = true;
 	ClearPreviewMaterialDirtyState();
 
 	RefreshTextureSetsForCurrentComponent();
 	EnsureInitialMasksReady();
+	RefreshPreviewMaterial();
 }
 
 void UQuickSDFPaintTool::Shutdown(EToolShutdownType ShutdownType)

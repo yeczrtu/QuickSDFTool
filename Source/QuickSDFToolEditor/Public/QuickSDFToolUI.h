@@ -5,6 +5,7 @@
 
 class UQuickSDFPaintTool;
 class UQuickSDFToolProperties;
+enum class EQuickSDFMaterialPreviewMode : uint8;
 enum class EQuickSDFPaintTargetMode : uint8;
 
 enum class EQuickSDFPaintToggle : uint8
@@ -24,8 +25,15 @@ namespace QuickSDFToolUI
 using FGetPaintTool = TFunction<UQuickSDFPaintTool*()>;
 
 const TArray<EQuickSDFPaintToggle>& GetPaintToggles();
+const TArray<EQuickSDFMaterialPreviewMode>& GetMaterialPreviewModes();
 const TArray<EQuickSDFPaintTargetMode>& GetPaintTargetModes();
 UQuickSDFPaintTool* GetActivePaintTool();
+EQuickSDFMaterialPreviewMode GetMaterialPreviewMode(const UQuickSDFToolProperties* Properties);
+FText GetMaterialPreviewModeLabel(EQuickSDFMaterialPreviewMode Mode);
+FText GetMaterialPreviewModeDescription(EQuickSDFMaterialPreviewMode Mode);
+FName GetMaterialPreviewModeIconName(EQuickSDFMaterialPreviewMode Mode);
+void SetMaterialPreviewMode(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties, EQuickSDFMaterialPreviewMode Mode);
+void CycleMaterialPreviewMode(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties);
 EQuickSDFPaintTargetMode GetPaintTargetMode(const UQuickSDFToolProperties* Properties);
 FText GetPaintTargetModeLabel(EQuickSDFPaintTargetMode Mode);
 FText GetPaintTargetModeDescription(EQuickSDFPaintTargetMode Mode);
@@ -40,6 +48,7 @@ bool GetToggleValue(const UQuickSDFToolProperties* Properties, EQuickSDFPaintTog
 void SetToggleValue(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties, EQuickSDFPaintToggle Toggle, bool bValue);
 void ToggleValue(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties, EQuickSDFPaintToggle Toggle);
 TSharedRef<SWidget> MakeIconLabelButton(const FName IconName, const FText& Label, const FText& ToolTip, FOnClicked OnClicked);
+TSharedRef<SWidget> MakeMaterialPreviewModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
 TSharedRef<SWidget> MakePaintTargetModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
 TSharedRef<SWidget> MakePaintToggleButton(EQuickSDFPaintToggle Toggle, FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
 TSharedRef<SWidget> MakePaintToggleBar(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());

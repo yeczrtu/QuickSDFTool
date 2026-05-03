@@ -33,6 +33,15 @@ enum class EQuickSDFBrushProjectionMode : uint8
 	ViewProjected UMETA(DisplayName = "View Projected")
 };
 
+UENUM(BlueprintType)
+enum class EQuickSDFMaterialPreviewMode : uint8
+{
+	OriginalMaterial UMETA(DisplayName = "Original + Painted"),
+	Mask UMETA(DisplayName = "Painted Texture"),
+	UV UMETA(DisplayName = "Painted + UV"),
+	OriginalShadow UMETA(DisplayName = "Painted + Shadow")
+};
+
 UCLASS()
 class UQuickSDFToolProperties : public UInteractiveToolPropertySet
 {
@@ -71,6 +80,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bOverlayOriginalShadow = false;
+
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Material Preview Mode", HideInDetailPanel))
+	EQuickSDFMaterialPreviewMode MaterialPreviewMode = EQuickSDFMaterialPreviewMode::OriginalMaterial;
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bOverlayUV = true;

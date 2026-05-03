@@ -47,6 +47,16 @@ FText GetPaintTargetModeToolTip(UQuickSDFToolProperties* Properties, EQuickSDFPa
 		bSelected ? LOCTEXT("PaintTargetModeSelected", "Selected") : LOCTEXT("PaintTargetModeClickToUse", "Click to use"),
 		QuickSDFToolUI::GetPaintTargetModeDescription(Mode));
 }
+
+FText GetMaterialPreviewModeToolTip(UQuickSDFToolProperties* Properties, EQuickSDFMaterialPreviewMode Mode)
+{
+	const bool bSelected = QuickSDFToolUI::GetMaterialPreviewMode(Properties) == Mode;
+	return FText::Format(
+		LOCTEXT("MaterialPreviewModeTooltipFormat", "{0}: {1}\n{2}"),
+		QuickSDFToolUI::GetMaterialPreviewModeLabel(Mode),
+		bSelected ? LOCTEXT("MaterialPreviewModeSelected", "Selected") : LOCTEXT("MaterialPreviewModeClickToUse", "Click to use"),
+		QuickSDFToolUI::GetMaterialPreviewModeDescription(Mode));
+}
 }
 
 const TArray<EQuickSDFPaintToggle>& QuickSDFToolUI::GetPaintToggles()
@@ -64,6 +74,17 @@ const TArray<EQuickSDFPaintToggle>& QuickSDFToolUI::GetPaintToggles()
 	return Toggles;
 }
 
+const TArray<EQuickSDFMaterialPreviewMode>& QuickSDFToolUI::GetMaterialPreviewModes()
+{
+	static const TArray<EQuickSDFMaterialPreviewMode> Modes = {
+		EQuickSDFMaterialPreviewMode::OriginalMaterial,
+		EQuickSDFMaterialPreviewMode::Mask,
+		EQuickSDFMaterialPreviewMode::UV,
+		EQuickSDFMaterialPreviewMode::OriginalShadow,
+	};
+	return Modes;
+}
+
 const TArray<EQuickSDFPaintTargetMode>& QuickSDFToolUI::GetPaintTargetModes()
 {
 	static const TArray<EQuickSDFPaintTargetMode> Modes = {
@@ -79,6 +100,97 @@ UQuickSDFPaintTool* QuickSDFToolUI::GetActivePaintTool()
 {
 	UQuickSDFEditorMode* Mode = Cast<UQuickSDFEditorMode>(GLevelEditorModeTools().GetActiveScriptableMode("EM_QuickSDFEditorMode"));
 	return Mode && Mode->GetToolManager() ? Cast<UQuickSDFPaintTool>(Mode->GetToolManager()->GetActiveTool(EToolSide::Left)) : nullptr;
+}
+
+EQuickSDFMaterialPreviewMode QuickSDFToolUI::GetMaterialPreviewMode(const UQuickSDFToolProperties* Properties)
+{
+	return Properties ? Properties->MaterialPreviewMode : EQuickSDFMaterialPreviewMode::OriginalMaterial;
+}
+
+FText QuickSDFToolUI::GetMaterialPreviewModeLabel(EQuickSDFMaterialPreviewMode Mode)
+{
+	switch (Mode)
+	{
+	case EQuickSDFMaterialPreviewMode::OriginalMaterial:
+		return LOCTEXT("MaterialPreviewOriginalLabel", "Orig+Paint");
+	case EQuickSDFMaterialPreviewMode::Mask:
+		return LOCTEXT("MaterialPreviewPaintedLabel", "Painted");
+	case EQuickSDFMaterialPreviewMode::UV:
+		return LOCTEXT("MaterialPreviewUVLabel", "Paint+UV");
+	case EQuickSDFMaterialPreviewMode::OriginalShadow:
+		return LOCTEXT("MaterialPreviewShadowLabel", "Paint+Shadow");
+	default:
+		return FText::GetEmpty();
+	}
+}
+
+FText QuickSDFToolUI::GetMaterialPreviewModeDescription(EQuickSDFMaterialPreviewMode Mode)
+{
+	switch (Mode)
+	{
+	case EQuickSDFMaterialPreviewMode::OriginalMaterial:
+		return LOCTEXT("MaterialPreviewOriginalDesc", "Overlays the active painted texture on the original material.");
+	case EQuickSDFMaterialPreviewMode::Mask:
+		return LOCTEXT("MaterialPreviewPaintedDesc", "Shows only the active painted texture with an opaque preview material.");
+	case EQuickSDFMaterialPreviewMode::UV:
+		return LOCTEXT("MaterialPreviewUVDesc", "Shows the active painted texture over the active UV channel with an opaque preview material.");
+	case EQuickSDFMaterialPreviewMode::OriginalShadow:
+		return LOCTEXT("MaterialPreviewShadowDesc", "Shows the active painted texture over the original baked shadow with an opaque preview material.");
+	default:
+		return FText::GetEmpty();
+	}
+}
+
+FName QuickSDFToolUI::GetMaterialPreviewModeIconName(EQuickSDFMaterialPreviewMode Mode)
+{
+	switch (Mode)
+	{
+	case EQuickSDFMaterialPreviewMode::OriginalMaterial:
+		return "QuickSDF.MaterialPreview.OriginalPaint";
+	case EQuickSDFMaterialPreviewMode::Mask:
+		return "QuickSDF.MaterialPreview.Painted";
+	case EQuickSDFMaterialPreviewMode::UV:
+		return "QuickSDF.MaterialPreview.PaintUV";
+	case EQuickSDFMaterialPreviewMode::OriginalShadow:
+		return "QuickSDF.MaterialPreview.PaintShadow";
+	default:
+		return NAME_None;
+	}
+}
+
+void QuickSDFToolUI::SetMaterialPreviewMode(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties, EQuickSDFMaterialPreviewMode Mode)
+{
+	if (!Properties || Properties->MaterialPreviewMode == Mode)
+	{
+		return;
+	}
+
+	Properties->Modify();
+	Properties->MaterialPreviewMode = Mode;
+
+	if (Tool)
+	{
+		FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MaterialPreviewMode));
+		Tool->OnPropertyModified(Properties, Prop);
+	}
+
+	if (GEditor)
+	{
+		GEditor->RedrawAllViewports(false);
+	}
+}
+
+void QuickSDFToolUI::CycleMaterialPreviewMode(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties)
+{
+	if (!Properties)
+	{
+		return;
+	}
+
+	const TArray<EQuickSDFMaterialPreviewMode>& Modes = GetMaterialPreviewModes();
+	const int32 CurrentIndex = Modes.IndexOfByKey(GetMaterialPreviewMode(Properties));
+	const int32 NextIndex = CurrentIndex == INDEX_NONE ? 0 : (CurrentIndex + 1) % Modes.Num();
+	SetMaterialPreviewMode(Tool, Properties, Modes[NextIndex]);
 }
 
 EQuickSDFPaintTargetMode QuickSDFToolUI::GetPaintTargetMode(const UQuickSDFToolProperties* Properties)
@@ -402,6 +514,61 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeIconLabelButton(const FName IconName, co
 		];
 }
 
+TSharedRef<SWidget> QuickSDFToolUI::MakeMaterialPreviewModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties)
+{
+	TSharedRef<SHorizontalBox> ModeRow = SNew(SHorizontalBox);
+	for (EQuickSDFMaterialPreviewMode Mode : GetMaterialPreviewModes())
+	{
+		ModeRow->AddSlot()
+		.AutoWidth()
+		.Padding(0.5f, 0.0f)
+		[
+			SNew(SBox)
+			.WidthOverride(26.0f)
+			.HeightOverride(24.0f)
+			[
+				SNew(SCheckBox)
+				.Style(FQuickSDFToolStyle::Get().Get(), "QuickSDF.Timeline.ToggleButton")
+				.ToolTipText_Lambda([Mode, GetPaintTool, FallbackProperties]()
+				{
+					return GetMaterialPreviewModeToolTip(GetProperties(GetPaintTool(), FallbackProperties), Mode);
+				})
+				.IsChecked_Lambda([Mode, GetPaintTool, FallbackProperties]()
+				{
+					return GetMaterialPreviewMode(GetProperties(GetPaintTool(), FallbackProperties)) == Mode ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				})
+				.OnCheckStateChanged_Lambda([Mode, GetPaintTool, FallbackProperties](ECheckBoxState NewState)
+				{
+					if (NewState == ECheckBoxState::Checked)
+					{
+						UQuickSDFPaintTool* Tool = GetPaintTool();
+						SetMaterialPreviewMode(Tool, GetProperties(Tool, FallbackProperties), Mode);
+					}
+				})
+				.Padding(FMargin(3.0f, 2.0f))
+				[
+					SNew(SBox)
+					.WidthOverride(16.0f)
+					.HeightOverride(16.0f)
+					.HAlign(HAlign_Center)
+					.VAlign(VAlign_Center)
+					[
+						SNew(SImage)
+						.Image(FQuickSDFToolStyle::GetBrush(GetMaterialPreviewModeIconName(Mode)))
+						.ColorAndOpacity_Lambda([Mode, GetPaintTool, FallbackProperties]()
+						{
+							return GetMaterialPreviewMode(GetProperties(GetPaintTool(), FallbackProperties)) == Mode
+								? FSlateColor(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
+								: FSlateColor(FLinearColor(0.62f, 0.62f, 0.62f, 1.0f));
+						})
+					]
+				]
+			]
+		];
+	}
+	return ModeRow;
+}
+
 TSharedRef<SWidget> QuickSDFToolUI::MakePaintTargetModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties)
 {
 	TSharedRef<SHorizontalBox> ModeRow = SNew(SHorizontalBox);
@@ -537,6 +704,71 @@ TSharedRef<SWidget> QuickSDFToolUI::MakePaintToggleBar(FGetPaintTool GetPaintToo
 
 TSharedRef<SWidget> QuickSDFToolUI::MakeQuickToggleMenu(FGetPaintTool GetPaintTool)
 {
+	TSharedRef<SUniformGridPanel> PreviewModeGrid = SNew(SUniformGridPanel)
+		.SlotPadding(FMargin(3.0f));
+
+	const TArray<EQuickSDFMaterialPreviewMode>& PreviewModes = GetMaterialPreviewModes();
+	for (int32 Index = 0; Index < PreviewModes.Num(); ++Index)
+	{
+		const EQuickSDFMaterialPreviewMode Mode = PreviewModes[Index];
+		PreviewModeGrid->AddSlot(Index, 0)
+		[
+			SNew(SBox)
+			.WidthOverride(92.0f)
+			.HeightOverride(58.0f)
+			[
+				SNew(SCheckBox)
+				.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
+				.ToolTipText_Lambda([Mode, GetPaintTool]()
+				{
+					UQuickSDFPaintTool* Tool = GetPaintTool();
+					return GetMaterialPreviewModeToolTip(Tool ? Tool->Properties : nullptr, Mode);
+				})
+				.IsChecked_Lambda([Mode, GetPaintTool]()
+				{
+					UQuickSDFPaintTool* Tool = GetPaintTool();
+					return GetMaterialPreviewMode(Tool ? Tool->Properties : nullptr) == Mode ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				})
+				.OnCheckStateChanged_Lambda([Mode, GetPaintTool](ECheckBoxState NewState)
+				{
+					if (NewState == ECheckBoxState::Checked)
+					{
+						UQuickSDFPaintTool* Tool = GetPaintTool();
+						SetMaterialPreviewMode(Tool, Tool ? Tool->Properties : nullptr, Mode);
+					}
+				})
+				.Padding(FMargin(6.0f, 4.0f))
+				[
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.HAlign(HAlign_Center)
+					[
+						SNew(SImage)
+						.Image(FQuickSDFToolStyle::GetBrush(GetMaterialPreviewModeIconName(Mode)))
+						.ColorAndOpacity_Lambda([Mode, GetPaintTool]()
+						{
+							UQuickSDFPaintTool* Tool = GetPaintTool();
+							return GetMaterialPreviewMode(Tool ? Tool->Properties : nullptr) == Mode
+								? FSlateColor(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
+								: FSlateColor(FLinearColor(0.68f, 0.68f, 0.68f, 1.0f));
+						})
+					]
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.HAlign(HAlign_Center)
+					.Padding(0.0f, 4.0f, 0.0f, 0.0f)
+					[
+						SNew(STextBlock)
+						.Text(GetMaterialPreviewModeLabel(Mode))
+						.Justification(ETextJustify::Center)
+						.Font(FAppStyle::GetFontStyle("SmallFont"))
+					]
+				]
+			]
+		];
+	}
+
 	TSharedRef<SUniformGridPanel> PaintModeGrid = SNew(SUniformGridPanel)
 		.SlotPadding(FMargin(3.0f));
 
@@ -671,6 +903,12 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeQuickToggleMenu(FGetPaintTool GetPaintTo
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot()
 			.AutoHeight()
+			[
+				PreviewModeGrid
+			]
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0.0f, 6.0f, 0.0f, 0.0f)
 			[
 				PaintModeGrid
 			]
