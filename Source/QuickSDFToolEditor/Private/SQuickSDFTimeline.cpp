@@ -321,15 +321,6 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 						.AutoWidth()
 						.VAlign(VAlign_Center)
 						[
-							SNew(STextBlock)
-							.Text(LOCTEXT("TimelineAreaTitle", "Timeline"))
-							.Font(FAppStyle::GetFontStyle("SmallFont"))
-						]
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						.Padding(8.0f, 0.0f, 0.0f, 0.0f)
-						[
 							SNew(SHorizontalBox)
 							+ SHorizontalBox::Slot()
 							.AutoWidth()
