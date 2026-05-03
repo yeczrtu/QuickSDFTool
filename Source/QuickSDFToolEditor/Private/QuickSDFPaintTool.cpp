@@ -266,6 +266,7 @@ void UQuickSDFPaintTool::Setup()
 
 	Properties = NewObject<UQuickSDFToolProperties>(this);
 	Properties->SetFlags(RF_Transactional);
+	Properties->SyncLegacySymmetryFlag();
 	AddToolPropertySource(Properties);
 
 	if (UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>())

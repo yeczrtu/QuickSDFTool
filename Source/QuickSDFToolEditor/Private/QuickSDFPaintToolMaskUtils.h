@@ -12,6 +12,27 @@ class UTextureRenderTarget2D;
 
 namespace QuickSDFPaintToolPrivate
 {
+struct FQuickSDFIslandMirrorChart
+{
+	FString Key;
+	int32 ChartID = INDEX_NONE;
+	FVector2f UVMin = FVector2f::ZeroVector;
+	FVector2f UVMax = FVector2f::ZeroVector;
+	float Area = 0.0f;
+	float AspectRatio = 1.0f;
+	bool bOutOfRange = false;
+	TArray<uint8> ShapeMask;
+};
+
+struct FQuickSDFIslandMirrorApplyResult
+{
+	int32 MirroredPixels = 0;
+	int32 FallbackPixels = 0;
+	int32 MissingPairPixels = 0;
+	int32 MissingSourcePixels = 0;
+	int32 AmbiguousPixels = 0;
+};
+
 int32 GetQuickSDFPresetSize(EQuickSDFQualityPreset Preset);
 bool ShouldProcessMaskAngle(float RawAngle, bool bSymmetryMode);
 TArray<int32> CollectProcessableMaskIndices(const UQuickSDFAsset& Asset, bool bSymmetryMode);
@@ -48,4 +69,15 @@ void RestoreMaskStateOnNextTick(
 	const TArray<UTexture2D*>& Textures,
 	const TArray<bool>& AllowSourceTextureOverwrites,
 	const TArray<TArray<FColor>>& PixelsByMask);
+FVector2f TransformIslandMirrorLocalUV(const FVector2f& LocalUV, EQuickSDFIslandMirrorTransform Transform);
+FVector4f SampleCombinedFieldBilinear(const TArray<FVector4f>& CombinedField, int32 Width, int32 Height, const FVector2f& UV);
+FQuickSDFIslandMirrorApplyResult ApplyIslandMirrorToCombinedField(
+	TArray<FVector4f>& CombinedField,
+	int32 Width,
+	int32 Height,
+	bool bBipolar,
+	const TArray<FQuickSDFIslandMirrorChart>& Charts,
+	const TArray<int32>& PixelChartIDs,
+	const TArray<uint8>& AmbiguousPixelFlags,
+	const TArray<FQuickSDFIslandMirrorPair>& Pairs);
 }

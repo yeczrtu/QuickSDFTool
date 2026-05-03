@@ -34,6 +34,14 @@ enum class EQuickSDFBrushProjectionMode : uint8
 };
 
 UENUM(BlueprintType)
+enum class EQuickSDFSymmetryMode : uint8
+{
+	None180 UMETA(DisplayName = "None (0-180 Paint)"),
+	WholeTextureFlip90 UMETA(DisplayName = "Whole Texture Flip (0-90 Paint)"),
+	UVIslandChannelFlip90 UMETA(DisplayName = "UV Island Channel Flip (0-90 Paint)")
+};
+
+UENUM(BlueprintType)
 enum class EQuickSDFMaterialPreviewMode : uint8
 {
 	OriginalMaterial UMETA(DisplayName = "Original + Painted"),
@@ -130,7 +138,10 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	bool bEnableOnionSkin = false;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings")
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Symmetry Mode"))
+	EQuickSDFSymmetryMode SymmetryMode = EQuickSDFSymmetryMode::WholeTextureFlip90;
+
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DeprecatedProperty, DeprecationMessage = "Use SymmetryMode instead.", HideInDetailPanel))
 	bool bSymmetryMode = true;
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Enable Monotonic Guard"))
@@ -228,4 +239,12 @@ public:
 
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Validate Monotonic Guard"))
 	void ValidateMonotonicGuard();
+
+	bool UsesFrontHalfAngles() const;
+	bool UsesWholeTextureSymmetry() const;
+	bool UsesIslandChannelSymmetry() const;
+	float GetPaintMaxAngle() const;
+	void SetSymmetryMode(EQuickSDFSymmetryMode NewMode);
+	void SetSymmetryEnabled(bool bEnabled);
+	void SyncLegacySymmetryFlag();
 };

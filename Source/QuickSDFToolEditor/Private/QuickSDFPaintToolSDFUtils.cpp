@@ -106,4 +106,159 @@ int32 GetQuickSDFPresetSize(EQuickSDFQualityPreset Preset)
 		return 1024;
 	}
 }
+
+FVector2f TransformIslandMirrorLocalUV(const FVector2f& LocalUV, EQuickSDFIslandMirrorTransform Transform)
+{
+	switch (Transform)
+	{
+	case EQuickSDFIslandMirrorTransform::FlipV:
+		return FVector2f(LocalUV.X, 1.0f - LocalUV.Y);
+	case EQuickSDFIslandMirrorTransform::Rotate180:
+		return FVector2f(1.0f - LocalUV.X, 1.0f - LocalUV.Y);
+	case EQuickSDFIslandMirrorTransform::SwapUVFlipU:
+		return FVector2f(1.0f - LocalUV.Y, LocalUV.X);
+	case EQuickSDFIslandMirrorTransform::SwapUVFlipV:
+		return FVector2f(LocalUV.Y, 1.0f - LocalUV.X);
+	case EQuickSDFIslandMirrorTransform::FlipU:
+	default:
+		return FVector2f(1.0f - LocalUV.X, LocalUV.Y);
+	}
+}
+
+FVector4f SampleCombinedFieldBilinear(const TArray<FVector4f>& CombinedField, int32 Width, int32 Height, const FVector2f& UV)
+{
+	if (Width <= 0 || Height <= 0 || CombinedField.Num() != Width * Height)
+	{
+		return FVector4f(1.0f, 1.0f, 1.0f, 1.0f);
+	}
+
+	const float PixelX = FMath::Clamp(UV.X * Width - 0.5f, 0.0f, static_cast<float>(Width - 1));
+	const float PixelY = FMath::Clamp(UV.Y * Height - 0.5f, 0.0f, static_cast<float>(Height - 1));
+	const int32 X0 = FMath::Clamp(FMath::FloorToInt(PixelX), 0, Width - 1);
+	const int32 Y0 = FMath::Clamp(FMath::FloorToInt(PixelY), 0, Height - 1);
+	const int32 X1 = FMath::Clamp(X0 + 1, 0, Width - 1);
+	const int32 Y1 = FMath::Clamp(Y0 + 1, 0, Height - 1);
+	const float Tx = PixelX - static_cast<float>(X0);
+	const float Ty = PixelY - static_cast<float>(Y0);
+
+	const FVector4f C00 = CombinedField[Y0 * Width + X0];
+	const FVector4f C10 = CombinedField[Y0 * Width + X1];
+	const FVector4f C01 = CombinedField[Y1 * Width + X0];
+	const FVector4f C11 = CombinedField[Y1 * Width + X1];
+	return FMath::Lerp(FMath::Lerp(C00, C10, Tx), FMath::Lerp(C01, C11, Tx), Ty);
+}
+
+FQuickSDFIslandMirrorApplyResult ApplyIslandMirrorToCombinedField(
+	TArray<FVector4f>& CombinedField,
+	int32 Width,
+	int32 Height,
+	bool bBipolar,
+	const TArray<FQuickSDFIslandMirrorChart>& Charts,
+	const TArray<int32>& PixelChartIDs,
+	const TArray<uint8>& AmbiguousPixelFlags,
+	const TArray<FQuickSDFIslandMirrorPair>& Pairs)
+{
+	FQuickSDFIslandMirrorApplyResult Result;
+	if (Width <= 0 || Height <= 0 || CombinedField.Num() != Width * Height || PixelChartIDs.Num() != Width * Height)
+	{
+		return Result;
+	}
+
+	TMap<int32, const FQuickSDFIslandMirrorChart*> ChartByID;
+	TMap<FString, const FQuickSDFIslandMirrorChart*> ChartByKey;
+	for (const FQuickSDFIslandMirrorChart& Chart : Charts)
+	{
+		ChartByID.Add(Chart.ChartID, &Chart);
+		ChartByKey.Add(Chart.Key, &Chart);
+	}
+
+	TMap<FString, const FQuickSDFIslandMirrorPair*> PairByTargetKey;
+	for (const FQuickSDFIslandMirrorPair& Pair : Pairs)
+	{
+		if (Pair.bEnabled && !Pair.TargetIslandKey.IsEmpty())
+		{
+			PairByTargetKey.Add(Pair.TargetIslandKey, &Pair);
+		}
+	}
+
+	for (int32 PixelIndex = 0; PixelIndex < CombinedField.Num(); ++PixelIndex)
+	{
+		FVector4f& Pixel = CombinedField[PixelIndex];
+		if (!bBipolar)
+		{
+			Pixel.Y = 1.0f;
+			Pixel.Z = 1.0f;
+		}
+
+		if (AmbiguousPixelFlags.IsValidIndex(PixelIndex) && AmbiguousPixelFlags[PixelIndex] != 0)
+		{
+			++Result.AmbiguousPixels;
+		}
+
+		const FQuickSDFIslandMirrorChart* TargetChart = ChartByID.FindRef(PixelChartIDs[PixelIndex]);
+		if (!TargetChart)
+		{
+			Pixel.Y = bBipolar ? Pixel.Z : 1.0f;
+			Pixel.W = Pixel.X;
+			++Result.FallbackPixels;
+			continue;
+		}
+
+		const FQuickSDFIslandMirrorPair* Pair = PairByTargetKey.FindRef(TargetChart->Key);
+		if (!Pair)
+		{
+			Pixel.Y = bBipolar ? Pixel.Z : 1.0f;
+			Pixel.W = Pixel.X;
+			++Result.MissingPairPixels;
+			++Result.FallbackPixels;
+			continue;
+		}
+
+		const FQuickSDFIslandMirrorChart* SourceChart = ChartByKey.FindRef(Pair->SourceIslandKey);
+		if (!SourceChart)
+		{
+			Pixel.Y = bBipolar ? Pixel.Z : 1.0f;
+			Pixel.W = Pixel.X;
+			++Result.MissingSourcePixels;
+			++Result.FallbackPixels;
+			continue;
+		}
+
+		const int32 X = PixelIndex % Width;
+		const int32 Y = PixelIndex / Width;
+		const FVector2f TargetUV(
+			(static_cast<float>(X) + 0.5f) / static_cast<float>(Width),
+			(static_cast<float>(Y) + 0.5f) / static_cast<float>(Height));
+
+		const FVector2f TargetSize(
+			FMath::Max(TargetChart->UVMax.X - TargetChart->UVMin.X, KINDA_SMALL_NUMBER),
+			FMath::Max(TargetChart->UVMax.Y - TargetChart->UVMin.Y, KINDA_SMALL_NUMBER));
+		const FVector2f SourceSize(
+			FMath::Max(SourceChart->UVMax.X - SourceChart->UVMin.X, KINDA_SMALL_NUMBER),
+			FMath::Max(SourceChart->UVMax.Y - SourceChart->UVMin.Y, KINDA_SMALL_NUMBER));
+		const FVector2f TargetLocal(
+			(TargetUV.X - TargetChart->UVMin.X) / TargetSize.X,
+			(TargetUV.Y - TargetChart->UVMin.Y) / TargetSize.Y);
+		const FVector2f SourceLocal = TransformIslandMirrorLocalUV(TargetLocal, Pair->Transform);
+		const FVector2f SourceUV(
+			SourceChart->UVMin.X + SourceLocal.X * SourceSize.X,
+			SourceChart->UVMin.Y + SourceLocal.Y * SourceSize.Y);
+
+		if (SourceUV.X < 0.0f || SourceUV.X > 1.0f || SourceUV.Y < 0.0f || SourceUV.Y > 1.0f)
+		{
+			Pixel.Y = bBipolar ? Pixel.Z : 1.0f;
+			Pixel.W = Pixel.X;
+			++Result.FallbackPixels;
+			continue;
+		}
+
+		const FVector4f Mirrored = SampleCombinedFieldBilinear(CombinedField, Width, Height, SourceUV);
+		// DownscaleAndConvert exports G from internal W and A from internal Y.
+		Pixel.Y = bBipolar ? Mirrored.Z : 1.0f;
+		Pixel.W = Mirrored.X;
+		++Result.MirroredPixels;
+	}
+
+	return Result;
+}
 }

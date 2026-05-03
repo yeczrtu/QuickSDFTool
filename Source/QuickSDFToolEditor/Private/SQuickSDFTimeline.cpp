@@ -740,7 +740,7 @@ ECheckBoxState SQuickSDFTimeline::IsSymmetryModeEnabled() const
 	UQuickSDFPaintTool* Tool = GetActivePaintTool();
 	if (Tool && Tool->Properties)
 	{
-		return Tool->Properties->bSymmetryMode ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+		return Tool->Properties->UsesFrontHalfAngles() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 	}
 	return ECheckBoxState::Unchecked;
 }
@@ -750,7 +750,9 @@ void SQuickSDFTimeline::OnSymmetryModeStateChanged(ECheckBoxState NewState)
 	UQuickSDFPaintTool* Tool = GetActivePaintTool();
 	if (Tool && Tool->Properties)
 	{
-		Tool->Properties->bSymmetryMode = (NewState == ECheckBoxState::Checked);
+		Tool->Properties->SetSymmetryEnabled(NewState == ECheckBoxState::Checked);
+		FProperty* Prop = Tool->Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SymmetryMode));
+		Tool->OnPropertyModified(Tool->Properties, Prop);
 
 		// Rebuild the timeline to reflect the new range
 		RebuildTimeline();

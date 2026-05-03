@@ -6,6 +6,7 @@
 #include "DetailWidgetRow.h"
 #include "Editor.h"
 #include "GameFramework/Actor.h"
+#include "InputCoreTypes.h"
 #include "PropertyHandle.h"
 #include "QuickSDFAsset.h"
 #include "QuickSDFPaintTool.h"
@@ -227,11 +228,55 @@ FLinearColor GetTextureSetAccentColor(int32 TextureSetIndex)
 		: FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
 }
 
-FReply SelectTextureSet(int32 TextureSetIndex)
+void SyncPropertiesFromTextureSet(UQuickSDFToolProperties* Properties, const UQuickSDFAsset* Asset, int32 TextureSetIndex)
+{
+	if (!Properties || !Asset)
+	{
+		return;
+	}
+
+	const FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet();
+	Properties->Modify();
+	Properties->ActiveTextureSetIndex = TextureSetIndex;
+	Properties->Resolution = Asset->GetActiveResolution();
+	Properties->UVChannel = Asset->GetActiveUVChannel();
+	Properties->TargetMaterialSlot = ActiveSet ? ActiveSet->MaterialSlotIndex : INDEX_NONE;
+	Properties->bIsolateTargetMaterialSlot = Properties->TargetMaterialSlot >= 0;
+	Properties->NumAngles = Asset->GetActiveAngleDataList().Num();
+	Properties->TargetAngles.SetNum(Properties->NumAngles);
+	Properties->TargetTextures.SetNum(Properties->NumAngles);
+
+	for (int32 Index = 0; Index < Properties->NumAngles; ++Index)
+	{
+		const FQuickSDFAngleData& AngleData = Asset->GetActiveAngleDataList()[Index];
+		Properties->TargetAngles[Index] = AngleData.Angle;
+		Properties->TargetTextures[Index] = AngleData.TextureMask;
+	}
+}
+
+FReply SelectTextureSet(TWeakObjectPtr<UQuickSDFToolProperties> WeakProperties, int32 TextureSetIndex)
 {
 	if (UQuickSDFPaintTool* Tool = GetActiveQuickSDFPaintTool())
 	{
-		Tool->SelectTextureSet(TextureSetIndex);
+		if (Tool->SelectTextureSet(TextureSetIndex))
+		{
+			return FReply::Handled();
+		}
+	}
+
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	if (Asset && Asset->TextureSets.IsValidIndex(TextureSetIndex))
+	{
+		Asset->Modify();
+		if (Asset->SetActiveTextureSetIndex(TextureSetIndex))
+		{
+			SyncPropertiesFromTextureSet(WeakProperties.Get(), Asset, TextureSetIndex);
+			if (GEditor)
+			{
+				GEditor->RedrawAllViewports(false);
+			}
+		}
 	}
 	return FReply::Handled();
 }
@@ -297,8 +342,6 @@ TSharedRef<SWidget> MakeTextureSetBakeButton(int32 TextureSetIndex)
 
 TSharedRef<SWidget> MakeTextureSetRow(TWeakObjectPtr<UQuickSDFToolProperties> WeakProperties, int32 TextureSetIndex)
 {
-	(void)WeakProperties;
-
 	return SNew(SCheckBox)
 		.Style(FQuickSDFToolStyle::Get().Get(), "QuickSDF.MaterialSlot.Row")
 		.ToolTipText(LOCTEXT("SelectTextureSetTooltip", "Make this material slot active for painting, baking, preview, and SDF generation."))
@@ -306,110 +349,121 @@ TSharedRef<SWidget> MakeTextureSetRow(TWeakObjectPtr<UQuickSDFToolProperties> We
 		{
 			return IsTextureSetActive(TextureSetIndex) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 		})
-		.OnCheckStateChanged_Lambda([TextureSetIndex](ECheckBoxState NewState)
+		.OnCheckStateChanged_Lambda([WeakProperties, TextureSetIndex](ECheckBoxState NewState)
 		{
 			if (NewState == ECheckBoxState::Checked)
 			{
-				SelectTextureSet(TextureSetIndex);
+				SelectTextureSet(WeakProperties, TextureSetIndex);
 			}
 		})
 		.Padding(FMargin(0.0f))
 		[
-			SNew(SBox)
-			.MinDesiredHeight(45.0f)
+			SNew(SBorder)
+			.BorderImage(FAppStyle::GetBrush("NoBorder"))
+			.Padding(FMargin(0.0f))
+			.OnMouseButtonDown_Lambda([WeakProperties, TextureSetIndex](const FGeometry&, const FPointerEvent& MouseEvent)
+			{
+				return MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton
+					? SelectTextureSet(WeakProperties, TextureSetIndex)
+					: FReply::Unhandled();
+			})
 			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.VAlign(VAlign_Fill)
+				SNew(SBox)
+				.MinDesiredHeight(45.0f)
 				[
-					SNew(SBox)
-					.WidthOverride(3.0f)
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Fill)
 					[
-						SNew(SBorder)
-						.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-						.BorderBackgroundColor_Lambda([TextureSetIndex]()
-						{
-							return GetTextureSetAccentColor(TextureSetIndex);
-						})
-					]
-				]
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.0f)
-				.VAlign(VAlign_Center)
-				.Padding(8.0f, 5.0f, 6.0f, 5.0f)
-				[
-					SNew(SVerticalBox)
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+						SNew(SBox)
+						.WidthOverride(3.0f)
 						[
 							SNew(SBorder)
-							.BorderImage_Lambda([TextureSetIndex]()
+							.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+							.BorderBackgroundColor_Lambda([TextureSetIndex]()
 							{
-								return FQuickSDFToolStyle::GetBrush(GetTextureSetIndexBadgeBrushName(TextureSetIndex));
+								return GetTextureSetAccentColor(TextureSetIndex);
 							})
-							.Padding(FMargin(6.0f, 1.0f))
+						]
+					]
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					.VAlign(VAlign_Center)
+					.Padding(8.0f, 5.0f, 6.0f, 5.0f)
+					[
+						SNew(SVerticalBox)
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						[
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot()
+							.AutoWidth()
+							.VAlign(VAlign_Center)
+							.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+							[
+								SNew(SBorder)
+								.BorderImage_Lambda([TextureSetIndex]()
+								{
+									return FQuickSDFToolStyle::GetBrush(GetTextureSetIndexBadgeBrushName(TextureSetIndex));
+								})
+								.Padding(FMargin(6.0f, 1.0f))
+								[
+									SNew(STextBlock)
+									.Text_Lambda([TextureSetIndex]()
+									{
+										return GetTextureSetIndexText(TextureSetIndex);
+									})
+									.Font(FAppStyle::GetFontStyle("SmallFont"))
+									.ColorAndOpacity(FLinearColor(0.90f, 0.93f, 0.95f, 1.0f))
+								]
+							]
+							+ SHorizontalBox::Slot()
+							.FillWidth(1.0f)
+							.VAlign(VAlign_Center)
 							[
 								SNew(STextBlock)
 								.Text_Lambda([TextureSetIndex]()
 								{
-									return GetTextureSetIndexText(TextureSetIndex);
+									return GetTextureSetSlotNameText(TextureSetIndex);
 								})
-								.Font(FAppStyle::GetFontStyle("SmallFont"))
-								.ColorAndOpacity(FLinearColor(0.90f, 0.93f, 0.95f, 1.0f))
+								.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+								.ColorAndOpacity_Lambda([TextureSetIndex]()
+								{
+									return GetTextureSetPrimaryTextColor(TextureSetIndex);
+								})
 							]
 						]
-						+ SHorizontalBox::Slot()
-						.FillWidth(1.0f)
-						.VAlign(VAlign_Center)
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(0.0f, 2.0f, 0.0f, 0.0f)
 						[
 							SNew(STextBlock)
 							.Text_Lambda([TextureSetIndex]()
 							{
-								return GetTextureSetSlotNameText(TextureSetIndex);
+								return GetTextureSetMaterialText(TextureSetIndex);
 							})
-							.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+							.Font(FAppStyle::GetFontStyle("SmallFont"))
 							.ColorAndOpacity_Lambda([TextureSetIndex]()
 							{
-								return GetTextureSetPrimaryTextColor(TextureSetIndex);
+								return GetTextureSetSecondaryTextColor(TextureSetIndex);
 							})
 						]
 					]
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(0.0f, 2.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(0.0f, 0.0f, 6.0f, 0.0f)
 					[
-						SNew(STextBlock)
-						.Text_Lambda([TextureSetIndex]()
-						{
-							return GetTextureSetMaterialText(TextureSetIndex);
-						})
-						.Font(FAppStyle::GetFontStyle("SmallFont"))
-						.ColorAndOpacity_Lambda([TextureSetIndex]()
-						{
-							return GetTextureSetSecondaryTextColor(TextureSetIndex);
-						})
+						MakeTextureSetStatusPill(TextureSetIndex)
 					]
-				]
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				.Padding(0.0f, 0.0f, 6.0f, 0.0f)
-				[
-					MakeTextureSetStatusPill(TextureSetIndex)
-				]
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				.Padding(0.0f, 0.0f, 6.0f, 0.0f)
-				[
-					MakeTextureSetBakeButton(TextureSetIndex)
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+					[
+						MakeTextureSetBakeButton(TextureSetIndex)
+					]
 				]
 			]
 		];
@@ -741,7 +795,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bEnableBrushAntialiasing)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, BrushAntialiasingWidth)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bEnableOnionSkin)));
-	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bSymmetryMode)));
+	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SymmetryMode)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, UpscaleFactor)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MaskExportFolder)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bCreateMaskFolderPerExport)));

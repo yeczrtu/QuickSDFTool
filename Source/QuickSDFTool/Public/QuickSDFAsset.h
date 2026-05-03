@@ -6,6 +6,40 @@
 #include "Engine/Texture2D.h"
 #include "QuickSDFAsset.generated.h"
 
+UENUM(BlueprintType)
+enum class EQuickSDFIslandMirrorTransform : uint8
+{
+	FlipU UMETA(DisplayName = "Flip U"),
+	FlipV UMETA(DisplayName = "Flip V"),
+	Rotate180 UMETA(DisplayName = "Rotate 180"),
+	SwapUVFlipU UMETA(DisplayName = "Swap UV + Flip U"),
+	SwapUVFlipV UMETA(DisplayName = "Swap UV + Flip V")
+};
+
+USTRUCT(BlueprintType)
+struct FQuickSDFIslandMirrorPair
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Island Mirror")
+	FString SourceIslandKey;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Island Mirror")
+	FString TargetIslandKey;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Island Mirror")
+	EQuickSDFIslandMirrorTransform Transform = EQuickSDFIslandMirrorTransform::FlipU;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Island Mirror")
+	bool bEnabled = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Island Mirror")
+	bool bUserLocked = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Island Mirror")
+	float Confidence = 0.0f;
+};
+
 USTRUCT(BlueprintType)
 struct FQuickSDFAngleData
 {
@@ -53,6 +87,9 @@ struct FQuickSDFTextureSetData
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SDF Result")
 	class UTexture2D* FinalSDFTexture = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Island Mirror")
+	TArray<FQuickSDFIslandMirrorPair> IslandMirrorPairs;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture Set")
 	bool bDirty = false;

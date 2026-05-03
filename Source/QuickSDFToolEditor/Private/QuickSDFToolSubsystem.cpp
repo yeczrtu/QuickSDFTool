@@ -350,7 +350,7 @@ bool UQuickSDFToolSubsystem::OverwriteTextureWithRenderTarget(UTexture2D* Textur
 	return true;
 }
 
-UTexture2D* UQuickSDFToolSubsystem::CreateSDFTexture(const TArray<FFloat16Color>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName, ESDFOutputFormat Format, bool bOverwriteExisting, FText* OutError)
+UTexture2D* UQuickSDFToolSubsystem::CreateSDFTexture(const TArray<FFloat16Color>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName, ESDFOutputFormat Format, bool bOverwriteExisting, FText* OutError, bool bForceRGBA16F)
 {
 	if (Pixels.Num() != Width * Height)
 	{
@@ -366,7 +366,7 @@ UTexture2D* UQuickSDFToolSubsystem::CreateSDFTexture(const TArray<FFloat16Color>
 	if (!NewTex) return nullptr;
 
 	// モノポーラ設定時は R チャンネルの値を抽出し 16bit グレースケール (G16) で作成
-	if (Format == ESDFOutputFormat::Monopolar)
+	if (Format == ESDFOutputFormat::Monopolar && !bForceRGBA16F)
 	{
 		NewTex->Source.Init(Width, Height, 1, 1, TSF_G16);
 		uint16* MipData = (uint16*)NewTex->Source.LockMip(0);

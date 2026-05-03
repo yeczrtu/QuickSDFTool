@@ -336,14 +336,17 @@ void UQuickSDFPaintTool::UpdateGeneratedSDFMaterialParameters()
 		SDFToonPreviewMaterial->SetTextureParameterValue(TEXT("ThresholdMapGray"), FinalTexture);
 	}
 
-	const bool bSymmetryUV = Properties->bSymmetryMode;
-	const bool bUseGrayscaleTexture = FinalTexture && FinalTexture->CompressionSettings == TC_Grayscale;
+	const bool bSymmetryUV = Properties->UsesWholeTextureSymmetry();
+	const bool bUseGrayscaleTexture = FinalTexture &&
+		FinalTexture->CompressionSettings == TC_Grayscale &&
+		!Properties->UsesIslandChannelSymmetry();
 
 	const FQuickSDFMeshBakeBasis BakeBasis = FQuickSDFMeshComponentAdapter::GetBakeBasisForComponent(CurrentComponent.Get());
 	const FVector ForwardVector = BakeBasis.Forward.GetSafeNormal();
 
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("UVChannel"), static_cast<float>(Properties->UVChannel));
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("SymmetryUV"), bSymmetryUV ? 1.0f : 0.0f);
+	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("SymmetryMode"), static_cast<float>(static_cast<uint8>(Properties->SymmetryMode)));
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("UseGrayscaleTexture"), bUseGrayscaleTexture ? 1.0f : 0.0f);
 	SDFToonPreviewMaterial->SetVectorParameterValue(TEXT("ForwardVector"), FLinearColor(ForwardVector.X, ForwardVector.Y, ForwardVector.Z, 0.0f));
 }

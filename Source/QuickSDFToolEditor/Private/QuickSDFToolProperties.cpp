@@ -8,6 +8,42 @@
 #include "Engine/Texture2D.h"
 #include "Misc/MessageDialog.h"
 
+bool UQuickSDFToolProperties::UsesFrontHalfAngles() const
+{
+	return SymmetryMode != EQuickSDFSymmetryMode::None180;
+}
+
+bool UQuickSDFToolProperties::UsesWholeTextureSymmetry() const
+{
+	return SymmetryMode == EQuickSDFSymmetryMode::WholeTextureFlip90;
+}
+
+bool UQuickSDFToolProperties::UsesIslandChannelSymmetry() const
+{
+	return SymmetryMode == EQuickSDFSymmetryMode::UVIslandChannelFlip90;
+}
+
+float UQuickSDFToolProperties::GetPaintMaxAngle() const
+{
+	return UsesFrontHalfAngles() ? 90.0f : 180.0f;
+}
+
+void UQuickSDFToolProperties::SetSymmetryMode(EQuickSDFSymmetryMode NewMode)
+{
+	SymmetryMode = NewMode;
+	SyncLegacySymmetryFlag();
+}
+
+void UQuickSDFToolProperties::SetSymmetryEnabled(bool bEnabled)
+{
+	SetSymmetryMode(bEnabled ? EQuickSDFSymmetryMode::WholeTextureFlip90 : EQuickSDFSymmetryMode::None180);
+}
+
+void UQuickSDFToolProperties::SyncLegacySymmetryFlag()
+{
+	bSymmetryMode = UsesFrontHalfAngles();
+}
+
 void UQuickSDFToolProperties::ExportToTexture()
 {
 	UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());

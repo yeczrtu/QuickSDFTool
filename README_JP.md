@@ -344,8 +344,8 @@ Automation RunTests QuickSDFTool.Core.Timeline
 2. **SDF:** 各マスクを符号付き距離場へ変換します。
 3. **補間:** 隣接マスク間の遷移を探し、しきい値 `T` を求めます。
 4. **合成:** Monopolar / Bipolar 出力を自動判定し、値を RGBA チャンネルへ格納します。
-   - **Monopolar:** 対称的な影向け。RGB に同じしきい値を格納します。
-   - **Bipolar:** 非対称な影向け。侵入 / 退出値を RGBA に分けて格納します。
+   - **Monopolar:** 対称的な影向け。0-90 / 90-180 を分ける場合は R/A に格納します。
+   - **Bipolar:** 非対称な影向け。内部では従来の R/G/B/A で生成し、出力時に R/A/B/G へ並べ替えるため、B チャンネルは 0-90 退出値のまま維持されます。
 5. **出力:** 最終 threshold map を 16-bit half-float テクスチャとして保存します。
 
 ## GitHub 公開チェックリスト

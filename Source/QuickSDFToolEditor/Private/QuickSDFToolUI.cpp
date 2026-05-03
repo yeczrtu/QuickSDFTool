@@ -347,7 +347,7 @@ FName QuickSDFToolUI::GetTogglePropertyName(EQuickSDFPaintToggle Toggle)
 	case EQuickSDFPaintToggle::QuickLine:
 		return GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bEnableQuickLine);
 	case EQuickSDFPaintToggle::Symmetry:
-		return GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bSymmetryMode);
+		return GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SymmetryMode);
 	case EQuickSDFPaintToggle::MonotonicGuard:
 		return GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bEnableMonotonicGuard);
 	default:
@@ -397,7 +397,7 @@ FText QuickSDFToolUI::GetToggleDescription(EQuickSDFPaintToggle Toggle)
 	case EQuickSDFPaintToggle::QuickLine:
 		return LOCTEXT("QuickLineDesc", "Enables hold-to-line quick stroke drawing.");
 	case EQuickSDFPaintToggle::Symmetry:
-		return LOCTEXT("SymmetryDesc", "Uses the front half sweep and mirrors the result.");
+		return LOCTEXT("SymmetryDesc", "Uses a 0-90 degree front-half sweep. Choose the exact mirror mode in Advanced settings.");
 	case EQuickSDFPaintToggle::MonotonicGuard:
 		return LOCTEXT("MonotonicGuardDesc", "Clips brush strokes that would create repeated light/shadow flips in the active angle range.");
 	default:
@@ -452,7 +452,7 @@ bool QuickSDFToolUI::GetToggleValue(const UQuickSDFToolProperties* Properties, E
 	case EQuickSDFPaintToggle::QuickLine:
 		return Properties->bEnableQuickLine;
 	case EQuickSDFPaintToggle::Symmetry:
-		return Properties->bSymmetryMode;
+		return Properties->UsesFrontHalfAngles();
 	case EQuickSDFPaintToggle::MonotonicGuard:
 		return Properties->bEnableMonotonicGuard;
 	default:
@@ -489,7 +489,7 @@ void QuickSDFToolUI::SetToggleValue(UQuickSDFPaintTool* Tool, UQuickSDFToolPrope
 		Properties->bEnableQuickLine = bValue;
 		break;
 	case EQuickSDFPaintToggle::Symmetry:
-		Properties->bSymmetryMode = bValue;
+		Properties->SetSymmetryEnabled(bValue);
 		break;
 	case EQuickSDFPaintToggle::MonotonicGuard:
 		Properties->bEnableMonotonicGuard = bValue;

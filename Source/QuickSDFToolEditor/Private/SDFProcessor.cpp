@@ -179,9 +179,9 @@ void FSDFProcessor::CombineSDFs(const TArray<FMaskData>& Masks, TArray<FVector4f
         }
         else
         {
-            // アシンメトリ：0~90度(R/B) と 90~180度(G/A)
+            // Internal field keeps legacy channels: 0-90 uses R/B, 90-180 uses G/A.
             
-            // --- R/B (0~90度区間) ---
+            // --- R/B (0-90) ---
         	bool bStartsShadow0 = (Masks[0].SDF[p] > 0.0);
         	bool bEndsShadow0 = (Masks[FMath::Max(0, MidIdx)].SDF[p] > 0.0);
         	if (!IsHandled(p, 0) && (bStartsShadow0 || bEndsShadow0)) OutCombined[p].X = 0.0f;
@@ -190,7 +190,7 @@ void FSDFProcessor::CombineSDFs(const TArray<FMaskData>& Masks, TArray<FVector4f
             	else if (IsHandled(p, 0) && !IsHandled(p, 2)) OutCombined[p].Z = 0.0f;
             }
 
-            // --- G/A (90~180度区間) ---
+            // --- G/A (90-180) ---
             // 90度時点での影の状態をチェック
         	bool bStartsShadow90 = (Masks[MidIdx].SDF[p] > 0.0);
         	bool bEndsShadow90 = (Masks[NumMasks - 1].SDF[p] > 0.0);
@@ -259,11 +259,12 @@ TArray<FFloat16Color> FSDFProcessor::DownscaleAndConvert(const TArray<FVector4f>
             
 			sum /= FMath::Max(weightSum, 1e-6f);
 			
+			// Keep B compatible with existing textures; only swizzle the final export to R/A/B/G.
 			FFloat16Color Color;
 			Color.R = FMath::Clamp(sum.X, 0.0f, 1.0f);
-			Color.G = FMath::Clamp(sum.Y, 0.0f, 1.0f);
+			Color.G = FMath::Clamp(sum.W, 0.0f, 1.0f);
 			Color.B = FMath::Clamp(sum.Z, 0.0f, 1.0f);
-			Color.A = FMath::Clamp(sum.W, 0.0f, 1.0f);
+			Color.A = FMath::Clamp(sum.Y, 0.0f, 1.0f);
 			
 			Out[y * OrigW + x] = Color;
 		}

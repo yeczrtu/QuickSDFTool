@@ -344,8 +344,8 @@ The recent refactor was validated against `sdfbuildEditor Win64 Development` and
 2. **SDF:** convert each mask to a signed distance field.
 3. **Interpolate:** find transitions between neighboring masks and derive threshold value `T`.
 4. **Composite:** automatically choose Monopolar or Bipolar output and pack values into RGBA channels:
-   - **Monopolar:** symmetric shadow behavior, same threshold in RGB.
-   - **Bipolar:** asymmetric shadow enter/exit values across RGBA.
+   - **Monopolar:** symmetric shadow behavior, or R/A for 0-90 and 90-180 when separate halves are generated.
+   - **Bipolar:** asymmetric shadow enter/exit values are generated in the legacy R/G/B/A field, then exported with an R/A/B/G swizzle so the B channel remains the 0-90 exit value.
 5. **Export:** save the final threshold map as a 16-bit half-float texture.
 
 ## Repository Setup Checklist

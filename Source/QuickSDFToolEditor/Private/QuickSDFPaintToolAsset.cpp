@@ -130,6 +130,296 @@ bool ResizeMaskPixelsBilinear(
 
 	return true;
 }
+
+struct FQuickSDFIslandBuildData
+{
+	FQuickSDFIslandMirrorChart Chart;
+	TArray<int32> TriangleIDs;
+};
+
+bool IsPointInUVTriangle(const FVector2f& P, const FVector2f& A, const FVector2f& B, const FVector2f& C)
+{
+	const FVector2f V0 = B - A;
+	const FVector2f V1 = C - A;
+	const FVector2f V2 = P - A;
+	const float Denom = V0.X * V1.Y - V1.X * V0.Y;
+	if (FMath::Abs(Denom) <= SMALL_NUMBER)
+	{
+		return false;
+	}
+
+	const float InvDenom = 1.0f / Denom;
+	const float U = (V2.X * V1.Y - V1.X * V2.Y) * InvDenom;
+	const float V = (V0.X * V2.Y - V2.X * V0.Y) * InvDenom;
+	const float W = 1.0f - U - V;
+	constexpr float Tolerance = -0.0005f;
+	return U >= Tolerance && V >= Tolerance && W >= Tolerance;
+}
+
+FString MakeIslandKey(int32 UVChannel, const TArray<FIntPoint>& QuantizedUVs)
+{
+	uint32 Hash = ::GetTypeHash(UVChannel);
+	for (const FIntPoint& UV : QuantizedUVs)
+	{
+		Hash = HashCombine(Hash, HashCombine(::GetTypeHash(UV.X), ::GetTypeHash(UV.Y)));
+	}
+	return FString::Printf(TEXT("UV%d_%08x"), UVChannel, Hash);
+}
+
+void BuildIslandShapeMask(
+	const UE::Geometry::FDynamicMesh3& Mesh,
+	const UE::Geometry::FDynamicMeshUVOverlay& UVOverlay,
+	const FQuickSDFIslandBuildData& Island,
+	TArray<uint8>& OutMask)
+{
+	constexpr int32 ShapeSize = 16;
+	OutMask.SetNumZeroed(ShapeSize * ShapeSize);
+	const FVector2f Size(
+		FMath::Max(Island.Chart.UVMax.X - Island.Chart.UVMin.X, KINDA_SMALL_NUMBER),
+		FMath::Max(Island.Chart.UVMax.Y - Island.Chart.UVMin.Y, KINDA_SMALL_NUMBER));
+	const auto ToLocalUV = [&Island, Size](const FVector2f& UV)
+	{
+		return FVector2f(
+			(UV.X - Island.Chart.UVMin.X) / Size.X,
+			(UV.Y - Island.Chart.UVMin.Y) / Size.Y);
+	};
+
+	for (int32 TriangleID : Island.TriangleIDs)
+	{
+		if (!Mesh.IsTriangle(TriangleID) || !UVOverlay.IsSetTriangle(TriangleID))
+		{
+			continue;
+		}
+
+		const UE::Geometry::FIndex3i UVIndices = UVOverlay.GetTriangle(TriangleID);
+		const FVector2f UV0 = ToLocalUV(UVOverlay.GetElement(UVIndices.A));
+		const FVector2f UV1 = ToLocalUV(UVOverlay.GetElement(UVIndices.B));
+		const FVector2f UV2 = ToLocalUV(UVOverlay.GetElement(UVIndices.C));
+		const int32 MinX = FMath::Clamp(FMath::FloorToInt(FMath::Min3(UV0.X, UV1.X, UV2.X) * ShapeSize), 0, ShapeSize - 1);
+		const int32 MaxX = FMath::Clamp(FMath::CeilToInt(FMath::Max3(UV0.X, UV1.X, UV2.X) * ShapeSize), 0, ShapeSize - 1);
+		const int32 MinY = FMath::Clamp(FMath::FloorToInt(FMath::Min3(UV0.Y, UV1.Y, UV2.Y) * ShapeSize), 0, ShapeSize - 1);
+		const int32 MaxY = FMath::Clamp(FMath::CeilToInt(FMath::Max3(UV0.Y, UV1.Y, UV2.Y) * ShapeSize), 0, ShapeSize - 1);
+
+		for (int32 Y = MinY; Y <= MaxY; ++Y)
+		{
+			for (int32 X = MinX; X <= MaxX; ++X)
+			{
+				const FVector2f P((static_cast<float>(X) + 0.5f) / ShapeSize, (static_cast<float>(Y) + 0.5f) / ShapeSize);
+				if (IsPointInUVTriangle(P, UV0, UV1, UV2))
+				{
+					OutMask[Y * ShapeSize + X] = 1;
+				}
+			}
+		}
+	}
+}
+
+float CompareIslandShapeMasks(
+	const TArray<uint8>& SourceMask,
+	const TArray<uint8>& TargetMask,
+	EQuickSDFIslandMirrorTransform Transform)
+{
+	constexpr int32 ShapeSize = 16;
+	if (SourceMask.Num() != ShapeSize * ShapeSize || TargetMask.Num() != ShapeSize * ShapeSize)
+	{
+		return 0.0f;
+	}
+
+	int32 MatchingCells = 0;
+	for (int32 Y = 0; Y < ShapeSize; ++Y)
+	{
+		for (int32 X = 0; X < ShapeSize; ++X)
+		{
+			const FVector2f TargetLocal((static_cast<float>(X) + 0.5f) / ShapeSize, (static_cast<float>(Y) + 0.5f) / ShapeSize);
+			const FVector2f SourceLocal = TransformIslandMirrorLocalUV(TargetLocal, Transform);
+			const int32 SourceX = FMath::Clamp(FMath::FloorToInt(SourceLocal.X * ShapeSize), 0, ShapeSize - 1);
+			const int32 SourceY = FMath::Clamp(FMath::FloorToInt(SourceLocal.Y * ShapeSize), 0, ShapeSize - 1);
+			if (TargetMask[Y * ShapeSize + X] == SourceMask[SourceY * ShapeSize + SourceX])
+			{
+				++MatchingCells;
+			}
+		}
+	}
+
+	return static_cast<float>(MatchingCells) / static_cast<float>(ShapeSize * ShapeSize);
+}
+
+EQuickSDFIslandMirrorTransform GetInverseIslandMirrorTransform(EQuickSDFIslandMirrorTransform Transform)
+{
+	switch (Transform)
+	{
+	case EQuickSDFIslandMirrorTransform::SwapUVFlipU:
+		return EQuickSDFIslandMirrorTransform::SwapUVFlipV;
+	case EQuickSDFIslandMirrorTransform::SwapUVFlipV:
+		return EQuickSDFIslandMirrorTransform::SwapUVFlipU;
+	case EQuickSDFIslandMirrorTransform::FlipU:
+	case EQuickSDFIslandMirrorTransform::FlipV:
+	case EQuickSDFIslandMirrorTransform::Rotate180:
+	default:
+		return Transform;
+	}
+}
+
+bool BuildIslandMirrorData(
+	const UE::Geometry::FDynamicMesh3& Mesh,
+	int32 UVChannel,
+	const TMap<int32, int32>& TriangleChartIDs,
+	int32 Width,
+	int32 Height,
+	TArray<FQuickSDFIslandMirrorChart>& OutCharts,
+	TArray<int32>& OutPixelChartIDs,
+	TArray<uint8>& OutAmbiguousPixelFlags)
+{
+	OutCharts.Reset();
+	OutPixelChartIDs.Init(INDEX_NONE, Width * Height);
+	OutAmbiguousPixelFlags.Init(0, Width * Height);
+	if (Width <= 0 || Height <= 0 || !Mesh.HasAttributes())
+	{
+		return false;
+	}
+
+	const UE::Geometry::FDynamicMeshUVOverlay* UVOverlay = Mesh.Attributes()->GetUVLayer(UVChannel);
+	if (!UVOverlay)
+	{
+		return false;
+	}
+
+	TMap<int32, FQuickSDFIslandBuildData> IslandsByChartID;
+	TMap<int32, TArray<FIntPoint>> QuantizedUVsByChartID;
+	for (const TPair<int32, int32>& TriangleChartPair : TriangleChartIDs)
+	{
+		const int32 TriangleID = TriangleChartPair.Key;
+		const int32 ChartID = TriangleChartPair.Value;
+		if (!Mesh.IsTriangle(TriangleID) || !UVOverlay->IsSetTriangle(TriangleID))
+		{
+			continue;
+		}
+
+		FQuickSDFIslandBuildData& Island = IslandsByChartID.FindOrAdd(ChartID);
+		Island.Chart.ChartID = ChartID;
+		Island.TriangleIDs.Add(TriangleID);
+
+		const UE::Geometry::FIndex3i UVIndices = UVOverlay->GetTriangle(TriangleID);
+		const FVector2f UVs[3] = {
+			UVOverlay->GetElement(UVIndices.A),
+			UVOverlay->GetElement(UVIndices.B),
+			UVOverlay->GetElement(UVIndices.C)
+		};
+
+		for (int32 UVIndex = 0; UVIndex < 3; ++UVIndex)
+		{
+			const FVector2f& UV = UVs[UVIndex];
+			if (Island.TriangleIDs.Num() == 1 && UVIndex == 0)
+			{
+				Island.Chart.UVMin = UV;
+				Island.Chart.UVMax = UV;
+			}
+			else
+			{
+				Island.Chart.UVMin.X = FMath::Min(Island.Chart.UVMin.X, UV.X);
+				Island.Chart.UVMin.Y = FMath::Min(Island.Chart.UVMin.Y, UV.Y);
+				Island.Chart.UVMax.X = FMath::Max(Island.Chart.UVMax.X, UV.X);
+				Island.Chart.UVMax.Y = FMath::Max(Island.Chart.UVMax.Y, UV.Y);
+			}
+			Island.Chart.bOutOfRange = Island.Chart.bOutOfRange || UV.X < 0.0f || UV.X > 1.0f || UV.Y < 0.0f || UV.Y > 1.0f;
+			QuantizedUVsByChartID.FindOrAdd(ChartID).AddUnique(QuantizeUVForOverlay(UV));
+		}
+
+		const float SignedArea = 0.5f * FMath::Abs(
+			(UVs[1].X - UVs[0].X) * (UVs[2].Y - UVs[0].Y) -
+			(UVs[2].X - UVs[0].X) * (UVs[1].Y - UVs[0].Y));
+		Island.Chart.Area += SignedArea;
+	}
+
+	TArray<FQuickSDFIslandBuildData> Islands;
+	IslandsByChartID.GenerateValueArray(Islands);
+	for (FQuickSDFIslandBuildData& Island : Islands)
+	{
+		TArray<FIntPoint>& QuantizedUVs = QuantizedUVsByChartID.FindOrAdd(Island.Chart.ChartID);
+		QuantizedUVs.Sort([](const FIntPoint& A, const FIntPoint& B)
+		{
+			return A.X == B.X ? A.Y < B.Y : A.X < B.X;
+		});
+		Island.Chart.Key = MakeIslandKey(UVChannel, QuantizedUVs);
+		const FVector2f Size = Island.Chart.UVMax - Island.Chart.UVMin;
+		Island.Chart.AspectRatio = FMath::Abs(Size.Y) > KINDA_SMALL_NUMBER ? FMath::Abs(Size.X / Size.Y) : 1.0f;
+		BuildIslandShapeMask(Mesh, *UVOverlay, Island, Island.Chart.ShapeMask);
+		OutCharts.Add(Island.Chart);
+	}
+
+	for (const FQuickSDFIslandBuildData& Island : Islands)
+	{
+		for (int32 TriangleID : Island.TriangleIDs)
+		{
+			if (!Mesh.IsTriangle(TriangleID) || !UVOverlay->IsSetTriangle(TriangleID))
+			{
+				continue;
+			}
+
+			const UE::Geometry::FIndex3i UVIndices = UVOverlay->GetTriangle(TriangleID);
+			const FVector2f UV0 = UVOverlay->GetElement(UVIndices.A);
+			const FVector2f UV1 = UVOverlay->GetElement(UVIndices.B);
+			const FVector2f UV2 = UVOverlay->GetElement(UVIndices.C);
+			const int32 MinX = FMath::Clamp(FMath::FloorToInt(FMath::Min3(UV0.X, UV1.X, UV2.X) * Width), 0, Width - 1);
+			const int32 MaxX = FMath::Clamp(FMath::CeilToInt(FMath::Max3(UV0.X, UV1.X, UV2.X) * Width), 0, Width - 1);
+			const int32 MinY = FMath::Clamp(FMath::FloorToInt(FMath::Min3(UV0.Y, UV1.Y, UV2.Y) * Height), 0, Height - 1);
+			const int32 MaxY = FMath::Clamp(FMath::CeilToInt(FMath::Max3(UV0.Y, UV1.Y, UV2.Y) * Height), 0, Height - 1);
+
+			for (int32 Y = MinY; Y <= MaxY; ++Y)
+			{
+				for (int32 X = MinX; X <= MaxX; ++X)
+				{
+					const FVector2f UV((static_cast<float>(X) + 0.5f) / Width, (static_cast<float>(Y) + 0.5f) / Height);
+					if (!IsPointInUVTriangle(UV, UV0, UV1, UV2))
+					{
+						continue;
+					}
+
+					const int32 PixelIndex = Y * Width + X;
+					if (OutPixelChartIDs[PixelIndex] != INDEX_NONE && OutPixelChartIDs[PixelIndex] != Island.Chart.ChartID)
+					{
+						OutAmbiguousPixelFlags[PixelIndex] = 1;
+					}
+					OutPixelChartIDs[PixelIndex] = Island.Chart.ChartID;
+				}
+			}
+		}
+	}
+
+	return OutCharts.Num() > 0;
+}
+
+void AutoBuildIslandMirrorPairs(
+	const TArray<FQuickSDFIslandMirrorChart>& Charts,
+	const TArray<FQuickSDFIslandMirrorPair>& ExistingPairs,
+	TArray<FQuickSDFIslandMirrorPair>& OutPairs)
+{
+	OutPairs.Reset();
+	TSet<FString> LockedTargets;
+	for (const FQuickSDFIslandMirrorPair& Pair : ExistingPairs)
+	{
+		if (Pair.bUserLocked)
+		{
+			OutPairs.Add(Pair);
+			LockedTargets.Add(Pair.TargetIslandKey);
+		}
+	}
+
+	for (const FQuickSDFIslandMirrorChart& Chart : Charts)
+	{
+		if (LockedTargets.Contains(Chart.Key))
+		{
+			continue;
+		}
+
+		FQuickSDFIslandMirrorPair SelfPair;
+		SelfPair.SourceIslandKey = Chart.Key;
+		SelfPair.TargetIslandKey = Chart.Key;
+		SelfPair.Transform = EQuickSDFIslandMirrorTransform::FlipU;
+		SelfPair.Confidence = 1.0f;
+		OutPairs.Add(SelfPair);
+	}
+}
 }
 
 void UQuickSDFPaintTool::GenerateSDF()
@@ -153,7 +443,15 @@ void UQuickSDFPaintTool::GenerateSDF()
 		return;
 	}
 
-	const TArray<int32> ProcessableIndices = CollectProcessableMaskIndices(*Asset, Properties->bSymmetryMode);
+	Properties->SyncLegacySymmetryFlag();
+	const bool bFrontHalfAngles = Properties->UsesFrontHalfAngles();
+	const bool bIslandChannelSymmetry = Properties->UsesIslandChannelSymmetry();
+	if (FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet())
+	{
+		ActiveSet->bHasWarning = false;
+		ActiveSet->WarningMessage = FText::GetEmpty();
+	}
+	const TArray<int32> ProcessableIndices = CollectProcessableMaskIndices(*Asset, bFrontHalfAngles);
 	if (ProcessableIndices.Num() == 0)
 	{
 		return;
@@ -171,7 +469,7 @@ void UQuickSDFPaintTool::GenerateSDF()
 	const int32 Upscale = FMath::Clamp(Properties->UpscaleFactor, 1, 8);
 	const int32 HighW = OrigW * Upscale;
 	const int32 HighH = OrigH * Upscale;
-	const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
+	const float MaxAngle = Properties->GetPaintMaxAngle();
 
 	for (int32 Index : ProcessableIndices)
 	{
@@ -210,7 +508,88 @@ void UQuickSDFPaintTool::GenerateSDF()
 	}
 
 	TArray<FVector4f> CombinedField;
-	FSDFProcessor::CombineSDFs(ProcessedData, CombinedField, HighW, HighH, EffectiveFormat, Properties->bSymmetryMode);
+	FSDFProcessor::CombineSDFs(ProcessedData, CombinedField, HighW, HighH, EffectiveFormat, bFrontHalfAngles);
+
+	FQuickSDFIslandMirrorApplyResult IslandMirrorResult;
+	if (bIslandChannelSymmetry)
+	{
+		FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet();
+		TArray<FQuickSDFIslandMirrorChart> IslandCharts;
+		TArray<int32> PixelChartIDs;
+		TArray<uint8> AmbiguousPixelFlags;
+		bool bBuiltIslandData = false;
+		if (TargetMesh.IsValid())
+		{
+			EnsurePaintChartCache();
+			bBuiltIslandData = BuildIslandMirrorData(
+				*TargetMesh,
+				Properties->UVChannel,
+				TargetTrianglePaintChartIDs,
+				HighW,
+				HighH,
+				IslandCharts,
+				PixelChartIDs,
+				AmbiguousPixelFlags);
+		}
+
+		if (bBuiltIslandData && ActiveSet)
+		{
+			int32 OutOfRangeIslandCount = 0;
+			for (const FQuickSDFIslandMirrorChart& Chart : IslandCharts)
+			{
+				if (Chart.bOutOfRange)
+				{
+					++OutOfRangeIslandCount;
+				}
+			}
+
+			TArray<FQuickSDFIslandMirrorPair> RefreshedPairs;
+			AutoBuildIslandMirrorPairs(IslandCharts, ActiveSet->IslandMirrorPairs, RefreshedPairs);
+			Asset->Modify();
+			ActiveSet->IslandMirrorPairs = MoveTemp(RefreshedPairs);
+			IslandMirrorResult = ApplyIslandMirrorToCombinedField(
+				CombinedField,
+				HighW,
+				HighH,
+				EffectiveFormat == ESDFOutputFormat::Bipolar,
+				IslandCharts,
+				PixelChartIDs,
+				AmbiguousPixelFlags,
+				ActiveSet->IslandMirrorPairs);
+
+			if (IslandMirrorResult.MissingPairPixels > 0 ||
+				IslandMirrorResult.MissingSourcePixels > 0 ||
+				IslandMirrorResult.AmbiguousPixels > 0 ||
+				OutOfRangeIslandCount > 0)
+			{
+				ActiveSet->bHasWarning = true;
+				ActiveSet->WarningMessage = FText::Format(
+					LOCTEXT("IslandMirrorGenerateWarning", "Island Mirror used fallback pixels. Missing pairs: {0}, missing sources: {1}, ambiguous UV pixels: {2}, out-of-range islands: {3}."),
+					FText::AsNumber(IslandMirrorResult.MissingPairPixels),
+					FText::AsNumber(IslandMirrorResult.MissingSourcePixels),
+					FText::AsNumber(IslandMirrorResult.AmbiguousPixels),
+					FText::AsNumber(OutOfRangeIslandCount));
+			}
+		}
+		else if (ActiveSet)
+		{
+			ActiveSet->bHasWarning = true;
+			ActiveSet->WarningMessage = LOCTEXT("IslandMirrorNoMeshWarning", "Island Mirror needs a selected mesh with a valid UV channel. 90-180 channels were copied from 0-90.");
+			TArray<int32> FallbackCharts;
+			TArray<uint8> FallbackAmbiguous;
+			FallbackCharts.Init(INDEX_NONE, HighW * HighH);
+			FallbackAmbiguous.Init(0, HighW * HighH);
+			IslandMirrorResult = ApplyIslandMirrorToCombinedField(
+				CombinedField,
+				HighW,
+				HighH,
+				EffectiveFormat == ESDFOutputFormat::Bipolar,
+				IslandCharts,
+				FallbackCharts,
+				FallbackAmbiguous,
+				ActiveSet->IslandMirrorPairs);
+		}
+	}
 
 	// --- 4. 菫晏ｭ伜・逅・---
 	SlowTask.EnterProgressFrame(1.f, LOCTEXT("SaveSDF", "Downscaling and Saving..."));
@@ -233,7 +612,7 @@ void UQuickSDFPaintTool::GenerateSDF()
 			*ObjectTools::SanitizeObjectName(AssetName),
 			*ObjectTools::SanitizeObjectName(SlotName));
 	}
-	UTexture2D* FinalTexture = Subsystem->CreateSDFTexture(FinalPixels, OrigW, OrigH, Properties->SDFOutputFolder, OutputTextureName, EffectiveFormat, Properties->bOverwriteExistingSDF, &SaveError);
+	UTexture2D* FinalTexture = Subsystem->CreateSDFTexture(FinalPixels, OrigW, OrigH, Properties->SDFOutputFolder, OutputTextureName, EffectiveFormat, Properties->bOverwriteExistingSDF, &SaveError, bIslandChannelSymmetry);
 	if (FinalTexture)
 	{
 		const EQuickSDFMaterialPreviewMode PreviousPreviewMode = Properties->MaterialPreviewMode;
@@ -674,7 +1053,7 @@ bool UQuickSDFPaintTool::ImportEditedMasksFromTextures(const TArray<UTexture2D*>
 
 	if (bAnyExplicitAngleAboveSymmetryRange)
 	{
-		Properties->bSymmetryMode = false;
+			Properties->SetSymmetryEnabled(false);
 	}
 
 	const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
@@ -812,7 +1191,7 @@ bool UQuickSDFPaintTool::ImportEditedMasksFromTexturesWithAngles(const TArray<UT
 
 	if (bAnyAngleAboveSymmetryRange)
 	{
-		Properties->bSymmetryMode = false;
+			Properties->SetSymmetryEnabled(false);
 	}
 
 	const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
@@ -1446,6 +1825,14 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 					? EQuickSDFPaintTargetMode::All
 					: EQuickSDFPaintTargetMode::CurrentOnly;
 			}
+			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SymmetryMode))
+			{
+				Properties->SyncLegacySymmetryFlag();
+			}
+			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bSymmetryMode))
+			{
+				Properties->SetSymmetryEnabled(Properties->bSymmetryMode);
+			}
 			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bEnableBrushAntialiasing) ||
 				Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, BrushAntialiasingWidth))
 			{
@@ -1638,7 +2025,9 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 		if (Property && (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex) ||
 				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngles) ||
 				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bOverlayOriginalShadow) ||
-				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MaterialPreviewMode)))
+				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MaterialPreviewMode) ||
+				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SymmetryMode) ||
+				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bSymmetryMode)))
 		{
 			RefreshPreviewMaterial();
 		}

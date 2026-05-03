@@ -64,8 +64,8 @@ The upper-left 2D texture preview uses a separate dynamic instance of `M_Preview
 
 ## Monopolar vs Bipolar
 
-- **Monopolar** is the simpler symmetric case. The same threshold can be used across the main channels.
-- **Bipolar** stores shadow enter/exit behavior separately, useful for asymmetric shapes where a shadow enters and leaves a region differently as the light rotates.
+- **Monopolar** is the simpler case. Symmetric output can use the same threshold across RGB; separate 0-90 / 90-180 output uses R/A.
+- **Bipolar** stores shadow enter/exit behavior separately, useful for asymmetric shapes where a shadow enters and leaves a region differently as the light rotates. Values are generated in the legacy R/G/B/A field and exported with an R/A/B/G swizzle, preserving B as the 0-90 exit value.
 
 ## LilToon / General Toon Shader Notes
 
