@@ -241,7 +241,6 @@ void SyncPropertiesFromTextureSet(UQuickSDFToolProperties* Properties, const UQu
 	Properties->Resolution = Asset->GetActiveResolution();
 	Properties->UVChannel = Asset->GetActiveUVChannel();
 	Properties->TargetMaterialSlot = ActiveSet ? ActiveSet->MaterialSlotIndex : INDEX_NONE;
-	Properties->bIsolateTargetMaterialSlot = Properties->TargetMaterialSlot >= 0;
 	Properties->NumAngles = Asset->GetActiveAngleDataList().Num();
 	Properties->TargetAngles.SetNum(Properties->NumAngles);
 	Properties->TargetTextures.SetNum(Properties->NumAngles);

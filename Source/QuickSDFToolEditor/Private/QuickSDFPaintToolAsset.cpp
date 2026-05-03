@@ -1786,7 +1786,6 @@ void UQuickSDFPaintTool::SyncPropertiesFromActiveAsset()
 	if (const FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet())
 	{
 		Properties->TargetMaterialSlot = ActiveSet->MaterialSlotIndex;
-		Properties->bIsolateTargetMaterialSlot = ActiveSet->MaterialSlotIndex >= 0;
 	}
 	Properties->NumAngles = Asset->GetActiveAngleDataList().Num();
 	Properties->TargetAngles.SetNum(Properties->NumAngles);
@@ -2034,11 +2033,6 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 		if (Property && (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetMaterialSlot) ||
 				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bIsolateTargetMaterialSlot)))
 		{
-			if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetMaterialSlot) &&
-				Properties->TargetMaterialSlot >= 0)
-			{
-				Properties->bIsolateTargetMaterialSlot = true;
-			}
 			InvalidateUVOverlayCache();
 			ApplyTargetMaterialSlotIsolation();
 		}

@@ -79,6 +79,7 @@ const TArray<EQuickSDFPaintToggle>& QuickSDFToolUI::GetPaintToggles()
 		EQuickSDFPaintToggle::QuickLine,
 		EQuickSDFPaintToggle::Symmetry,
 		EQuickSDFPaintToggle::MonotonicGuard,
+		EQuickSDFPaintToggle::IsolateSlot,
 	};
 	return Toggles;
 }
@@ -339,6 +340,8 @@ FName QuickSDFToolUI::GetTogglePropertyName(EQuickSDFPaintToggle Toggle)
 		return GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bShowPreview);
 	case EQuickSDFPaintToggle::OverlayUV:
 		return GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bOverlayUV);
+	case EQuickSDFPaintToggle::IsolateSlot:
+		return GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bIsolateTargetMaterialSlot);
 	case EQuickSDFPaintToggle::OnionSkin:
 		return GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bEnableOnionSkin);
 	case EQuickSDFPaintToggle::QuickLine:
@@ -362,6 +365,8 @@ FText QuickSDFToolUI::GetToggleLabel(EQuickSDFPaintToggle Toggle)
 		return LOCTEXT("ShowPreviewLabel", "Preview");
 	case EQuickSDFPaintToggle::OverlayUV:
 		return LOCTEXT("OverlayUVLabel", "UV");
+	case EQuickSDFPaintToggle::IsolateSlot:
+		return LOCTEXT("IsolateSlotLabel", "Isolate Slot");
 	case EQuickSDFPaintToggle::OnionSkin:
 		return LOCTEXT("OnionSkinLabel", "Onion");
 	case EQuickSDFPaintToggle::QuickLine:
@@ -385,6 +390,8 @@ FText QuickSDFToolUI::GetToggleDescription(EQuickSDFPaintToggle Toggle)
 		return LOCTEXT("ShowPreviewDesc", "Shows the texture preview overlay while painting.");
 	case EQuickSDFPaintToggle::OverlayUV:
 		return LOCTEXT("OverlayUVDesc", "Draws UV guides over the target surface.");
+	case EQuickSDFPaintToggle::IsolateSlot:
+		return LOCTEXT("IsolateSlotDesc", "Shows only the active material slot in the viewport. Turn off to view the full mesh while keeping the same paint target.");
 	case EQuickSDFPaintToggle::OnionSkin:
 		return LOCTEXT("OnionSkinDesc", "Shows neighboring mask context while editing.");
 	case EQuickSDFPaintToggle::QuickLine:
@@ -408,6 +415,8 @@ FName QuickSDFToolUI::GetToggleIconName(EQuickSDFPaintToggle Toggle)
 		return "QuickSDF.Toggle.ShowPreview";
 	case EQuickSDFPaintToggle::OverlayUV:
 		return "QuickSDF.Toggle.OverlayUV";
+	case EQuickSDFPaintToggle::IsolateSlot:
+		return "QuickSDF.MaterialPreview.OriginalPaint";
 	case EQuickSDFPaintToggle::OnionSkin:
 		return "QuickSDF.Toggle.OnionSkin";
 	case EQuickSDFPaintToggle::QuickLine:
@@ -436,6 +445,8 @@ bool QuickSDFToolUI::GetToggleValue(const UQuickSDFToolProperties* Properties, E
 		return Properties->bShowPreview;
 	case EQuickSDFPaintToggle::OverlayUV:
 		return Properties->bOverlayUV;
+	case EQuickSDFPaintToggle::IsolateSlot:
+		return Properties->bIsolateTargetMaterialSlot;
 	case EQuickSDFPaintToggle::OnionSkin:
 		return Properties->bEnableOnionSkin;
 	case EQuickSDFPaintToggle::QuickLine:
@@ -467,6 +478,9 @@ void QuickSDFToolUI::SetToggleValue(UQuickSDFPaintTool* Tool, UQuickSDFToolPrope
 		break;
 	case EQuickSDFPaintToggle::OverlayUV:
 		Properties->bOverlayUV = bValue;
+		break;
+	case EQuickSDFPaintToggle::IsolateSlot:
+		Properties->bIsolateTargetMaterialSlot = bValue;
 		break;
 	case EQuickSDFPaintToggle::OnionSkin:
 		Properties->bEnableOnionSkin = bValue;

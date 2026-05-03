@@ -937,18 +937,22 @@ bool UQuickSDFPaintTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 		{
 			const FTransform Transform = CurrentComponent->GetComponentTransform();
 			const FRay LocalRay(Transform.InverseTransformPosition(Ray.Origin), Transform.InverseTransformVector(Ray.Direction));
-			UE::Geometry::IMeshSpatial::FQueryOptions QueryOptions(100000.0, [this](int32 TriangleID)
+			UE::Geometry::IMeshSpatial::FQueryOptions QueryOptions(100000.0, [](int32)
 			{
-				return IsTriangleInTargetMaterialSlot(TriangleID);
+				return true;
 			});
 
 			double HitDistance = 100000.0;
 			int32 HitTID = INDEX_NONE;
 			FVector3d BaryCoords(0.0, 0.0, 0.0);
 			if (TargetMeshSpatial->FindNearestHitTriangle(LocalRay, HitDistance, HitTID, BaryCoords, QueryOptions) &&
-				HitTID != INDEX_NONE &&
-				IsTriangleInTargetMaterialSlot(HitTID))
+				HitTID != INDEX_NONE)
 			{
+				if (!IsTriangleInTargetMaterialSlot(HitTID))
+				{
+					return false;
+				}
+
 				const FVector LocalHitPosition = (FVector)LocalRay.PointAt(HitDistance);
 				const FVector LocalNormal = (FVector)TargetMesh->GetTriNormal(HitTID);
 				FVector WorldNormal = Transform.TransformVectorNoScale(LocalNormal).GetSafeNormal();
@@ -1179,9 +1183,9 @@ bool UQuickSDFPaintTool::TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSam
 	
 	const FTransform Transform = CurrentComponent->GetComponentTransform();
 	const FRay LocalRay(Transform.InverseTransformPosition(Ray.Origin), Transform.InverseTransformVector(Ray.Direction));
-	UE::Geometry::IMeshSpatial::FQueryOptions QueryOptions(100000.0, [this](int32 TriangleID)
+	UE::Geometry::IMeshSpatial::FQueryOptions QueryOptions(100000.0, [](int32)
 	{
-		return IsTriangleInTargetMaterialSlot(TriangleID);
+		return true;
 	});
 
 	double HitDistance = 100000.0;
@@ -1190,6 +1194,7 @@ bool UQuickSDFPaintTool::TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSam
 	const bool bHit = TargetMeshSpatial->FindNearestHitTriangle(LocalRay, HitDistance, HitTID, BaryCoords, QueryOptions);
 
 	if (!bHit || HitTID < 0) return false;
+	if (!IsTriangleInTargetMaterialSlot(HitTID)) return false;
 
 	UE::Geometry::FIndex3i TriV = TargetMesh->GetTriangle(HitTID);
 
@@ -1481,9 +1486,9 @@ void UQuickSDFPaintTool::StampProjectedSamples(const TArray<FQuickSDFStrokeSampl
 		}
 
 		const FRay LocalRay(LocalOrigin, LocalDelta / LocalDistance);
-		UE::Geometry::IMeshSpatial::FQueryOptions QueryOptions(LocalDistance + 0.1, [this](int32 CandidateTriangleID)
+		UE::Geometry::IMeshSpatial::FQueryOptions QueryOptions(LocalDistance + 0.1, [](int32)
 		{
-			return IsTriangleInTargetMaterialSlot(CandidateTriangleID);
+			return true;
 		});
 
 		double HitDistance = LocalDistance + 1.0;

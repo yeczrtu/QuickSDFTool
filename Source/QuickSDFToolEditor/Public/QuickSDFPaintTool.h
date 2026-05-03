@@ -175,6 +175,7 @@ protected:
 	void RestoreOriginalComponentMaterials();
 	void RestoreOriginalComponentMaterialSlots();
 	void RestoreOriginalComponentOverlayMaterial();
+	void RestoreOriginalComponentMaterialSlotOverlayMaterials();
 	void ApplyMaterialPreviewMode();
 	void UpdatePreviewMaterialParameters(class UMaterialInstanceDynamic* Material);
 	void UpdateGeneratedSDFMaterialParameters();
@@ -266,6 +267,9 @@ protected:
 	UPROPERTY()
 	TObjectPtr<UMaterialInterface> OriginalOverlayMaterial;
 
+	UPROPERTY()
+	TArray<TObjectPtr<UMaterialInterface>> OriginalMaterialSlotOverlayMaterials;
+
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInterface> PreviewBaseMaterial;
 
@@ -324,6 +328,7 @@ protected:
 	bool bSuppressMaskPixelUndo = false;
 	bool bImportPanelRequested = false;
 	bool bHasOriginalOverlayMaterialState = false;
+	bool bHasOriginalMaterialSlotOverlayMaterialState = false;
 	float OriginalOverlayMaterialMaxDrawDistance = 0.0f;
 	int32 MaskRevision = 0;
 	int32 CachedUVOverlayUVChannel = INDEX_NONE;

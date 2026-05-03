@@ -17,6 +17,7 @@ enum class EQuickSDFPaintToggle : uint8
 	QuickLine,
 	Symmetry,
 	MonotonicGuard,
+	IsolateSlot,
 };
 
 namespace QuickSDFToolUI

@@ -400,6 +400,17 @@ void UQuickSDFPaintTool::RestoreOriginalComponentOverlayMaterial()
 	CurrentComponent->SetOverlayMaterialMaxDrawDistance(OriginalOverlayMaterialMaxDrawDistance);
 }
 
+void UQuickSDFPaintTool::RestoreOriginalComponentMaterialSlotOverlayMaterials()
+{
+	if (!CurrentComponent.IsValid() || !bHasOriginalMaterialSlotOverlayMaterialState)
+	{
+		return;
+	}
+
+	CurrentComponent->MaterialSlotsOverlayMaterial = OriginalMaterialSlotOverlayMaterials;
+	CurrentComponent->MarkRenderStateDirty();
+}
+
 void UQuickSDFPaintTool::RestoreOriginalComponentMaterials()
 {
 	if (!CurrentComponent.IsValid())
@@ -418,6 +429,7 @@ void UQuickSDFPaintTool::RestoreOriginalComponentMaterials()
 
 	RestoreOriginalComponentMaterialSlots();
 	RestoreOriginalComponentOverlayMaterial();
+	RestoreOriginalComponentMaterialSlotOverlayMaterials();
 }
 
 void UQuickSDFPaintTool::ApplyMaterialPreviewMode()
@@ -435,10 +447,25 @@ void UQuickSDFPaintTool::ApplyMaterialPreviewMode()
 	{
 	case EQuickSDFMaterialPreviewMode::OriginalMaterial:
 		RestoreOriginalComponentMaterialSlots();
+		RestoreOriginalComponentMaterialSlotOverlayMaterials();
 		if (PreviewOverlayMaterial)
 		{
-			CurrentComponent->SetOverlayMaterial(PreviewOverlayMaterial);
-			CurrentComponent->SetOverlayMaterialMaxDrawDistance(0.0f);
+			const int32 TargetMaterialSlot = Properties ? Properties->TargetMaterialSlot : INDEX_NONE;
+			if (TargetMaterialSlot >= 0 && TargetMaterialSlot < CurrentComponent->GetNumMaterials())
+			{
+				RestoreOriginalComponentOverlayMaterial();
+				if (CurrentComponent->MaterialSlotsOverlayMaterial.Num() <= TargetMaterialSlot)
+				{
+					CurrentComponent->MaterialSlotsOverlayMaterial.SetNumZeroed(TargetMaterialSlot + 1);
+				}
+				CurrentComponent->MaterialSlotsOverlayMaterial[TargetMaterialSlot] = PreviewOverlayMaterial;
+				CurrentComponent->MarkRenderStateDirty();
+			}
+			else
+			{
+				CurrentComponent->SetOverlayMaterial(PreviewOverlayMaterial);
+				CurrentComponent->SetOverlayMaterialMaxDrawDistance(0.0f);
+			}
 		}
 		else
 		{
@@ -450,13 +477,23 @@ void UQuickSDFPaintTool::ApplyMaterialPreviewMode()
 	case EQuickSDFMaterialPreviewMode::Mask:
 	case EQuickSDFMaterialPreviewMode::UV:
 	case EQuickSDFMaterialPreviewMode::OriginalShadow:
+		RestoreOriginalComponentMaterialSlotOverlayMaterials();
 		CurrentComponent->SetOverlayMaterial(nullptr);
 		CurrentComponent->SetOverlayMaterialMaxDrawDistance(0.0f);
 		if (PreviewMaterial)
 		{
-			for (int32 i = 0; i < CurrentComponent->GetNumMaterials(); ++i)
+			RestoreOriginalComponentMaterialSlots();
+			const int32 TargetMaterialSlot = Properties ? Properties->TargetMaterialSlot : INDEX_NONE;
+			if (TargetMaterialSlot >= 0 && TargetMaterialSlot < CurrentComponent->GetNumMaterials())
 			{
-				CurrentComponent->SetMaterial(i, PreviewMaterial);
+				CurrentComponent->SetMaterial(TargetMaterialSlot, PreviewMaterial);
+			}
+			else
+			{
+				for (int32 i = 0; i < CurrentComponent->GetNumMaterials(); ++i)
+				{
+					CurrentComponent->SetMaterial(i, PreviewMaterial);
+				}
 			}
 		}
 		else
@@ -466,6 +503,7 @@ void UQuickSDFPaintTool::ApplyMaterialPreviewMode()
 		break;
 
 	case EQuickSDFMaterialPreviewMode::GeneratedSDF:
+		RestoreOriginalComponentMaterialSlotOverlayMaterials();
 		CurrentComponent->SetOverlayMaterial(nullptr);
 		CurrentComponent->SetOverlayMaterialMaxDrawDistance(0.0f);
 		RestoreOriginalComponentMaterialSlots();
@@ -489,6 +527,7 @@ void UQuickSDFPaintTool::ApplyMaterialPreviewMode()
 	default:
 		RestoreOriginalComponentMaterialSlots();
 		RestoreOriginalComponentOverlayMaterial();
+		RestoreOriginalComponentMaterialSlotOverlayMaterials();
 		break;
 	}
 
@@ -519,8 +558,10 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 	SDFToonBaseMaterial = nullptr;
 	OriginalMaterials.Empty();
 	OriginalOverlayMaterial = nullptr;
+	OriginalMaterialSlotOverlayMaterials.Empty();
 	OriginalOverlayMaterialMaxDrawDistance = 0.0f;
 	bHasOriginalOverlayMaterialState = false;
+	bHasOriginalMaterialSlotOverlayMaterialState = false;
 	CurrentComponent = NewComponent;
 	if (UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>())
 	{
@@ -592,8 +633,10 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 		OriginalMaterials.Add(CurrentComponent->GetMaterial(i));
 	}
 	OriginalOverlayMaterial = CurrentComponent->GetOverlayMaterial();
+	OriginalMaterialSlotOverlayMaterials = CurrentComponent->MaterialSlotsOverlayMaterial;
 	OriginalOverlayMaterialMaxDrawDistance = CurrentComponent->GetOverlayMaterialMaxDrawDistance();
 	bHasOriginalOverlayMaterialState = true;
+	bHasOriginalMaterialSlotOverlayMaterialState = true;
 	ClearPreviewMaterialDirtyState();
 
 	RefreshTextureSetsForCurrentComponent();

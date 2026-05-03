@@ -209,7 +209,6 @@ void UQuickSDFPaintTool::RefreshTextureSetsForCurrentComponent()
 	FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet();
 	Properties->ActiveTextureSetIndex = Asset->ActiveTextureSetIndex;
 	Properties->TargetMaterialSlot = ActiveSet ? ActiveSet->MaterialSlotIndex : INDEX_NONE;
-	Properties->bIsolateTargetMaterialSlot = Properties->TargetMaterialSlot >= 0;
 	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
 	SyncPropertiesFromActiveAsset();
 	InvalidateUVOverlayCache();
@@ -248,7 +247,6 @@ bool UQuickSDFPaintTool::SelectTextureSet(int32 TextureSetIndex)
 	Properties->Modify();
 	Properties->ActiveTextureSetIndex = TextureSetIndex;
 	Properties->TargetMaterialSlot = ActiveSet ? ActiveSet->MaterialSlotIndex : INDEX_NONE;
-	Properties->bIsolateTargetMaterialSlot = Properties->TargetMaterialSlot >= 0;
 	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
 	SyncPropertiesFromActiveAsset();
 	InvalidateUVOverlayCache();
