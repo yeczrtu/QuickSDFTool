@@ -58,7 +58,6 @@ void FQuickSDFToolStyle::Initialize()
 	StyleSet->Set("QuickSDF.Action.AddKey", new IMAGE_BRUSH_SVG("Icons/QuickSDFAdd", Icon16x16));
 	StyleSet->Set("QuickSDF.Action.DuplicateKey", new IMAGE_BRUSH_SVG("Icons/QuickSDFDuplicate", Icon16x16));
 	StyleSet->Set("QuickSDF.Action.DeleteKey", new IMAGE_BRUSH_SVG("Icons/QuickSDFDelete", Icon16x16));
-	StyleSet->Set("QuickSDF.Action.Snap", new IMAGE_BRUSH_SVG("Icons/QuickSDFSnap", Icon16x16));
 
 	StyleSet->Set("QuickSDF.PaintTarget.Current", new IMAGE_BRUSH_SVG("Icons/QuickSDFPaintCurrent", Icon16x16));
 	StyleSet->Set("QuickSDF.PaintTarget.All", new IMAGE_BRUSH_SVG("Icons/QuickSDFPaintAll", Icon16x16));

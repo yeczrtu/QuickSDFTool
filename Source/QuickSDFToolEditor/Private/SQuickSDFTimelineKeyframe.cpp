@@ -57,7 +57,6 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 	Index = InArgs._Index;
 	Angle = InArgs._Angle;
 	bIsActive = InArgs._bIsActive;
-	bSnapEnabled = InArgs._bSnapEnabled;
 	bSymmetryMode = InArgs._bSymmetryMode;
 	bAllowSourceTextureOverwrite = InArgs._bAllowSourceTextureOverwrite;
 	bHasMask = InArgs._bHasMask;
@@ -317,11 +316,6 @@ FReply SQuickSDFTimelineKeyframe::OnMouseMove(const FGeometry& MyGeometry, const
 				float Percent = FMath::Clamp((LocalPos.X - 20.0f) / TrackWidth, 0.0f, 1.0f);
 				float NewAngle = Percent * MaxAngle;
 
-				if (bSnapEnabled.Get())
-				{
-					NewAngle = FMath::RoundToFloat(NewAngle / 5.0f) * 5.0f;
-				}
-				
 				// Notify parent immediately
 				OnAngleChanged.ExecuteIfBound(NewAngle);
 			}

@@ -368,7 +368,7 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 
 					+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
 
-					// Controls (paint toggles, snap, keyframe actions)
+					// Controls (paint toggles, keyframe actions)
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)
@@ -390,42 +390,6 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 						.AutoWidth()
 						.VAlign(VAlign_Center)
 						.Padding(2.0f, 0.0f, 7.0f, 0.0f)
-						[
-							MakeTimelineSeparator()
-						]
-
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, 2.0f, 0.0f)
-						[
-							SNew(SBox)
-							.WidthOverride(QuickSDFTimelineIconButtonWidth)
-							.HeightOverride(QuickSDFTimelineButtonHeight)
-							[
-								SNew(SCheckBox)
-								.Style(FQuickSDFToolStyle::Get().Get(), "QuickSDF.Timeline.ToggleButton")
-								.ToolTipText(LOCTEXT("SnapTooltip", "Snap dragged timeline keys to 5 degree steps"))
-								.IsChecked(this, &SQuickSDFTimeline::IsGridSnapEnabled)
-								.OnCheckStateChanged(this, &SQuickSDFTimeline::OnGridSnapStateChanged)
-								.Padding(FMargin(3.0f, 2.0f))
-								[
-									SNew(SImage)
-									.Image(FQuickSDFToolStyle::GetBrush("QuickSDF.Action.Snap"))
-									.ColorAndOpacity(TAttribute<FSlateColor>::CreateLambda([this]()
-									{
-										return bGridSnapEnabled
-											? FSlateColor(GetQuickSDFTimelineAccentColor(1.0f))
-											: FSlateColor(FLinearColor(0.62f, 0.62f, 0.62f, 1.0f));
-									}))
-								]
-							]
-						]
-
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						.Padding(5.0f, 0.0f, 7.0f, 0.0f)
 						[
 							MakeTimelineSeparator()
 						]
@@ -771,16 +735,6 @@ FText SQuickSDFTimeline::GetCompleteMaskTooltipText() const
 		LOCTEXT("CompleteDefaultMasksTooltip", "Complete the mask set to {0} angles across 0-{1} degrees"),
 		FText::AsNumber(TargetCount),
 		FText::AsNumber(MaxAngle));
-}
-
-ECheckBoxState SQuickSDFTimeline::IsGridSnapEnabled() const
-{
-	return bGridSnapEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-}
-
-void SQuickSDFTimeline::OnGridSnapStateChanged(ECheckBoxState NewState)
-{
-	bGridSnapEnabled = (NewState == ECheckBoxState::Checked);
 }
 
 ECheckBoxState SQuickSDFTimeline::IsSymmetryModeEnabled() const
@@ -1524,7 +1478,6 @@ void SQuickSDFTimeline::RebuildTimeline()
 				UQuickSDFPaintTool* ActiveTool = this->GetActivePaintTool();
 				return ActiveTool && ActiveTool->Properties && ActiveTool->Properties->EditAngleIndex == i;
 			}))
-			.bSnapEnabled(TAttribute<bool>::CreateLambda([this]() { return bGridSnapEnabled; }))
 			.bSymmetryMode(TAttribute<bool>::CreateLambda([this]() {
 				UQuickSDFPaintTool* ActiveTool = this->GetActivePaintTool();
 				return ActiveTool && ActiveTool->Properties && ActiveTool->Properties->bSymmetryMode;

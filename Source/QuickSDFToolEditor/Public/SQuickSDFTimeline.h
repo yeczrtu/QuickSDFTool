@@ -18,7 +18,6 @@ public:
 		SLATE_ARGUMENT(int32, Index)
 		SLATE_ATTRIBUTE(float, Angle)
 		SLATE_ATTRIBUTE(bool, bIsActive)
-		SLATE_ATTRIBUTE(bool, bSnapEnabled)
 		SLATE_ATTRIBUTE(bool, bSymmetryMode)
 		SLATE_ATTRIBUTE(bool, bAllowSourceTextureOverwrite)
 		SLATE_ATTRIBUTE(bool, bHasMask)
@@ -46,7 +45,6 @@ private:
 	int32 Index = 0;
 	TAttribute<float> Angle;
 	TAttribute<bool> bIsActive;
-	TAttribute<bool> bSnapEnabled;
 	TAttribute<bool> bSymmetryMode;
 	TAttribute<bool> bAllowSourceTextureOverwrite;
 	TAttribute<bool> bHasMask;
@@ -91,8 +89,6 @@ public:
 	void SetSeekAngle(float Angle);
 	ECheckBoxState IsSymmetryModeEnabled() const;
 	void OnSymmetryModeStateChanged(ECheckBoxState NewState);
-	ECheckBoxState IsGridSnapEnabled() const;
-	void OnGridSnapStateChanged(ECheckBoxState NewState);
 
 private:
 	// UI Generation
@@ -133,7 +129,6 @@ private:
 	TArray<TSharedPtr<FSlateBrush>> KeyframeBrushes;
 	TArray<TStrongObjectPtr<UTexture2D>> ThumbnailTextures;
 	int32 CachedMaskRevision = INDEX_NONE;
-	bool bGridSnapEnabled = false;
 	bool bSeekingTimeline = false;
 	bool bTimelineDragTransactionOpen = false;
 	bool bHasSeekAngle = false;
