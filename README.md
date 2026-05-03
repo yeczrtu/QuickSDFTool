@@ -26,8 +26,8 @@ flowchart LR
 ## What Works Today
 
 - Dedicated UE5 Editor Mode named `Quick SDF`.
-- Direct painting on Static Mesh and Skeletal Mesh components, including target material-slot isolation.
-- Compact `Material Slots` list with row-click selection, `Baked` / `Empty` status pills, and per-slot Bake actions. Bulk multi-slot bake buttons are intentionally not part of the main workflow.
+- Direct painting on Static Mesh and Skeletal Mesh components, including material-slot viewport isolation and slot-aware hit testing.
+- Compact `Material Slots` list with row-click selection, `Baked` / `Empty` status pills, and per-slot Bake actions that bake only the selected slot. Bulk multi-slot bake buttons are intentionally not part of the main workflow.
 - 2D UV preview painting with optional UV guides, original-shadow overlay, and onion skinning.
 - Angular timeline with a separated upper seek lane and lower keyframe lane, thumbnail previews, high-contrast angle labels, 5-degree snapping, add/duplicate/delete controls, symmetry-aware mask completion, even redistribution, and `DirectionalLight` sync.
 - Timeline status badges and paint-target range highlights for `Current`, `All`, `Before`, and `After`, including mask, `Monotonic Guard`, and warning indicators plus detailed tooltips.
@@ -165,8 +165,10 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 The `Quick SDF > Material Slots` section is designed for the common case where artists edit one material slot at a time.
 
 - Clicking a row selects the corresponding texture set and updates the active paint/bake target.
+- Selecting a material slot isolates that slot in the viewport by default.
+- Paint picking and stroke sampling use the selected slot as an edit filter, so hidden non-target slots do not steal hits from the active slot.
 - Each row shows the slot number, slot name, material name, and a compact status pill such as `Baked` or `Empty`.
-- The row action button bakes only that slot. The old `Bake Selected`, `Bake Missing`, and `Generate All` style bulk actions are intentionally left out of the primary UI.
+- The row action button bakes only that slot, using the active slot as the material bake scope for original-shading masks.
 - Active rows use a subtle accent, brighter background, and border so the editable slot remains visible in dense Details Panel layouts.
 - Long slot lists are contained in a scrollable area to avoid pushing the rest of the tool UI off screen.
 
@@ -257,14 +259,6 @@ The timeline is split into two interaction lanes to reduce accidental edits.
 - Switching between mesh components should preserve each component's QuickSDF asset/mask state so artists can work on face, hair, clothing, or accessory meshes separately inside one actor.
 - If viewport picking is supported, clicking a surface on a multi-mesh actor should resolve to the hit mesh component when possible and fall back to the component picker when ambiguous.
 
-#### Material Slot Isolation and Bake Scope
-
-- The current UI already supports row-click material-slot selection and per-slot baking. Future work should focus on advanced edit-scope behavior instead of reintroducing broad bulk-bake controls.
-- Fix material-slot isolation so hidden non-target slots do not keep blocking paint hits. When artists isolate one slot or body part, paint picking and brush projection should ignore collision or hit results from the slots that are not visible/editable.
-- Treat the isolate state as an edit target filter, not only as a viewport visibility filter, so artists can reliably paint the currently selected slot even when the full mesh still has geometry under the cursor.
-- Add optional advanced bake-scope controls for meshes whose slots have separated UV layouts, so artists can choose exactly which slots need baking, skip unused slots, and understand the cost before starting a bake.
-- Preserve separate bake outputs or warnings per slot when UV islands/material slots do not share a useful combined layout.
-
 #### Threshold Map Reverse Conversion
 
 - Add a reverse-conversion workflow that can reconstruct or preview an angle-specific mask from a completed threshold map by entering a target light angle.
@@ -295,7 +289,6 @@ The timeline is split into two interaction lanes to reduce accidental edits.
 - `Quick Reshape` should support multiple boundary lines such as `0 / 30 / 60 / 90` degrees on one guide layer, update only the matching angle masks, keep the guide layer editable after baking, and warn for lines that do not split a UV island or close a region.
 - `Brush Projection Mode` should let artists switch between the current `Surface / UV` behavior and a `View Projected` brush, preserve the visible brush shape in screen space, and avoid painting hidden or back-facing surfaces.
 - `Actor Mesh Component Selection` should let a single actor with multiple mesh components choose one target component, paint and bake only that component, and preserve separate QuickSDF state when switching between components.
-- `Material Slot Isolation and Bake Scope` should extend the existing slot list by preventing hidden slots from stealing hit detection and by adding optional advanced bake-scope selection for separated UV layouts.
 - `Threshold Map Reverse Conversion` should let artists specify an angle, preview the reconstructed mask from a completed threshold map, and extract it for repair or reuse.
 - `Mask Freeze` should lower VRAM usage in a high-resolution, multi-mask setup, restore frozen masks without visual changes, and automatically thaw every affected mask before applying multi-mask edits.
 - `Stroke Auto Fill` should be verified for current-only edits, `Before / After / All` edits, UV-island isolation, and left/right or inside/outside fill selection.
