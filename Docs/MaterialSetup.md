@@ -21,6 +21,15 @@ Use the included `Content/Materials/M_SDFToon.uasset` as the first reference mat
 - Treat the map as threshold data, not as a color/albedo texture.
 - If the shadow appears inverted, verify the material comparison direction first, then check the known SDF output-direction item in the roadmap.
 
+## Original Shading Bake Parameters
+
+`M_OriginalShading` receives these dynamic parameters during the original-shading bake:
+
+- `Angle`: authored light angle in degrees.
+- `BakeForwardAngleOffset`: forward-axis offset in degrees. Static Mesh uses `0`; Skeletal Mesh uses `90` because the visual forward axis is treated as component local +Y.
+
+For actor-rotation-independent output, build the bake direction from `Angle + BakeForwardAngleOffset` and compare it with normalized `PixelNormalWS.rg` in the material baking space. QuickSDF neutralizes the primitive transform for this bake, so do not transform `PixelNormalWS` from world to local in `M_OriginalShading`.
+
 ## Monopolar vs Bipolar
 
 - **Monopolar** is the simpler symmetric case. The same threshold can be used across the main channels.

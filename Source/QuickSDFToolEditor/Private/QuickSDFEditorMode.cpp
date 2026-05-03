@@ -8,6 +8,7 @@
 #include "QuickSDFEditorModeCommands.h"
 #include "QuickSDFPaintToolBuilder.h"
 #include "QuickSDFPaintTool.h"
+#include "QuickSDFMeshComponentAdapter.h"
 #include "QuickSDFToolSubsystem.h"
 #include "QuickSDFToolStyle.h"
 #include "Tools/EdModeInteractiveToolsContext.h"
@@ -607,8 +608,9 @@ void UQuickSDFEditorMode::SetPreviewLightAngle(float AzimuthAngle)
 	float ProjX = -FMath::Cos(Alpha);
 	float ProjY = -FMath::Sin(Alpha);
 
-	FVector MeshForward = MeshComp->GetForwardVector();
-	FVector MeshRight = MeshComp->GetRightVector();
+	const FQuickSDFMeshBakeBasis BakeBasis = FQuickSDFMeshComponentAdapter::GetBakeBasisForComponent(MeshComp);
+	const FVector MeshForward = BakeBasis.Forward;
+	const FVector MeshRight = BakeBasis.Right;
 	FVector HorizontalDir = ProjX * MeshForward + ProjY * MeshRight;
 
 	// Preserve current pitch

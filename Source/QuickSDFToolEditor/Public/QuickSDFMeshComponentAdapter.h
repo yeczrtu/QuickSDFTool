@@ -5,6 +5,13 @@
 
 class UMeshComponent;
 
+struct FQuickSDFMeshBakeBasis
+{
+	FVector Forward = FVector::ForwardVector;
+	FVector Right = FVector::RightVector;
+	float ForwardAngleOffsetDegrees = 0.0f;
+};
+
 class FQuickSDFMeshComponentAdapter
 {
 public:
@@ -12,6 +19,8 @@ public:
 
 	virtual bool BuildDynamicMesh(UE::Geometry::FDynamicMesh3& OutMesh, TMap<int32, int32>& OutTriangleMaterialSlots) const = 0;
 	virtual void GetMaterialSlots(TArray<int32>& OutMaterialSlots, int32 TargetMaterialSlot) const = 0;
+	virtual FQuickSDFMeshBakeBasis GetBakeBasis() const = 0;
 
 	static TUniquePtr<FQuickSDFMeshComponentAdapter> Make(UMeshComponent* MeshComponent);
+	static FQuickSDFMeshBakeBasis GetBakeBasisForComponent(UMeshComponent* MeshComponent);
 };

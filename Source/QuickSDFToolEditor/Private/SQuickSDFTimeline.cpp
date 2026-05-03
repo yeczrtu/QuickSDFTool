@@ -2,6 +2,7 @@
 #include "QuickSDFPaintTool.h"
 #include "QuickSDFPaintToolPrivate.h"
 #include "QuickSDFEditorMode.h"
+#include "QuickSDFMeshComponentAdapter.h"
 #include "DragAndDrop/AssetDragDropOp.h"
 #include "EditorModeManager.h"
 #include "InteractiveToolManager.h"
@@ -778,8 +779,9 @@ float SQuickSDFTimeline::GetCurrentLightYaw() const
 
 					if (MeshComp)
 					{
-						FVector MeshForward = MeshComp->GetForwardVector();
-						FVector MeshRight = MeshComp->GetRightVector();
+						const FQuickSDFMeshBakeBasis BakeBasis = FQuickSDFMeshComponentAdapter::GetBakeBasisForComponent(MeshComp);
+						const FVector MeshForward = BakeBasis.Forward;
+						const FVector MeshRight = BakeBasis.Right;
 						FVector LightForward = DirLight->GetActorForwardVector();
 
 						// Project light direction onto the mesh's horizontal plane

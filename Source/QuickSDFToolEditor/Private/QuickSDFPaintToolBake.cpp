@@ -62,6 +62,18 @@
 
 using namespace QuickSDFPaintToolPrivate;
 
+namespace
+{
+FPrimitiveData MakeQuickSDFBakePrimitiveData(const UMeshComponent* MeshComponent)
+{
+	FPrimitiveData PrimitiveData(MeshComponent);
+	PrimitiveData.LocalToWorld = FMatrix::Identity;
+	PrimitiveData.ActorPosition = FVector::ZeroVector;
+	PrimitiveData.WorldBounds = PrimitiveData.LocalBounds;
+	return PrimitiveData;
+}
+}
+
 void UQuickSDFPaintTool::FillOriginalShading(int32 AngleIndex)
 {
 	if (!Properties || !CurrentComponent.IsValid()) return;
@@ -75,8 +87,19 @@ void UQuickSDFPaintTool::FillOriginalShading(int32 AngleIndex)
 	UMaterialInterface* BaseMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/QuickSDFTool/Materials/M_OriginalShading.M_OriginalShading"));
 	if (!BaseMat) return;
 
+	FMeshData MeshData;
+	TUniquePtr<FQuickSDFMeshComponentAdapter> MeshAdapter = FQuickSDFMeshComponentAdapter::Make(CurrentComponent.Get());
+	if (!MeshAdapter.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FillOriginalShading: Unsupported mesh component type"));
+		return;
+	}
+
 	UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(BaseMat, this);
+	const FQuickSDFMeshBakeBasis BakeBasis = MeshAdapter->GetBakeBasis();
+
 	MID->SetScalarParameterValue(TEXT("Angle"), Properties->TargetAngles[AngleIndex]);
+	MID->SetScalarParameterValue(TEXT("BakeForwardAngleOffset"), BakeBasis.ForwardAngleOffsetDegrees);
 
 	FMaterialData MatData;
 	MatData.Material = MID;
@@ -89,14 +112,6 @@ void UQuickSDFPaintTool::FillOriginalShading(int32 AngleIndex)
 
 	UE_LOG(LogTemp, Log, TEXT("Starting bake for angle %d at resolution %dx%d"), AngleIndex, Properties->Resolution.X, Properties->Resolution.Y);
 
-	FMeshData MeshData;
-	TUniquePtr<FQuickSDFMeshComponentAdapter> MeshAdapter = FQuickSDFMeshComponentAdapter::Make(CurrentComponent.Get());
-	if (!MeshAdapter.IsValid())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("FillOriginalShading: Unsupported mesh component type"));
-		return;
-	}
-
 	if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(CurrentComponent.Get()))
 	{
 		MeshData.Mesh = SMC->GetStaticMesh();
@@ -105,7 +120,7 @@ void UQuickSDFPaintTool::FillOriginalShading(int32 AngleIndex)
 			MeshData.MeshDescription = MeshData.Mesh->GetMeshDescription(0);
 		}
 		
-		MeshData.PrimitiveData = FPrimitiveData(SMC);
+		MeshData.PrimitiveData = MakeQuickSDFBakePrimitiveData(SMC);
 	}
 	else if (USkeletalMeshComponent* SkMC = Cast<USkeletalMeshComponent>(CurrentComponent.Get()))
 	{
@@ -114,7 +129,7 @@ void UQuickSDFPaintTool::FillOriginalShading(int32 AngleIndex)
 			MeshData.MeshDescription = SkeletalMesh->HasMeshDescription(0) ? SkeletalMesh->GetMeshDescription(0) : nullptr;
 		}
 
-		MeshData.PrimitiveData = FPrimitiveData(SkMC);
+		MeshData.PrimitiveData = MakeQuickSDFBakePrimitiveData(SkMC);
 	}
 	else
 	{

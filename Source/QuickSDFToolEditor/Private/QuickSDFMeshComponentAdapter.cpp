@@ -68,6 +68,34 @@ void AddMaterialSlotsFromComponent(const UMeshComponent* MeshComponent, TArray<i
 	}
 }
 
+FVector GetSafeBasisVector(const FVector& Vector, const FVector& Fallback)
+{
+	return Vector.IsNearlyZero() ? Fallback : Vector.GetSafeNormal();
+}
+
+FQuickSDFMeshBakeBasis MakeStaticMeshBakeBasis(const UMeshComponent* MeshComponent)
+{
+	FQuickSDFMeshBakeBasis Basis;
+	if (MeshComponent)
+	{
+		Basis.Forward = GetSafeBasisVector(MeshComponent->GetForwardVector(), FVector::ForwardVector);
+		Basis.Right = GetSafeBasisVector(MeshComponent->GetRightVector(), FVector::RightVector);
+	}
+	return Basis;
+}
+
+FQuickSDFMeshBakeBasis MakeSkeletalMeshBakeBasis(const UMeshComponent* MeshComponent)
+{
+	FQuickSDFMeshBakeBasis Basis = MakeStaticMeshBakeBasis(MeshComponent);
+	if (MeshComponent)
+	{
+		Basis.Forward = GetSafeBasisVector(MeshComponent->GetRightVector(), FVector::ForwardVector);
+		Basis.Right = GetSafeBasisVector(-MeshComponent->GetForwardVector(), FVector::RightVector);
+		Basis.ForwardAngleOffsetDegrees = 90.0f;
+	}
+	return Basis;
+}
+
 class FQuickSDFStaticMeshComponentAdapter : public FQuickSDFMeshComponentAdapter
 {
 public:
@@ -95,6 +123,11 @@ public:
 	virtual void GetMaterialSlots(TArray<int32>& OutMaterialSlots, int32 TargetMaterialSlot) const override
 	{
 		AddMaterialSlotsFromComponent(Component.Get(), OutMaterialSlots, TargetMaterialSlot);
+	}
+
+	virtual FQuickSDFMeshBakeBasis GetBakeBasis() const override
+	{
+		return MakeStaticMeshBakeBasis(Component.Get());
 	}
 
 private:
@@ -130,6 +163,11 @@ public:
 		AddMaterialSlotsFromComponent(Component.Get(), OutMaterialSlots, TargetMaterialSlot);
 	}
 
+	virtual FQuickSDFMeshBakeBasis GetBakeBasis() const override
+	{
+		return MakeSkeletalMeshBakeBasis(Component.Get());
+	}
+
 private:
 	TWeakObjectPtr<USkeletalMeshComponent> Component;
 };
@@ -148,4 +186,14 @@ TUniquePtr<FQuickSDFMeshComponentAdapter> FQuickSDFMeshComponentAdapter::Make(UM
 	}
 
 	return nullptr;
+}
+
+FQuickSDFMeshBakeBasis FQuickSDFMeshComponentAdapter::GetBakeBasisForComponent(UMeshComponent* MeshComponent)
+{
+	if (TUniquePtr<FQuickSDFMeshComponentAdapter> Adapter = Make(MeshComponent))
+	{
+		return Adapter->GetBakeBasis();
+	}
+
+	return MakeStaticMeshBakeBasis(MeshComponent);
 }
