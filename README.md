@@ -28,16 +28,16 @@ flowchart LR
 - Dedicated UE5 Editor Mode named `Quick SDF`.
 - Direct painting on Static Mesh and Skeletal Mesh components, including material-slot viewport isolation and slot-aware hit testing.
 - Compact `Material Slots` list with row-click selection, `Baked` / `Empty` status pills, and per-slot Bake actions that bake only the selected slot. Bulk multi-slot bake buttons are intentionally not part of the main workflow.
-- 2D UV preview painting with optional UV guides, original-shadow overlay, and onion skinning.
-- Angular timeline with a separated upper seek lane and lower keyframe lane, thumbnail previews, high-contrast angle labels, 5-degree snapping, add/duplicate/delete controls, symmetry-aware mask completion, even redistribution, and `DirectionalLight` sync.
+- 2D UV preview painting with optional UV guides and onion skinning.
+- Angular timeline with a separated upper seek lane and lower keyframe lane, thumbnail previews, fixed-width high-contrast angle labels, 5-degree snapping, add/duplicate/delete controls, symmetry-aware mask completion, even redistribution, and `DirectionalLight` sync.
 - Timeline status badges and paint-target range highlights for `Current`, `All`, `Before`, and `After`, including mask, `Monotonic Guard`, and warning indicators plus detailed tooltips.
 - Arrow-key previous/next frame navigation that suppresses viewport movement while the mode handles the keys.
 - Paint target modes for Current, All, Before Current, and After Current masks.
-- Symmetry mode for front-half sweeps, hold-to-line quick strokes, paint-all-angles style workflows, and 8-mask / 15-mask default completion depending on the sweep range.
+- Symmetry modes for full 0-180 painting, whole-texture 0-90 flip, and UV-island channel flip, plus hold-to-line quick strokes, paint-all-angles style workflows, and 8-mask / 15-mask default completion depending on the sweep range.
 - Monotonic Guard for silently clipping paint strokes that would introduce repeated light/shadow flips across mask angles, with validation warnings before SDF generation.
 - Stabilized brush input with lazy-radius smoothing, pressure-sensitive radius support, antialiased brush edges, and optimized 1K-4K render target painting.
 - Mask import from file picker or timeline drag-and-drop; mask export; non-destructive `UQuickSDFAsset` storage; UE transaction-based undo/redo.
-- CPU SDF generation with automatic Monopolar/Bipolar packing, optional 1x-8x upscaling, and half-float texture export.
+- CPU SDF generation with automatic Monopolar/Bipolar packing, optional 1x-8x upscaling, shader-compatible R/A/B/G export swizzling, and half-float texture export.
 - Example preview/toon materials under `Content/Materials/`.
 
 ## Why SDF Threshold Maps?
@@ -130,7 +130,7 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 | `Ctrl + F`, move mouse, click | Resize brush while the mouse is over the viewport |
 | `Alt + T` | Open the quick toggle menu |
 | `Alt + 1` | Cycle paint target mode |
-| `Alt + 2` - `Alt + 9` | Toggle Auto Light, Preview, UV overlay, Shadow overlay, Onion Skin, Quick Stroke, Symmetry, and Monotonic Guard |
+| `Alt + 2` - `Alt + 8` | Toggle Auto Light, Preview, UV overlay, Onion Skin, Quick Stroke, Symmetry, and Monotonic Guard |
 | `Left / Right Arrow` | Select previous / next timeline frame |
 | `Material Slot Row Click` | Select the material slot / texture set to edit |
 | `Material Slot Bake Icon` | Bake that slot only |
@@ -150,15 +150,28 @@ QuickSDFTool supports UE 5.7 or later only. The editor tool relies on the Intera
 - **Material Slot Workflow:** select a slot by clicking its row, read compact `Baked` / `Empty` state pills, and bake only the active slot from the row action. Multi-slot bulk bake controls are omitted from the standard workflow because most toon-mask edits are slot-specific.
 - **2D UV Canvas Painting:** paint on a HUD-overlaid texture preview for texture-space control.
 - **Paint Target Modes:** send a stroke to the current mask, all masks, or a before/after range on the timeline. The timeline range highlight uses the same midpoint-based key segments as the edit operation.
+- **Symmetry Modes:** choose normal `None180` painting, `WholeTextureFlip90` for whole-texture mirroring, or `UVIslandChannelFlip90` to generate the 90-180 half from island-local mirrored 0-90 data while keeping the final texture readable by the normal 0-180 shader path.
 - **Timeline Status Badges:** each key can show mask availability, active Guard state, and warning state without blocking keyframe interaction. Tooltips expose the texture name or `Missing`, paint-target inclusion, overwrite status, and warning message.
 - **Monotonic Guard / Clipping Mask:** when enabled, normal brush strokes and Quick Stroke are clipped at commit time so the same UV pixel does not flip repeatedly across mask angles. Current-mask strokes are checked against the surrounding processable mask set, but only pixels changed by the stroke are restored. Import, rebake, and SDF generation do not auto-fix masks; they only report validation warnings.
 - **Brush Feel Controls:** lazy-radius stroke stabilization, fine spacing, antialiased brush masks, and pressure-driven brush radius for tablet workflows.
-- **Spatial Timeline UI:** manage mask keyframes by light angle with separate seek/keyframe lanes, clearer thumbnail segmentation, status badges, add/duplicate/delete actions, snapping, symmetry-aware mask completion, and quick redistribution tools.
+- **Spatial Timeline UI:** manage mask keyframes by light angle with separate seek/keyframe lanes, clearer thumbnail segmentation, fixed-width angle/status numbers, status badges, add/duplicate/delete actions, snapping, symmetry-aware mask completion, and quick redistribution tools.
 - **Preview Light Workflow:** temporarily mutes scene `DirectionalLight` actors, spawns a preview light, and restores original light intensity on exit/save.
 - **Auto Fill from Original Shading:** bake current viewport/material lighting into masks as a starting point.
 - **Mask I/O:** import edited masks from image files or timeline drops, and export mask textures for external editing.
-- **SDF Generation Pipeline:** generate threshold maps through SDF interpolation, automatic Monopolar/Bipolar RGBA packing, and half-float texture output.
+- **SDF Generation Pipeline:** generate threshold maps through SDF interpolation, automatic Monopolar/Bipolar RGBA packing, R/A/B/G output swizzling, and half-float texture output. Island-channel symmetry always exports RGBA16F / HDR-compatible data instead of a grayscale-only texture.
 - **Non-Destructive Workflow:** store work in `UQuickSDFAsset`, optionally save mask textures with the asset, and iterate without losing mask state.
+
+## Symmetry Modes
+
+QuickSDFTool supports three SDF generation modes:
+
+- `None180`: paint the full 0-180 degree sweep normally.
+- `WholeTextureFlip90`: paint 0-90 degrees and mirror the whole texture for the 90-180 side. This is useful when the UV layout itself is globally symmetric.
+- `UVIslandChannelFlip90`: paint 0-90 degrees and generate the 90-180 side per UV island. The tool samples the source island through an island-local horizontal mirror and writes the result into the same final RGBA layout used by normal 0-180 maps.
+
+`UVIslandChannelFlip90` is intended for assets where the left and right UV islands are separate but still mirror each other. It tolerates position, scale, and light shape differences through normalized island-local mapping, but it does not perform nonlinear per-island warping. Ambiguous, unpaired, overlapping, or out-of-range islands fall back to copying the source-side values and produce warnings.
+
+The generated texture remains shader-compatible with the regular 0-180 layout. Internally, the legacy combined field is still processed as `R/G/B/A`, then final export uses the R/A/B/G swizzle (`R <- R`, `G <- A`, `B <- B`, `A <- G`) so existing shader expectations and the historical `B` channel behavior are preserved.
 
 ## Material Slots
 
@@ -181,13 +194,14 @@ The timeline is split into two interaction lanes to reduce accidental edits.
 - Thumbnail backgrounds do not handle input; keyframe widgets own selection and drag behavior.
 - Paint-target range highlights are always shown for `Current`, `All`, `Before`, and `After`. The visible range is calculated from neighboring-angle midpoints so the highlight matches the masks that will be edited.
 - Key status badges are hit-test invisible and do not interfere with selecting, dragging, importing, or seeking.
+- Header angle numbers and keyframe angle labels reserve fixed width only for the number itself, so 1-, 2-, and 3-digit angles do not push toolbar buttons or thumbnail layout around.
 - The current vector-layer badge exists internally as a hidden placeholder for future Quick Nose / Quick Reshape work.
 
 ## Monotonic Guard
 
 `Monotonic Guard` is an optional paint-time safety check for SDF threshold masks. It treats `R >= 127` as white and lower values as black, then prevents a pixel from creating repeated transitions such as `black -> white -> black` or `white -> black -> white` across the processable angle sequence.
 
-- The quick toggle is labeled `Guard`; the shortcut is `Alt + 9`.
+- The quick toggle is labeled `Guard`; the shortcut is `Alt + 8`.
 - `Clip Direction` defaults to `Auto`: `0-90` degrees uses `White Expands`, and `90-180` degrees uses `White Shrinks`. Manual overrides are available as `White Expands` and `White Shrinks`.
 - Normal brush strokes and Quick Stroke are clipped silently before the undo transaction is finalized. The user action is not blocked and no notification is shown while painting.
 - Soft antialiased stroke edges are handled as stroke intent: a pixel that becomes brighter is treated as a white stroke for guard evaluation, and a pixel that becomes darker is treated as a black stroke, even if it does not cross the `127` binary threshold.
@@ -201,7 +215,7 @@ The timeline is split into two interaction lanes to reduce accidental edits.
 
 ### P0: Make the Preview Release Reliable
 
-- [ ] Confirm and document the final SDF output direction.
+- [x] Document the final SDF output channel layout and island-mirror behavior for the current CPU path.
 - [ ] Improve or document UV-dependent brush-size mismatch.
 - [ ] Add a short end-to-end video showing mask paint -> SDF texture -> toon shader result.
 - [ ] Publish preview releases with release notes and install verification steps.
@@ -323,7 +337,7 @@ QuickSDFTool/
 - `UQuickSDFPaintTool` is kept as the Interactive Tools Framework facade for lifecycle, input routing, and UI commands. Paint state, undo changes, mask utilities, SDF helpers, asset selection, and render target support live in focused private helpers.
 - Timeline keyframe rendering is split from the main timeline widget. Timeline range/key status calculations live in `QuickSDFTimelineStatus` so range highlighting, badges, and tooltips can be tested without Slate.
 - Mask import validation is handled by a Slate-independent import model so the UI and import rules can evolve independently.
-- Developer automation tests cover default angles, angle-name parsing, SDF edge cases, asset migration, mask import model validation, `TimelineRangeStatus`, `TimelineKeyStatus`, and Monotonic Guard behavior.
+- Developer automation tests cover default angles, angle-name parsing, SDF edge cases, channel packing, UV-island mirror application, asset migration, mask import model validation, `TimelineRangeStatus`, `TimelineKeyStatus`, and Monotonic Guard behavior.
 
 ### Development Verification
 
@@ -334,9 +348,10 @@ Useful verification commands in the Unreal Editor command line or Session Fronte
 ```text
 Automation RunTests QuickSDFTool
 Automation RunTests QuickSDFTool.Core.Timeline
+Automation RunTests QuickSDFTool.Core
 ```
 
-The recent refactor was validated against `sdfbuildEditor Win64 Development` and the focused timeline automation coverage.
+The recent refactor was validated against `sdfbuildEditor Win64 Development`, focused timeline automation coverage, and the `QuickSDFTool.Core` tests for channel packing and island mirror behavior.
 
 ## How It Works
 
@@ -344,8 +359,9 @@ The recent refactor was validated against `sdfbuildEditor Win64 Development` and
 2. **SDF:** convert each mask to a signed distance field.
 3. **Interpolate:** find transitions between neighboring masks and derive threshold value `T`.
 4. **Composite:** automatically choose Monopolar or Bipolar output and pack values into RGBA channels:
-   - **Monopolar:** symmetric shadow behavior, or R/A for 0-90 and 90-180 when separate halves are generated.
-   - **Bipolar:** asymmetric shadow enter/exit values are generated in the legacy R/G/B/A field, then exported with an R/A/B/G swizzle so the B channel remains the 0-90 exit value.
+   - **Monopolar:** symmetric shadow behavior, or separate 0-90 / 90-180 values when the selected symmetry mode generates a second half.
+   - **Bipolar:** asymmetric shadow enter/exit values are generated in the legacy combined field, then exported with an R/A/B/G swizzle so the final texture keeps the expected shader layout and the B channel remains the 0-90-side value.
+   - **UV Island Channel Flip:** starts from the 0-90 combined field, fills the 90-180 channels by island-local mirrored sampling, and exports the result as the same RGBA16F / HDR texture format used by normal 0-180 maps.
 5. **Export:** save the final threshold map as a 16-bit half-float texture.
 
 ## Repository Setup Checklist
@@ -359,7 +375,6 @@ For maintainers preparing the GitHub page:
 ## Known Defects
 
 - UV layout can affect the relationship between brush size and painted area.
-- SDF output direction still needs final verification against the preview material.
 - GPU JFA shader files exist, but the public generation path currently uses the CPU `FSDFProcessor` path.
 
 ## Contributing
