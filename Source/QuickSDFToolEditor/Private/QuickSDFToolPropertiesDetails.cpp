@@ -839,6 +839,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bCreateMaskFolderPerExport)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MaskExportFolderPrefix)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MaskTextureNamePrefix)));
+	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MaskFileNameMode)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bOverwriteExistingMasks)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, NumAngles)));

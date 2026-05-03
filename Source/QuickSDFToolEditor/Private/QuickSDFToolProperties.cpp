@@ -49,10 +49,33 @@ FString MakeAlphabeticIndexName(int32 Index)
 	return Name;
 }
 
-FString MakeMaskExportFileName(int32 ExportIndex)
+FString MakeMaskExportFileBaseName(EQuickSDFMaskFileNameMode FileNameMode, int32 ExportIndex, float Angle)
 {
-	return FPaths::MakeValidFileName(FString::Printf(TEXT("%s.png"), *MakeAlphabeticIndexName(ExportIndex)));
+	switch (FileNameMode)
+	{
+	case EQuickSDFMaskFileNameMode::Numbered:
+		return FString::FromInt(FMath::Max(ExportIndex, 0) + 1);
+	case EQuickSDFMaskFileNameMode::Angle:
+		return FString::FromInt(FMath::RoundToInt(Angle));
+	case EQuickSDFMaskFileNameMode::Alphabetic:
+	default:
+		return MakeAlphabeticIndexName(ExportIndex);
+	}
 }
+
+FString MakeUniqueMaskExportFilePath(const FString& OutputFolder, const FString& FileBaseName)
+{
+	const FString CleanBaseName = FPaths::MakeValidFileName(FileBaseName.IsEmpty() ? FString(TEXT("mask")) : FileBaseName);
+	FString CandidatePath = OutputFolder / FString::Printf(TEXT("%s.png"), *CleanBaseName);
+
+	for (int32 Suffix = 2; IFileManager::Get().FileExists(*CandidatePath); ++Suffix)
+	{
+		CandidatePath = OutputFolder / FString::Printf(TEXT("%s_%d.png"), *CleanBaseName, Suffix);
+	}
+
+	return CandidatePath;
+}
+
 }
 
 bool UQuickSDFToolProperties::UsesFrontHalfAngles() const
@@ -232,7 +255,8 @@ void UQuickSDFToolProperties::ExportMaskTexturesToFiles()
 		}
 
 		const TArray64<uint8> PngData = ImageWrapper->GetCompressed();
-		const FString OutputPath = OutputFolder / MakeMaskExportFileName(ExportedCount);
+		const FString FileBaseName = MakeMaskExportFileBaseName(MaskFileNameMode, ExportedCount, Asset->GetActiveAngleDataList()[AngleIndex].Angle);
+		const FString OutputPath = MakeUniqueMaskExportFilePath(OutputFolder, FileBaseName);
 		if (PngData.Num() == 0 || !FFileHelper::SaveArrayToFile(PngData, *OutputPath))
 		{
 			FMessageDialog::Open(

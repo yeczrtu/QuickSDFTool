@@ -51,6 +51,14 @@ enum class EQuickSDFMaterialPreviewMode : uint8
 	GeneratedSDF UMETA(DisplayName = "Generated SDF")
 };
 
+UENUM(BlueprintType)
+enum class EQuickSDFMaskFileNameMode : uint8
+{
+	Alphabetic UMETA(DisplayName = "Alphabetic (a, b, c)"),
+	Numbered UMETA(DisplayName = "Numbered (1, 2, 3)"),
+	Angle UMETA(DisplayName = "Angle (0, 13, 26)")
+};
+
 UCLASS()
 class UQuickSDFToolProperties : public UInteractiveToolPropertySet
 {
@@ -191,6 +199,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Mask Texture Prefix"))
 	FString MaskTextureNamePrefix = TEXT("T_QuickSDF_Angle");
+
+	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Mask File Name Mode"))
+	EQuickSDFMaskFileNameMode MaskFileNameMode = EQuickSDFMaskFileNameMode::Alphabetic;
 
 	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Overwrite Existing Mask Textures"))
 	bool bOverwriteExistingMasks = false;
