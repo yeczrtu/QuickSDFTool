@@ -1,5 +1,8 @@
 #include "QuickSDFToolProperties.h"
 
+#include "ContentBrowserModule.h"
+#include "Containers/Ticker.h"
+#include "IContentBrowserSingleton.h"
 #include "QuickSDFAsset.h"
 #include "QuickSDFPaintTool.h"
 #include "QuickSDFToolSubsystem.h"
@@ -76,6 +79,51 @@ FString MakeUniqueMaskExportFilePath(const FString& OutputFolder, const FString&
 	return CandidatePath;
 }
 
+void OpenContentBrowserToExportFolder(const FString& FolderPath, const TArray<UObject*>& Assets)
+{
+	if (FolderPath.IsEmpty())
+	{
+		return;
+	}
+
+	TArray<TWeakObjectPtr<UObject>> WeakAssets;
+	WeakAssets.Reserve(Assets.Num());
+	for (UObject* Asset : Assets)
+	{
+		if (Asset)
+		{
+			WeakAssets.Add(Asset);
+		}
+	}
+
+	// Defer one tick so the updated texture packages are visible to the Content Browser before syncing.
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+		[FolderPath, WeakAssets = MoveTemp(WeakAssets)](float)
+		{
+			FContentBrowserModule& ContentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
+			IContentBrowserSingleton& ContentBrowser = ContentBrowserModule.Get();
+			const TArray<FString> FoldersToSync = { FolderPath };
+
+			ContentBrowser.FocusPrimaryContentBrowser(false);
+			ContentBrowser.SetSelectedPaths(FoldersToSync, true, false);
+			ContentBrowser.SyncBrowserToFolders(FoldersToSync, true, true);
+
+			TArray<UObject*> ValidAssets;
+			for (const TWeakObjectPtr<UObject>& WeakAsset : WeakAssets)
+			{
+				if (UObject* Asset = WeakAsset.Get())
+				{
+					ValidAssets.Add(Asset);
+				}
+			}
+			if (!ValidAssets.IsEmpty())
+			{
+				ContentBrowser.SyncBrowserToAssets(ValidAssets, true, true);
+			}
+
+			return false;
+		}));
+}
 }
 
 bool UQuickSDFToolProperties::UsesFrontHalfAngles() const
@@ -135,6 +183,7 @@ void UQuickSDFToolProperties::ExportMaskTexturesToAssets()
 
 	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
 	int32 ExportedCount = 0;
+	TArray<UObject*> ExportedTextures;
 	Asset->Modify();
 
 	FString EffectiveMaskExportFolder = MaskExportFolder;
@@ -157,6 +206,7 @@ void UQuickSDFToolProperties::ExportMaskTexturesToAssets()
 		if (NewTexture)
 		{
 			Asset->GetActiveAngleDataList()[AngleIndex].TextureMask = NewTexture;
+			ExportedTextures.Add(NewTexture);
 			++ExportedCount;
 		}
 		else if (!Error.IsEmpty())
@@ -170,6 +220,7 @@ void UQuickSDFToolProperties::ExportMaskTexturesToAssets()
 	{
 		Asset->SyncLegacyFromActiveTextureSet();
 		Asset->MarkPackageDirty();
+		OpenContentBrowserToExportFolder(EffectiveMaskExportFolder, ExportedTextures);
 	}
 }
 
