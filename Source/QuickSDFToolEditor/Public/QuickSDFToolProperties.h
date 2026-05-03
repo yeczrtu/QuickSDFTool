@@ -195,8 +195,13 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Overwrite Existing Mask Textures"))
 	bool bOverwriteExistingMasks = false;
 
-	UFUNCTION(CallInEditor, Category = "Actions")
 	void ExportToTexture();
+
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Export Mask Textures to Assets"))
+	void ExportMaskTexturesToAssets();
+
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Export Mask Textures to Files"))
+	void ExportMaskTexturesToFiles();
 
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Create Threshold Map"))
 	void CreateQuickThresholdMap();

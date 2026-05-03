@@ -648,7 +648,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 
 	AddPropertyIfValid(QuickCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, QualityPreset)));
 
-	QuickCategory.AddCustomRow(LOCTEXT("QuickActionsFilter", "Create Threshold Map Import Mask Assets Overwrite Source Textures Fill White Fill Black"))
+	QuickCategory.AddCustomRow(LOCTEXT("QuickActionsFilter", "Create Threshold Map Import Mask Assets Export Assets Export Files Overwrite Source Textures Fill White Fill Black"))
 	.WholeRowContent()
 	[
 		SNew(SVerticalBox)
@@ -692,6 +692,46 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 					}
 					return FReply::Handled();
 				}))
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, 2.0f)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.Padding(0.0f, 0.0f, 2.0f, 0.0f)
+			[
+				QuickSDFToolUI::MakeIconLabelButton(
+					"QuickSDF.Action.ExportMasks",
+					LOCTEXT("ExportMaskAssetsButton", "Export Assets"),
+					LOCTEXT("ExportMaskAssetsTooltip", "Export the active Texture Set masks as Texture2D assets."),
+					FOnClicked::CreateLambda([WeakProperties]()
+					{
+						if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+						{
+							Props->ExportMaskTexturesToAssets();
+						}
+						return FReply::Handled();
+					}))
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.Padding(2.0f, 0.0f, 0.0f, 0.0f)
+			[
+				QuickSDFToolUI::MakeIconLabelButton(
+					"QuickSDF.Action.ExportMasks",
+					LOCTEXT("ExportMaskFilesButton", "Export Files"),
+					LOCTEXT("ExportMaskFilesTooltip", "Export the active Texture Set masks as PNG files."),
+					FOnClicked::CreateLambda([WeakProperties]()
+					{
+						if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+						{
+							Props->ExportMaskTexturesToFiles();
+						}
+						return FReply::Handled();
+					}))
+			]
 		]
 		+ SVerticalBox::Slot()
 		.AutoHeight()
@@ -803,7 +843,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, NumAngles)));
 
-	AdvancedCategory.AddCustomRow(LOCTEXT("AdvancedActionsFilter", "Rebake Fill Export Masks Generate SDF"))
+	AdvancedCategory.AddCustomRow(LOCTEXT("AdvancedActionsFilter", "Rebake Fill Generate SDF"))
 	.WholeRowContent()
 	[
 		SNew(SVerticalBox)
@@ -888,23 +928,6 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
 					{
 						Props->GenerateSDFThresholdMap();
-					}
-					return FReply::Handled();
-				}))
-		]
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(0.0f, 2.0f)
-		[
-			QuickSDFToolUI::MakeIconLabelButton(
-				"QuickSDF.Action.ExportMasks",
-				LOCTEXT("ExportMasksButton", "Export Mask Textures"),
-				LOCTEXT("ExportMasksTooltip", "Export the edited masks as textures"),
-				FOnClicked::CreateLambda([WeakProperties]()
-				{
-					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
-					{
-						Props->ExportToTexture();
 					}
 					return FReply::Handled();
 				}))

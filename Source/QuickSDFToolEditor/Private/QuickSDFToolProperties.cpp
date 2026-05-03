@@ -3,10 +3,57 @@
 #include "QuickSDFAsset.h"
 #include "QuickSDFPaintTool.h"
 #include "QuickSDFToolSubsystem.h"
+#include "DesktopPlatformModule.h"
 #include "Editor.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/Texture2D.h"
+#include "Framework/Application/SlateApplication.h"
+#include "HAL/FileManager.h"
+#include "HAL/PlatformProcess.h"
+#include "IDesktopPlatform.h"
+#include "IImageWrapper.h"
+#include "IImageWrapperModule.h"
+#include "Misc/FileHelper.h"
 #include "Misc/MessageDialog.h"
+#include "Misc/Paths.h"
+#include "Modules/ModuleManager.h"
+#include "ObjectTools.h"
+
+#define LOCTEXT_NAMESPACE "QuickSDFToolProperties"
+
+namespace
+{
+FString MakeMaskExportBatchName(const FString& Prefix)
+{
+	const FDateTime Now = FDateTime::Now();
+	return FString::Printf(TEXT("%s_%s_%03d"), *Prefix, *Now.ToString(TEXT("%Y%m%d_%H%M%S")), Now.GetMillisecond());
+}
+
+FString MakeMaskExportTextureName(const FString& Prefix, int32 AngleIndex)
+{
+	return ObjectTools::SanitizeObjectName(FString::Printf(TEXT("%s%d"), *Prefix, AngleIndex));
+}
+
+FString MakeAlphabeticIndexName(int32 Index)
+{
+	FString Name;
+	int32 Value = FMath::Max(Index, 0);
+	do
+	{
+		const TCHAR Letter = static_cast<TCHAR>(TEXT('a') + (Value % 26));
+		Name.InsertAt(0, Letter);
+		Value = (Value / 26) - 1;
+	}
+	while (Value >= 0);
+
+	return Name;
+}
+
+FString MakeMaskExportFileName(int32 ExportIndex)
+{
+	return FPaths::MakeValidFileName(FString::Printf(TEXT("%s.png"), *MakeAlphabeticIndexName(ExportIndex)));
+}
+}
 
 bool UQuickSDFToolProperties::UsesFrontHalfAngles() const
 {
@@ -46,6 +93,11 @@ void UQuickSDFToolProperties::SyncLegacySymmetryFlag()
 
 void UQuickSDFToolProperties::ExportToTexture()
 {
+	ExportMaskTexturesToAssets();
+}
+
+void UQuickSDFToolProperties::ExportMaskTexturesToAssets()
+{
 	UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());
 	if (!Tool)
 	{
@@ -65,9 +117,7 @@ void UQuickSDFToolProperties::ExportToTexture()
 	FString EffectiveMaskExportFolder = MaskExportFolder;
 	if (bCreateMaskFolderPerExport && !MaskExportFolderPrefix.IsEmpty())
 	{
-		const FDateTime Now = FDateTime::Now();
-		const FString ExportFolderName = FString::Printf(TEXT("%s_%s_%03d"), *MaskExportFolderPrefix, *Now.ToString(TEXT("%Y%m%d_%H%M%S")), Now.GetMillisecond());
-		EffectiveMaskExportFolder /= ExportFolderName;
+		EffectiveMaskExportFolder /= MakeMaskExportBatchName(MaskExportFolderPrefix);
 	}
 
 	for (int32 AngleIndex = 0; AngleIndex < Asset->GetActiveAngleDataList().Num(); ++AngleIndex)
@@ -78,7 +128,7 @@ void UQuickSDFToolProperties::ExportToTexture()
 			continue;
 		}
 
-		const FString AssetName = FString::Printf(TEXT("%s%d"), *MaskTextureNamePrefix, AngleIndex);
+		const FString AssetName = MakeMaskExportTextureName(MaskTextureNamePrefix, AngleIndex);
 		FText Error;
 		UTexture2D* NewTexture = Subsystem->CreateMaskTexture(RenderTarget, EffectiveMaskExportFolder, AssetName, bOverwriteExistingMasks, &Error);
 		if (NewTexture)
@@ -97,6 +147,111 @@ void UQuickSDFToolProperties::ExportToTexture()
 	{
 		Asset->SyncLegacyFromActiveTextureSet();
 		Asset->MarkPackageDirty();
+	}
+}
+
+void UQuickSDFToolProperties::ExportMaskTexturesToFiles()
+{
+	UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter());
+	if (!Tool)
+	{
+		return;
+	}
+
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	if (!Subsystem || !Subsystem->GetActiveSDFAsset())
+	{
+		return;
+	}
+
+	IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
+	if (!DesktopPlatform)
+	{
+		FMessageDialog::Open(EAppMsgType::Ok, LOCTEXT("MaskFileExportNoDesktopPlatform", "Cannot open a folder picker for mask file export."));
+		return;
+	}
+
+	const void* ParentWindowHandle = nullptr;
+	if (FSlateApplication::IsInitialized())
+	{
+		ParentWindowHandle = FSlateApplication::Get().FindBestParentWindowHandleForDialogs(nullptr);
+	}
+
+	FString SelectedFolder;
+	if (!DesktopPlatform->OpenDirectoryDialog(
+		ParentWindowHandle,
+		LOCTEXT("MaskFileExportChooseFolder", "Choose Folder for Mask PNG Export").ToString(),
+		FPaths::ProjectSavedDir(),
+		SelectedFolder))
+	{
+		return;
+	}
+
+	FString OutputFolder = SelectedFolder;
+	if (bCreateMaskFolderPerExport && !MaskExportFolderPrefix.IsEmpty())
+	{
+		OutputFolder /= FPaths::MakeValidFileName(MakeMaskExportBatchName(MaskExportFolderPrefix));
+	}
+
+	if (!IFileManager::Get().MakeDirectory(*OutputFolder, true))
+	{
+		FMessageDialog::Open(
+			EAppMsgType::Ok,
+			FText::Format(LOCTEXT("MaskFileExportCreateFolderFailed", "Failed to create mask export folder:\n{0}"), FText::FromString(OutputFolder)));
+		return;
+	}
+
+	UQuickSDFAsset* Asset = Subsystem->GetActiveSDFAsset();
+	IImageWrapperModule& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>("ImageWrapper");
+	int32 ExportedCount = 0;
+	bool bEncounteredError = false;
+
+	for (int32 AngleIndex = 0; AngleIndex < Asset->GetActiveAngleDataList().Num(); ++AngleIndex)
+	{
+		UTextureRenderTarget2D* RenderTarget = Asset->GetActiveAngleDataList()[AngleIndex].PaintRenderTarget;
+		if (!RenderTarget)
+		{
+			continue;
+		}
+
+		TArray<FColor> Pixels;
+		if (!Subsystem->CaptureRenderTargetPixels(RenderTarget, Pixels))
+		{
+			FMessageDialog::Open(EAppMsgType::Ok, LOCTEXT("MaskFileExportCaptureFailed", "Failed to read pixels from a mask render target."));
+			bEncounteredError = true;
+			break;
+		}
+
+		TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
+		if (!ImageWrapper.IsValid() ||
+			!ImageWrapper->SetRaw(Pixels.GetData(), Pixels.Num() * sizeof(FColor), RenderTarget->SizeX, RenderTarget->SizeY, ERGBFormat::BGRA, 8))
+		{
+			FMessageDialog::Open(EAppMsgType::Ok, LOCTEXT("MaskFileExportEncodeFailed", "Failed to encode a mask render target as PNG."));
+			bEncounteredError = true;
+			break;
+		}
+
+		const TArray64<uint8> PngData = ImageWrapper->GetCompressed();
+		const FString OutputPath = OutputFolder / MakeMaskExportFileName(ExportedCount);
+		if (PngData.Num() == 0 || !FFileHelper::SaveArrayToFile(PngData, *OutputPath))
+		{
+			FMessageDialog::Open(
+				EAppMsgType::Ok,
+				FText::Format(LOCTEXT("MaskFileExportSaveFailed", "Failed to save mask PNG:\n{0}"), FText::FromString(OutputPath)));
+			bEncounteredError = true;
+			break;
+		}
+
+		++ExportedCount;
+	}
+
+	if (ExportedCount == 0 && !bEncounteredError)
+	{
+		FMessageDialog::Open(EAppMsgType::Ok, LOCTEXT("MaskFileExportNoFiles", "No mask PNG files were exported."));
+	}
+	else if (ExportedCount > 0)
+	{
+		FPlatformProcess::ExploreFolder(*OutputFolder);
 	}
 }
 
@@ -211,3 +366,5 @@ void UQuickSDFToolProperties::ValidateMonotonicGuard()
 		Tool->ValidateMonotonicGuard();
 	}
 }
+
+#undef LOCTEXT_NAMESPACE
