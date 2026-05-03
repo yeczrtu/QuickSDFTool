@@ -332,7 +332,7 @@ TSharedRef<SWidget> MakeTextureSetBakeButton(int32 TextureSetIndex)
 				.HeightOverride(16.0f)
 				[
 					SNew(SImage)
-					.Image(FQuickSDFToolStyle::GetBrush("QuickSDF.Action.Rebake"))
+					.Image(FQuickSDFToolStyle::GetBrush("QuickSDF.Action.Bake"))
 					.ColorAndOpacity(FLinearColor(0.82f, 0.86f, 0.88f, 1.0f))
 				]
 			]

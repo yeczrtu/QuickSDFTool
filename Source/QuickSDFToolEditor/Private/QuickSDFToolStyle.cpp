@@ -47,6 +47,7 @@ void FQuickSDFToolStyle::Initialize()
 	StyleSet->Set("QuickSDF.GenerateSDF.Small", new IMAGE_BRUSH_SVG("Icons/QuickSDFGenerate", Icon20x20));
 
 	StyleSet->Set("QuickSDF.Action.CreateThresholdMap", new IMAGE_BRUSH_SVG("Icons/QuickSDFGenerate", Icon16x16));
+	StyleSet->Set("QuickSDF.Action.Bake", new IMAGE_BRUSH_SVG("Icons/QuickSDFBake", Icon16x16));
 	StyleSet->Set("QuickSDF.Action.ImportMasks", new IMAGE_BRUSH_SVG("Icons/QuickSDFImport", Icon16x16));
 	StyleSet->Set("QuickSDF.Action.SaveAsset", new IMAGE_BRUSH_SVG("Icons/QuickSDFSave", Icon16x16));
 	StyleSet->Set("QuickSDF.Action.ExportMasks", new IMAGE_BRUSH_SVG("Icons/QuickSDFExport", Icon16x16));
