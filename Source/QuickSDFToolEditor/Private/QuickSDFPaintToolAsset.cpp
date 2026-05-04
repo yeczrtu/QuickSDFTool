@@ -915,7 +915,7 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 		ActiveSetForWarnings->bHasWarning = true;
 		ActiveSetForWarnings->WarningMessage = ActiveSetForWarnings->WarningMessage.IsEmpty()
 			? Warning
-			: FText::Format(LOCTEXT("CombinedTextureSetWarning", "{0} / {1}"), ActiveSetForWarnings->WarningMessage, Warning);
+			: FText::Format(LOCTEXT("CombinedTextureSetWarning", "{0}\n{1}"), ActiveSetForWarnings->WarningMessage, Warning);
 	};
 
 	if (SymmetryResolution.bUsedAuto &&
@@ -924,7 +924,18 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 		 SymmetryResolution.AmbiguousPixelCount > 0 ||
 		 SymmetryResolution.OutOfRangeIslandCount > 0))
 	{
-		AppendActiveSetWarning(SymmetryResolution.StatusText);
+		if (SymmetryResolution.bUsedFallback)
+		{
+			AppendActiveSetWarning(LOCTEXT("AutoSymmetryFallbackWarning", "UV mirror check: Auto could not read valid mesh or UV data, so it used Texture Flip fallback. The SDF was generated; if the 90-180 side looks wrong, choose a valid mesh/UV channel or set Symmetry Mode manually."));
+		}
+		else
+		{
+			AppendActiveSetWarning(FText::Format(
+				LOCTEXT("AutoSymmetryIslandMirrorCheckWarning", "UV mirror check: Auto used UV Island Channel Flip, but some UV areas were not mirror-matched confidently. Those areas were copied from the 0-90 result. Unpaired islands: {0}, overlapping UV pixels: {1}, out-of-range islands: {2}."),
+				FText::AsNumber(SymmetryResolution.UnpairedIslandCount),
+				FText::AsNumber(SymmetryResolution.AmbiguousPixelCount),
+				FText::AsNumber(SymmetryResolution.OutOfRangeIslandCount)));
+		}
 	}
 
 	const TArray<int32> ProcessableIndices = CollectProcessableMaskIndices(*Asset, bFrontHalfAngles);
@@ -1050,7 +1061,7 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 				OutOfRangeIslandCount > 0)
 			{
 				AppendActiveSetWarning(FText::Format(
-					LOCTEXT("IslandMirrorGenerateWarning", "Island Mirror used fallback pixels. Missing pairs: {0}, missing sources: {1}, ambiguous UV pixels: {2}, out-of-range islands: {3}."),
+					LOCTEXT("IslandMirrorGenerateWarning", "UV mirror check: Some 90-180 pixels could not find a reliable mirrored UV source and were copied from the 0-90 result. Missing pair pixels: {0}, missing source pixels: {1}, overlapping UV pixels: {2}, out-of-range islands: {3}."),
 					FText::AsNumber(IslandMirrorResult.MissingPairPixels),
 					FText::AsNumber(IslandMirrorResult.MissingSourcePixels),
 					FText::AsNumber(IslandMirrorResult.AmbiguousPixels),
@@ -1059,7 +1070,7 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 		}
 		else if (ActiveSet)
 		{
-			AppendActiveSetWarning(LOCTEXT("IslandMirrorNoMeshWarning", "Island Mirror needs a selected mesh with a valid UV channel. 90-180 channels were copied from 0-90."));
+			AppendActiveSetWarning(LOCTEXT("IslandMirrorNoMeshWarning", "UV mirror check: Island mode could not read a valid selected mesh/UV channel, so the 90-180 result was copied from 0-90."));
 			TArray<int32> FallbackCharts;
 			TArray<uint8> FallbackAmbiguous;
 			FallbackCharts.Init(INDEX_NONE, HighW * HighH);

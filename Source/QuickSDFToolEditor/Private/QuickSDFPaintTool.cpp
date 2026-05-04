@@ -577,7 +577,6 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 
 	if (!CurrentComponent.IsValid())
 	{
-		ResolveEffectiveSymmetryMode(false);
 		return;
 	}
 
@@ -588,7 +587,6 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 	if (!bValidMeshLoaded || TempMesh->TriangleCount() <= 0)
 	{
 		CurrentComponent.Reset();
-		ResolveEffectiveSymmetryMode(false);
 		return;
 	}
 
@@ -644,7 +642,6 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 
 	RefreshTextureSetsForCurrentComponent();
 	EnsureInitialMasksReady();
-	ResolveEffectiveSymmetryMode(false);
 	RefreshPreviewMaterial();
 }
 

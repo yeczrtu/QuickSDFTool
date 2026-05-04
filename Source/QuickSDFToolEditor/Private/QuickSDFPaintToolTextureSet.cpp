@@ -325,7 +325,7 @@ FText UQuickSDFPaintTool::GetTextureSetStatusText(int32 TextureSetIndex) const
 	const FQuickSDFTextureSetData& TextureSet = Asset->TextureSets[TextureSetIndex];
 	if (TextureSet.bHasWarning)
 	{
-		return LOCTEXT("TextureSetWarning", "Warning");
+		return LOCTEXT("TextureSetMirrorCheck", "Mirror Check");
 	}
 	if (TextureSet.bDirty)
 	{
@@ -336,6 +336,33 @@ FText UQuickSDFPaintTool::GetTextureSetStatusText(int32 TextureSetIndex) const
 		return LOCTEXT("TextureSetBaked", "Baked");
 	}
 	return LOCTEXT("TextureSetEmpty", "Empty");
+}
+
+FText UQuickSDFPaintTool::GetTextureSetStatusTooltip(int32 TextureSetIndex) const
+{
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	const UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	if (!Asset || !Asset->TextureSets.IsValidIndex(TextureSetIndex))
+	{
+		return LOCTEXT("TextureSetMissingTooltip", "This material slot is not available.");
+	}
+
+	const FQuickSDFTextureSetData& TextureSet = Asset->TextureSets[TextureSetIndex];
+	if (TextureSet.bHasWarning)
+	{
+		return TextureSet.WarningMessage.IsEmpty()
+			? LOCTEXT("TextureSetMirrorCheckTooltip", "The SDF was generated, but the UV mirror result should be checked.")
+			: TextureSet.WarningMessage;
+	}
+	if (TextureSet.bDirty)
+	{
+		return LOCTEXT("TextureSetDirtyTooltip", "This material slot has mask edits that have not been baked or generated yet.");
+	}
+	if (TextureSet.bInitialBakeComplete)
+	{
+		return LOCTEXT("TextureSetBakedTooltip", "This material slot has generated SDF data.");
+	}
+	return LOCTEXT("TextureSetEmptyTooltip", "This material slot has no baked mask data yet.");
 }
 
 FLinearColor UQuickSDFPaintTool::GetTextureSetStatusColor(int32 TextureSetIndex) const

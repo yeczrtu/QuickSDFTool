@@ -150,6 +150,7 @@ public:
 	class UMeshComponent* GetCurrentComponent() const { return CurrentComponent.Get(); }
 	FText GetActiveTextureSetLabel() const;
 	FText GetTextureSetStatusText(int32 TextureSetIndex) const;
+	FText GetTextureSetStatusTooltip(int32 TextureSetIndex) const;
 	FLinearColor GetTextureSetStatusColor(int32 TextureSetIndex) const;
 	class UTexture2D* GetActiveFinalSDFTexture() const;
 	bool CanUseGeneratedSDFPreview() const;

@@ -297,6 +297,11 @@ TSharedRef<SWidget> MakeTextureSetStatusPill(int32 TextureSetIndex)
 		{
 			return FQuickSDFToolStyle::GetBrush(GetTextureSetStatusBrushName(TextureSetIndex));
 		})
+		.ToolTipText_Lambda([TextureSetIndex]()
+		{
+			const UQuickSDFPaintTool* Tool = GetActiveQuickSDFPaintTool();
+			return Tool ? Tool->GetTextureSetStatusTooltip(TextureSetIndex) : LOCTEXT("TextureSetNoToolTooltip", "No active Quick SDF tool.");
+		})
 		.Padding(FMargin(7.0f, 2.0f))
 		[
 			SNew(STextBlock)
