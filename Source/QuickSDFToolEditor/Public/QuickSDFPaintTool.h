@@ -121,6 +121,7 @@ public:
 	void RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, const TArray<float>& Angles, const TArray<class UTexture2D*>& Textures, const TArray<bool>& AllowSourceTextureOverwrites, const TArray<TArray<FColor>>& PixelsByMask);
 	
 	void GenerateSDF();
+	void GenerateSDFToFile();
 	void CreateQuickThresholdMap();
 	void ImportEditedMasks();
 	bool ImportEditedMasksFromTextures(const TArray<UTexture2D*>& InTextures);
@@ -167,6 +168,7 @@ public:
 	TObjectPtr<UQuickSDFToolProperties> Properties;
 
 protected:
+	void GenerateSDFInternal(bool bSaveAsset, bool bPromptForFileExport);
 	void BuildBrushMaskTexture();
 	void RefreshPreviewMaterial();
 	void ClearPreviewMaterialDirtyState() const;

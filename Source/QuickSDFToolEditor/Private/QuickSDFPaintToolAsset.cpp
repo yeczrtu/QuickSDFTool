@@ -45,8 +45,13 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "IDesktopPlatform.h"
+#include "IImageWrapper.h"
+#include "IImageWrapperModule.h"
+#include "HAL/FileManager.h"
 #include "Misc/DefaultValueHelper.h"
+#include "Misc/FileHelper.h"
 #include "Containers/Ticker.h"
+#include "Misc/Paths.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
 #include "IAssetTools.h"
@@ -126,6 +131,134 @@ bool ResizeMaskPixelsBilinear(
 			Target.B = SampleChannel(C00.B, C10.B, C01.B, C11.B, Tx, Ty);
 			Target.A = SampleChannel(C00.A, C10.A, C01.A, C11.A, Tx, Ty);
 		}
+	}
+
+	return true;
+}
+
+uint16 Float16ChannelToPng16(const FFloat16& Channel)
+{
+	const float Clamped = FMath::Clamp(Channel.GetFloat(), 0.0f, 1.0f);
+	return static_cast<uint16>(FMath::Clamp(FMath::RoundToInt(Clamped * 65535.0f), 0, 65535));
+}
+
+FString MakeUniqueSDFExportFilePath(const FString& OutputFolder, const FString& FileBaseName)
+{
+	const FString CleanBaseName = FPaths::MakeValidFileName(FileBaseName.IsEmpty() ? FString(TEXT("T_QuickSDF_ThresholdMap")) : FileBaseName);
+	FString CandidatePath = OutputFolder / FString::Printf(TEXT("%s.png"), *CleanBaseName);
+	for (int32 Suffix = 2; IFileManager::Get().FileExists(*CandidatePath); ++Suffix)
+	{
+		CandidatePath = OutputFolder / FString::Printf(TEXT("%s_%d.png"), *CleanBaseName, Suffix);
+	}
+	return CandidatePath;
+}
+
+bool PromptForSDFFileExportFolder(FString& OutFolder)
+{
+	IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
+	if (!DesktopPlatform)
+	{
+		FMessageDialog::Open(EAppMsgType::Ok, LOCTEXT("SDFFileExportNoDesktopPlatform", "Cannot open a folder picker for SDF file export."));
+		return false;
+	}
+
+	const void* ParentWindowHandle = nullptr;
+	if (FSlateApplication::IsInitialized())
+	{
+		ParentWindowHandle = FSlateApplication::Get().FindBestParentWindowHandleForDialogs(nullptr);
+	}
+
+	return DesktopPlatform->OpenDirectoryDialog(
+		ParentWindowHandle,
+		LOCTEXT("SDFFileExportChooseFolder", "Choose Folder for SDF PNG Export").ToString(),
+		FPaths::ProjectSavedDir(),
+		OutFolder);
+}
+
+bool SaveSDFPixelsToPngFile(
+	const TArray<FFloat16Color>& Pixels,
+	int32 Width,
+	int32 Height,
+	ESDFOutputFormat TextureSaveFormat,
+	bool bForceRGBA16F,
+	const FString& OutputFolder,
+	const FString& OutputTextureName,
+	FString& OutSavedPath,
+	FText& OutError)
+{
+	if (Width <= 0 || Height <= 0 || Pixels.Num() != Width * Height)
+	{
+		OutError = LOCTEXT("SDFFileExportInvalidPixels", "Generated SDF pixels are invalid.");
+		return false;
+	}
+
+	if (!IFileManager::Get().MakeDirectory(*OutputFolder, true))
+	{
+		OutError = FText::Format(LOCTEXT("SDFFileExportCreateFolderFailed", "Failed to create SDF export folder:\n{0}"), FText::FromString(OutputFolder));
+		return false;
+	}
+
+	IImageWrapperModule& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>("ImageWrapper");
+	TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
+	if (!ImageWrapper.IsValid())
+	{
+		OutError = LOCTEXT("SDFFileExportNoImageWrapper", "Failed to create a PNG encoder for SDF file export.");
+		return false;
+	}
+
+	const bool bWriteGrayscale = TextureSaveFormat == ESDFOutputFormat::Monopolar && !bForceRGBA16F;
+	bool bEncoded = false;
+	if (bWriteGrayscale)
+	{
+		TArray<uint16> GrayPixels;
+		GrayPixels.SetNumUninitialized(Pixels.Num());
+		for (int32 Index = 0; Index < Pixels.Num(); ++Index)
+		{
+			GrayPixels[Index] = Float16ChannelToPng16(Pixels[Index].R);
+		}
+
+		bEncoded = ImageWrapper->SetRaw(
+			GrayPixels.GetData(),
+			GrayPixels.Num() * sizeof(uint16),
+			Width,
+			Height,
+			ERGBFormat::Gray,
+			16);
+	}
+	else
+	{
+		TArray<uint16> RgbaPixels;
+		RgbaPixels.SetNumUninitialized(Pixels.Num() * 4);
+		for (int32 Index = 0; Index < Pixels.Num(); ++Index)
+		{
+			const int32 BaseIndex = Index * 4;
+			RgbaPixels[BaseIndex + 0] = Float16ChannelToPng16(Pixels[Index].R);
+			RgbaPixels[BaseIndex + 1] = Float16ChannelToPng16(Pixels[Index].G);
+			RgbaPixels[BaseIndex + 2] = Float16ChannelToPng16(Pixels[Index].B);
+			RgbaPixels[BaseIndex + 3] = Float16ChannelToPng16(Pixels[Index].A);
+		}
+
+		bEncoded = ImageWrapper->SetRaw(
+			RgbaPixels.GetData(),
+			RgbaPixels.Num() * sizeof(uint16),
+			Width,
+			Height,
+			ERGBFormat::RGBA,
+			16);
+	}
+
+	if (!bEncoded)
+	{
+		OutError = LOCTEXT("SDFFileExportEncodeFailed", "Failed to encode the generated SDF as PNG.");
+		return false;
+	}
+
+	const TArray64<uint8> PngData = ImageWrapper->GetCompressed();
+	OutSavedPath = MakeUniqueSDFExportFilePath(OutputFolder, OutputTextureName);
+	if (PngData.Num() == 0 || !FFileHelper::SaveArrayToFile(PngData, *OutSavedPath))
+	{
+		OutError = FText::Format(LOCTEXT("SDFFileExportSaveFailed", "Failed to save SDF PNG:\n{0}"), FText::FromString(OutSavedPath));
+		return false;
 	}
 
 	return true;
@@ -424,6 +557,16 @@ void AutoBuildIslandMirrorPairs(
 
 void UQuickSDFPaintTool::GenerateSDF()
 {
+	GenerateSDFInternal(true, false);
+}
+
+void UQuickSDFPaintTool::GenerateSDFToFile()
+{
+	GenerateSDFInternal(false, true);
+}
+
+void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFileExport)
+{
 	if (!Properties)
 	{
 		return;
@@ -453,6 +596,17 @@ void UQuickSDFPaintTool::GenerateSDF()
 	}
 	const TArray<int32> ProcessableIndices = CollectProcessableMaskIndices(*Asset, bFrontHalfAngles);
 	if (ProcessableIndices.Num() == 0)
+	{
+		return;
+	}
+
+	FString SDFFileOutputFolder;
+	if (bPromptForFileExport && !PromptForSDFFileExportFolder(SDFFileOutputFolder))
+	{
+		return;
+	}
+	const bool bExportFile = !SDFFileOutputFolder.IsEmpty();
+	if (!bSaveAsset && !bExportFile)
 	{
 		return;
 	}
@@ -642,6 +796,35 @@ void UQuickSDFPaintTool::GenerateSDF()
 			*ObjectTools::SanitizeObjectName(AssetName),
 			*ObjectTools::SanitizeObjectName(SlotName));
 	}
+
+	if (bExportFile)
+	{
+		FString SavedPath;
+		FText FileSaveError;
+		if (SaveSDFPixelsToPngFile(
+			FinalPixels,
+			OrigW,
+			OrigH,
+			TextureSaveFormat,
+			bForceRGBA16F,
+			SDFFileOutputFolder,
+			OutputTextureName,
+			SavedPath,
+			FileSaveError))
+		{
+			FPlatformProcess::ExploreFolder(*SDFFileOutputFolder);
+		}
+		else if (!FileSaveError.IsEmpty())
+		{
+			FMessageDialog::Open(EAppMsgType::Ok, FileSaveError);
+		}
+	}
+
+	if (!bSaveAsset)
+	{
+		return;
+	}
+
 	UTexture2D* FinalTexture = Subsystem->CreateSDFTexture(FinalPixels, OrigW, OrigH, Properties->SDFOutputFolder, OutputTextureName, TextureSaveFormat, Properties->bOverwriteExistingSDF, &SaveError, bForceRGBA16F);
 	if (FinalTexture)
 	{
