@@ -28,6 +28,14 @@ enum class ESDFOutputFormat : uint8
 };
 
 UENUM(BlueprintType)
+enum class EQuickSDFThresholdMapOutputMode : uint8
+{
+	Native UMETA(DisplayName = "RGBA"),
+	Grayscale UMETA(DisplayName = "Grayscale"),
+	LilToonCompatible UMETA(DisplayName = "liltoon")
+};
+
+UENUM(BlueprintType)
 enum class EQuickSDFClipDirection : uint8
 {
 	Auto UMETA(DisplayName = "Auto"),

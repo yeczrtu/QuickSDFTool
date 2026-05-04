@@ -822,6 +822,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 	AddPropertyIfValid(OutputCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SDFOutputFolder)));
 	AddPropertyIfValid(OutputCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SDFTextureName)));
 	AddPropertyIfValid(OutputCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bOverwriteExistingSDF)));
+	AddPropertyIfValid(OutputCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SDFOutputFormat)));
 
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, Resolution)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, UVChannel)));

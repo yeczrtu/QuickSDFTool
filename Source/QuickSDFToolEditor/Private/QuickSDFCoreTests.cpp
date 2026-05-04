@@ -1,6 +1,7 @@
 #include "QuickSDFAsset.h"
 #include "QuickSDFMaskImportModel.h"
 #include "QuickSDFPaintToolPrivate.h"
+#include "QuickSDFToolProperties.h"
 #include "QuickSDFTimelineStatus.h"
 #include "SDFProcessor.h"
 
@@ -196,6 +197,45 @@ bool FQuickSDFIslandMirrorApplyTest::RunTest(const FString& Parameters)
 	const TArray<FFloat16Color> SelfPixels = FSDFProcessor::DownscaleAndConvert({ SelfField[0] }, 1, 1, 1);
 	TestTrue(TEXT("Final self island G is horizontally flipped at the first pixel"), FMath::IsNearlyEqual(SelfPixels[0].G.GetFloat(), 0.4f, 0.001f));
 	TestEqual(TEXT("Final self island A remains unused for monopolar output"), SelfPixels[0].A.GetFloat(), 1.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FQuickSDFOutputFormatConversionTest,
+	"QuickSDFTool.Core.OutputFormatConversion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FQuickSDFOutputFormatConversionTest::RunTest(const FString& Parameters)
+{
+	UQuickSDFToolProperties* DefaultProperties = NewObject<UQuickSDFToolProperties>();
+	TestNotNull(TEXT("Default properties can be created"), DefaultProperties);
+	TestEqual(
+		TEXT("Default SDF output format keeps legacy native output"),
+		static_cast<uint8>(DefaultProperties->SDFOutputFormat),
+		static_cast<uint8>(EQuickSDFThresholdMapOutputMode::Native));
+
+	const TArray<FVector4f> Field = { FVector4f(0.25f, 0.5f, 0.75f, 1.0f) };
+	const TArray<FFloat16Color> LilToonInternalY = FSDFProcessor::DownscaleAndConvertToLilToon(
+		Field,
+		1,
+		1,
+		1,
+		EQuickSDFLilToonLeftChannelSource::InternalY);
+	TestEqual(TEXT("LilToon conversion writes right SDF to R"), LilToonInternalY[0].R.GetFloat(), 0.25f);
+	TestEqual(TEXT("LilToon conversion writes left SDF from internal Y to G"), LilToonInternalY[0].G.GetFloat(), 0.5f);
+	TestEqual(TEXT("LilToon conversion disables normal-shadow blend in B"), LilToonInternalY[0].B.GetFloat(), 0.0f);
+	TestEqual(TEXT("LilToon conversion writes full strength to A"), LilToonInternalY[0].A.GetFloat(), 1.0f);
+
+	const TArray<FFloat16Color> LilToonInternalW = FSDFProcessor::DownscaleAndConvertToLilToon(
+		Field,
+		1,
+		1,
+		1,
+		EQuickSDFLilToonLeftChannelSource::InternalW);
+	TestEqual(TEXT("Island mirror left SDF uses internal W"), LilToonInternalW[0].G.GetFloat(), 1.0f);
+
+	const TArray<FFloat16Color> NativePixels = FSDFProcessor::DownscaleAndConvert(Field, 1, 1, 1);
+	TestEqual(TEXT("Grayscale output source remains native R"), NativePixels[0].R.GetFloat(), LilToonInternalY[0].R.GetFloat());
 	return true;
 }
 

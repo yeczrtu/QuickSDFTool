@@ -598,7 +598,37 @@ void UQuickSDFPaintTool::GenerateSDF()
 		return;
 	}
 
-	TArray<FFloat16Color> FinalPixels = FSDFProcessor::DownscaleAndConvert(CombinedField, HighW, HighH, Upscale);
+	const EQuickSDFThresholdMapOutputMode OutputMode = Properties->SDFOutputFormat;
+	ESDFOutputFormat TextureSaveFormat = EffectiveFormat;
+	bool bForceRGBA16F = bIslandChannelSymmetry;
+	bool bSupportsGeneratedSDFPreview = true;
+	TArray<FFloat16Color> FinalPixels;
+	if (OutputMode == EQuickSDFThresholdMapOutputMode::LilToonCompatible)
+	{
+		EQuickSDFLilToonLeftChannelSource LeftChannelSource = EQuickSDFLilToonLeftChannelSource::InternalY;
+		if (bIslandChannelSymmetry)
+		{
+			LeftChannelSource = EQuickSDFLilToonLeftChannelSource::InternalW;
+		}
+		else if (Properties->UsesWholeTextureSymmetry())
+		{
+			LeftChannelSource = EQuickSDFLilToonLeftChannelSource::MirroredX;
+		}
+
+		FinalPixels = FSDFProcessor::DownscaleAndConvertToLilToon(CombinedField, HighW, HighH, Upscale, LeftChannelSource);
+		TextureSaveFormat = ESDFOutputFormat::Bipolar;
+		bForceRGBA16F = true;
+		bSupportsGeneratedSDFPreview = false;
+	}
+	else
+	{
+		FinalPixels = FSDFProcessor::DownscaleAndConvert(CombinedField, HighW, HighH, Upscale);
+		if (OutputMode == EQuickSDFThresholdMapOutputMode::Grayscale)
+		{
+			TextureSaveFormat = ESDFOutputFormat::Monopolar;
+			bForceRGBA16F = false;
+		}
+	}
 	FText SaveError;
 	FString OutputTextureName = Properties->SDFTextureName;
 	if (const FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet())
@@ -612,7 +642,7 @@ void UQuickSDFPaintTool::GenerateSDF()
 			*ObjectTools::SanitizeObjectName(AssetName),
 			*ObjectTools::SanitizeObjectName(SlotName));
 	}
-	UTexture2D* FinalTexture = Subsystem->CreateSDFTexture(FinalPixels, OrigW, OrigH, Properties->SDFOutputFolder, OutputTextureName, EffectiveFormat, Properties->bOverwriteExistingSDF, &SaveError, bIslandChannelSymmetry);
+	UTexture2D* FinalTexture = Subsystem->CreateSDFTexture(FinalPixels, OrigW, OrigH, Properties->SDFOutputFolder, OutputTextureName, TextureSaveFormat, Properties->bOverwriteExistingSDF, &SaveError, bForceRGBA16F);
 	if (FinalTexture)
 	{
 		const EQuickSDFMaterialPreviewMode PreviousPreviewMode = Properties->MaterialPreviewMode;
@@ -627,13 +657,21 @@ void UQuickSDFPaintTool::GenerateSDF()
 		Asset->SyncLegacyFromActiveTextureSet();
 		Asset->MarkPackageDirty();
 
-		if (Properties->bAutoPreviewGeneratedSDF)
+		if (Properties->bAutoPreviewGeneratedSDF && bSupportsGeneratedSDFPreview)
 		{
 			Properties->Modify();
 			Properties->MaterialPreviewMode = EQuickSDFMaterialPreviewMode::GeneratedSDF;
 		}
+		else if (!bSupportsGeneratedSDFPreview && Properties->MaterialPreviewMode == EQuickSDFMaterialPreviewMode::GeneratedSDF)
+		{
+			Properties->Modify();
+			Properties->MaterialPreviewMode = EQuickSDFMaterialPreviewMode::Mask;
+		}
 		RefreshPreviewMaterial();
-		ShowGeneratedSDFPreviewNotification(PreviousPreviewMode, FinalTexture);
+		if (bSupportsGeneratedSDFPreview)
+		{
+			ShowGeneratedSDFPreviewNotification(PreviousPreviewMode, FinalTexture);
+		}
 		if (GEditor)
 		{
 			GEditor->RedrawAllViewports(false);

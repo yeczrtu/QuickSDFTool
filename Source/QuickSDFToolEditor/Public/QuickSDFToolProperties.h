@@ -188,6 +188,9 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Overwrite Existing SDF Texture"))
 	bool bOverwriteExistingSDF = false;
 
+	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "SDF Output Format"))
+	EQuickSDFThresholdMapOutputMode SDFOutputFormat = EQuickSDFThresholdMapOutputMode::Native;
+
 	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Mask Export Folder", ContentDir))
 	FString MaskExportFolder = TEXT("/Game/QuickSDF_Exports");
 

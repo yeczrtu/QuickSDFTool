@@ -1,5 +1,35 @@
 #include "SDFProcessor.h"
 
+namespace
+{
+FVector4f DownscaleSampleCombinedField(const TArray<FVector4f>& CombinedField, int32 HighW, int32 HighH, int32 Factor, float CenterX, float CenterY)
+{
+	const int32 Radius = FMath::Max(1, FMath::CeilToInt(Factor * 1.5f));
+	FVector4f Sum(0.0f, 0.0f, 0.0f, 0.0f);
+	float WeightSum = 0.0f;
+
+	for (int32 Dy = -Radius; Dy <= Radius; ++Dy)
+	{
+		const int32 Hy = FMath::Clamp(FMath::RoundToInt(CenterY) + Dy, 0, HighH - 1);
+		const float DistY = FMath::Abs(CenterY - (Hy + 0.5f));
+		const float Wy = FMath::Max(0.0f, 1.0f - (DistY / (Radius + 0.5f)));
+
+		for (int32 Dx = -Radius; Dx <= Radius; ++Dx)
+		{
+			const int32 Hx = FMath::Clamp(FMath::RoundToInt(CenterX) + Dx, 0, HighW - 1);
+			const float DistX = FMath::Abs(CenterX - (Hx + 0.5f));
+			const float Wx = FMath::Max(0.0f, 1.0f - (DistX / (Radius + 0.5f)));
+			const float Weight = Wx * Wy;
+
+			Sum += CombinedField[Hy * HighW + Hx] * Weight;
+			WeightSum += Weight;
+		}
+	}
+
+	return Sum / FMath::Max(WeightSum, 1e-6f);
+}
+}
+
 TArray<uint8> FSDFProcessor::ConvertToGrayscale(const TArray<FColor>& Src)
 {
 	TArray<uint8> Dst;
@@ -269,6 +299,45 @@ TArray<FFloat16Color> FSDFProcessor::DownscaleAndConvert(const TArray<FVector4f>
 			Out[y * OrigW + x] = Color;
 		}
 	}
+	return Out;
+}
+
+TArray<FFloat16Color> FSDFProcessor::DownscaleAndConvertToLilToon(const TArray<FVector4f>& CombinedField, int32 HighW, int32 HighH, int32 Factor, EQuickSDFLilToonLeftChannelSource LeftChannelSource)
+{
+	const int32 SafeFactor = FMath::Max(1, Factor);
+	const int32 OrigW = HighW / SafeFactor;
+	const int32 OrigH = HighH / SafeFactor;
+	TArray<FFloat16Color> Out;
+	Out.SetNumUninitialized(OrigW * OrigH);
+
+	for (int32 Y = 0; Y < OrigH; ++Y)
+	{
+		for (int32 X = 0; X < OrigW; ++X)
+		{
+			const float CenterX = (X + 0.5f) * SafeFactor;
+			const float CenterY = (Y + 0.5f) * SafeFactor;
+			const FVector4f RightSample = DownscaleSampleCombinedField(CombinedField, HighW, HighH, SafeFactor, CenterX, CenterY);
+
+			float LeftValue = RightSample.Y;
+			if (LeftChannelSource == EQuickSDFLilToonLeftChannelSource::InternalW)
+			{
+				LeftValue = RightSample.W;
+			}
+			else if (LeftChannelSource == EQuickSDFLilToonLeftChannelSource::MirroredX)
+			{
+				const float MirroredCenterX = static_cast<float>(HighW) - CenterX;
+				LeftValue = DownscaleSampleCombinedField(CombinedField, HighW, HighH, SafeFactor, MirroredCenterX, CenterY).X;
+			}
+
+			FFloat16Color Color;
+			Color.R = FMath::Clamp(RightSample.X, 0.0f, 1.0f);
+			Color.G = FMath::Clamp(LeftValue, 0.0f, 1.0f);
+			Color.B = 0.0f;
+			Color.A = 1.0f;
+			Out[Y * OrigW + X] = Color;
+		}
+	}
+
 	return Out;
 }
 

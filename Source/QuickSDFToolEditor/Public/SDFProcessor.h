@@ -9,6 +9,13 @@ struct FMaskData
 	bool bIsOpposite;
 };
 
+enum class EQuickSDFLilToonLeftChannelSource : uint8
+{
+	InternalY,
+	InternalW,
+	MirroredX
+};
+
 class FSDFProcessor
 {
 public:
@@ -17,6 +24,7 @@ public:
 	static TArray<double> GenerateSDF(const TArray<uint8>& BinaryImg, int32 W, int32 H);
 	static void CombineSDFs(const TArray<FMaskData>& Masks, TArray<FVector4f>& OutCombined, int32 W, int32 H, ESDFOutputFormat Format, bool bSymmetry);
 	static TArray<FFloat16Color> DownscaleAndConvert(const TArray<FVector4f>& CombinedField, int32 HighW, int32 HighH, int32 Factor);
+	static TArray<FFloat16Color> DownscaleAndConvertToLilToon(const TArray<FVector4f>& CombinedField, int32 HighW, int32 HighH, int32 Factor, EQuickSDFLilToonLeftChannelSource LeftChannelSource);
 
 private:
 	static void Compute1DDT(const double* f, double* d, int32 n, TArray<int32>& v, TArray<double>& z);
