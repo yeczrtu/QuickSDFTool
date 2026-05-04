@@ -300,6 +300,8 @@ public:
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Convert Intermediate SDF"))
 	void ConvertIntermediateSDF();
 
+	void ConvertIntermediateSDF(EQuickSDFThresholdMapOutputMode OutputMode);
+
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Validate Monotonic Guard"))
 	void ValidateMonotonicGuard();
 

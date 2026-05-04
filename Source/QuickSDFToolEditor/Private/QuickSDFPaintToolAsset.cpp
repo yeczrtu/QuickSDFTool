@@ -1105,6 +1105,16 @@ void UQuickSDFPaintTool::ConvertIntermediateSDF()
 		return;
 	}
 
+	ConvertIntermediateSDF(Properties->SDFOutputFormat);
+}
+
+void UQuickSDFPaintTool::ConvertIntermediateSDF(EQuickSDFThresholdMapOutputMode OutputMode)
+{
+	if (!Properties)
+	{
+		return;
+	}
+
 	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
 	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
 	FQuickSDFTextureSetData* ActiveSet = Asset ? Asset->GetActiveTextureSet() : nullptr;
@@ -1159,7 +1169,7 @@ void UQuickSDFPaintTool::ConvertIntermediateSDF()
 		CanonicalPixels,
 		IntermediateResolution,
 		ActiveSet->IntermediateMetadata,
-		Properties->SDFOutputFormat,
+		OutputMode,
 		FinalPixels,
 		TextureSaveFormat,
 		bForceRGBA16F,

@@ -5,6 +5,8 @@
 #include "DetailLayoutBuilder.h"
 #include "DetailWidgetRow.h"
 #include "Editor.h"
+#include "Framework/Commands/UIAction.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "GameFramework/Actor.h"
 #include "InputCoreTypes.h"
 #include "PropertyHandle.h"
@@ -19,6 +21,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Input/SComboButton.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSpacer.h"
@@ -110,6 +113,79 @@ bool HasActiveIntermediateSDF()
 	const UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
 	const FQuickSDFTextureSetData* TextureSet = Asset ? Asset->GetActiveTextureSet() : nullptr;
 	return TextureSet && TextureSet->IntermediateSDFTexture != nullptr;
+}
+
+FText GetIntermediateSDFConvertTooltip()
+{
+	return HasActiveIntermediateSDF()
+		? LOCTEXT("ConvertIntermediateSDFDropdownTooltip", "Convert the saved intermediate SDF to a selected output format without regenerating SDF data.")
+		: LOCTEXT("ConvertIntermediateSDFDropdownDisabledTooltip", "Generate SDF first to create an intermediate SDF.");
+}
+
+TSharedRef<SWidget> MakeIntermediateSDFConvertMenu(TWeakObjectPtr<UQuickSDFToolProperties> WeakProperties)
+{
+	FMenuBuilder MenuBuilder(true, nullptr);
+	const auto AddConvertEntry = [&MenuBuilder, WeakProperties](
+		EQuickSDFThresholdMapOutputMode OutputMode,
+		const FText& Label,
+		const FText& Tooltip)
+	{
+		MenuBuilder.AddMenuEntry(
+			Label,
+			Tooltip,
+			FSlateIcon(),
+			FUIAction(
+				FExecuteAction::CreateLambda([WeakProperties, OutputMode]()
+				{
+					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+					{
+						Props->ConvertIntermediateSDF(OutputMode);
+					}
+				}),
+				FCanExecuteAction::CreateLambda([]()
+				{
+					return HasActiveIntermediateSDF();
+				})));
+	};
+
+	AddConvertEntry(
+		EQuickSDFThresholdMapOutputMode::Native,
+		LOCTEXT("ConvertIntermediateSDFRGBA", "RGBA"),
+		LOCTEXT("ConvertIntermediateSDFRGBATooltip", "Convert the intermediate SDF to RGBA output."));
+	AddConvertEntry(
+		EQuickSDFThresholdMapOutputMode::Grayscale,
+		LOCTEXT("ConvertIntermediateSDFGrayscale", "Grayscale"),
+		LOCTEXT("ConvertIntermediateSDFGrayscaleTooltip", "Convert the intermediate SDF to grayscale output."));
+	AddConvertEntry(
+		EQuickSDFThresholdMapOutputMode::LilToonCompatible,
+		LOCTEXT("ConvertIntermediateSDFLilToon", "liltoon"),
+		LOCTEXT("ConvertIntermediateSDFLilToonTooltip", "Convert the intermediate SDF to liltoon-compatible output."));
+
+	return MenuBuilder.MakeWidget();
+}
+
+TSharedRef<SWidget> MakeIntermediateSDFConvertDropdown(TWeakObjectPtr<UQuickSDFToolProperties> WeakProperties)
+{
+	return SNew(SComboButton)
+		.IsEnabled_Lambda([]()
+		{
+			return HasActiveIntermediateSDF();
+		})
+		.ToolTipText_Lambda([]()
+		{
+			return GetIntermediateSDFConvertTooltip();
+		})
+		.OnGetMenuContent_Lambda([WeakProperties]()
+		{
+			return MakeIntermediateSDFConvertMenu(WeakProperties);
+		})
+		.ContentPadding(FMargin(6.0f, 2.0f))
+		.ButtonContent()
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("ConvertIntermediateSDFDropdownButton", "Convert From Intermediate..."))
+			.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+		];
 }
 
 void AddPropertyIfValid(IDetailCategoryBuilder& Category, const TSharedPtr<IPropertyHandle>& PropertyHandle)
@@ -754,7 +830,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 
 	AddPropertyIfValid(QuickCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, QualityPreset)));
 
-	QuickCategory.AddCustomRow(LOCTEXT("QuickActionsFilter", "Create Threshold Map Generate SDF File Convert Intermediate Import Assets Export Assets Export Files Overwrite Source Fill White Fill Black"))
+	QuickCategory.AddCustomRow(LOCTEXT("QuickActionsFilter", "Create Threshold Map Generate SDF File Import Assets Export Assets Export Files Overwrite Source Fill White Fill Black"))
 	.WholeRowContent()
 	[
 		SNew(SVerticalBox)
@@ -810,30 +886,6 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 							return FReply::Handled();
 						}))
 				]
-			]
-		]
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(0.0f, 2.0f)
-		[
-			SNew(SBox)
-			.IsEnabled_Lambda([]()
-			{
-				return HasActiveIntermediateSDF();
-			})
-			[
-				QuickSDFToolUI::MakeIconLabelButton(
-					"QuickSDF.Action.CreateThresholdMap",
-					LOCTEXT("ConvertIntermediateSDFButton", "Convert Intermediate SDF"),
-					LOCTEXT("ConvertIntermediateSDFTooltip", "Convert the saved intermediate SDF to the selected output format without regenerating SDF data."),
-					FOnClicked::CreateLambda([WeakProperties]()
-					{
-						if (UQuickSDFToolProperties* Props = WeakProperties.Get())
-						{
-							Props->ConvertIntermediateSDF();
-						}
-						return FReply::Handled();
-					}))
 			]
 		]
 		+ SVerticalBox::Slot()
@@ -983,6 +1035,18 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 	AddPropertyIfValid(OutputCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SDFTextureName)));
 	AddPropertyIfValid(OutputCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bOverwriteExistingSDF)));
 	AddPropertyIfValid(OutputCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SDFOutputFormat)));
+	OutputCategory.AddCustomRow(LOCTEXT("IntermediateSDFConvertFilter", "Intermediate SDF Convert From Intermediate RGBA Grayscale liltoon"))
+	.NameContent()
+	[
+		SNew(STextBlock)
+		.Text(LOCTEXT("IntermediateSDFConvertLabel", "Intermediate SDF"))
+		.Font(FAppStyle::GetFontStyle("PropertyWindow.NormalFont"))
+	]
+	.ValueContent()
+	.MinDesiredWidth(180.0f)
+	[
+		MakeIntermediateSDFConvertDropdown(WeakProperties)
+	];
 
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, Resolution)));
 	AddPropertyIfValid(AdvancedCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, UVChannel)));

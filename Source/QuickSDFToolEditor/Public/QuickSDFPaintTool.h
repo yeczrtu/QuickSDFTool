@@ -123,6 +123,7 @@ public:
 	void GenerateSDF();
 	void GenerateSDFToFile();
 	void ConvertIntermediateSDF();
+	void ConvertIntermediateSDF(EQuickSDFThresholdMapOutputMode OutputMode);
 	void CreateQuickThresholdMap();
 	void ImportEditedMasks();
 	bool ImportEditedMasksFromTextures(const TArray<UTexture2D*>& InTextures);
