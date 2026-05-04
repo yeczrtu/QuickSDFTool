@@ -634,6 +634,36 @@ bool UQuickSDFPaintTool::BuildProjectedPaintParams(
 	OutParams.Color = SurfaceBrushParams.Color;
 	OutParams.PaintChartID = AnchorSample->PaintChartID;
 
+	if (!BuildProjectedStrokePoints(Samples, OutParams, OutStrokePoints))
+	{
+		return false;
+	}
+
+	double MaxStrokeDepth = 0.0;
+	for (const FQuickSDFProjectedStrokePoint& StrokePoint : OutStrokePoints)
+	{
+		MaxStrokeDepth = FMath::Max(
+			MaxStrokeDepth,
+			FMath::Abs(FVector3d::DotProduct(StrokePoint.WorldPosition - OutParams.ProjectionOrigin, OutParams.ProjectionNormal)));
+	}
+	OutParams.Depth = FMath::Max(
+		SurfaceBrushParams.Depth * 2.0f,
+		static_cast<float>(MaxStrokeDepth) + SurfaceBrushParams.Radius + SurfaceBrushParams.AntialiasWidth);
+
+	return true;
+}
+
+bool UQuickSDFPaintTool::BuildProjectedStrokePoints(
+	const TArray<FQuickSDFStrokeSample>& Samples,
+	const FQuickSDFProjectedPaintParams& PaintParams,
+	TArray<FQuickSDFProjectedStrokePoint>& OutStrokePoints) const
+{
+	OutStrokePoints.Reset();
+	if (Samples.Num() == 0)
+	{
+		return false;
+	}
+
 	OutStrokePoints.Reserve(Samples.Num());
 	for (const FQuickSDFStrokeSample& Sample : Samples)
 	{
@@ -648,16 +678,16 @@ bool UQuickSDFPaintTool::BuildProjectedPaintParams(
 			continue;
 		}
 
-		const FVector3d Delta = Sample.WorldPos - OutParams.ProjectionOrigin;
+		const FVector3d Delta = Sample.WorldPos - PaintParams.ProjectionOrigin;
 		FQuickSDFProjectedStrokePoint& StrokePoint = OutStrokePoints.AddDefaulted_GetRef();
 		StrokePoint.WorldPosition = Sample.WorldPos;
 		StrokePoint.ProjectedPosition = FVector2f(
-			static_cast<float>(FVector3d::DotProduct(Delta, OutParams.ProjectionAxisX)),
-			static_cast<float>(FVector3d::DotProduct(Delta, OutParams.ProjectionAxisY)));
+			static_cast<float>(FVector3d::DotProduct(Delta, PaintParams.ProjectionAxisX)),
+			static_cast<float>(FVector3d::DotProduct(Delta, PaintParams.ProjectionAxisY)));
 		StrokePoint.Normal = -Sample.RayDirection.GetSafeNormal();
 		if (StrokePoint.Normal.IsNearlyZero())
 		{
-			StrokePoint.Normal = OutParams.ProjectionNormal;
+			StrokePoint.Normal = PaintParams.ProjectionNormal;
 		}
 		StrokePoint.Pressure = 1.0f;
 	}
@@ -690,7 +720,7 @@ bool UQuickSDFPaintTool::GatherProjectedPaintTriangles(
 	const FTransform ComponentTransform = CurrentComponent->GetComponentTransform();
 	const double QueryRadiusWorld = FMath::Max(
 		static_cast<double>(PaintParams.Radius + PaintParams.AntialiasWidth),
-		static_cast<double>(PaintParams.Depth));
+		static_cast<double>(PaintParams.Radius) * 2.0);
 	const double LocalQueryRadius = GetConservativeLocalRadius(ComponentTransform, QueryRadiusWorld);
 
 	FVector3d LocalMin(TNumericLimits<double>::Max(), TNumericLimits<double>::Max(), TNumericLimits<double>::Max());
@@ -844,8 +874,31 @@ bool UQuickSDFPaintTool::PaintProjectedSurfaceStrokeToRenderTarget(UTextureRende
 		return false;
 	}
 
+	FQuickSDFProjectedPaintParams StablePaintParams;
+	TArray<FQuickSDFProjectedStrokePoint> StableStrokePoints;
+	if (!BuildProjectedPaintParams(CleanSamples, RenderTarget, StablePaintParams, StableStrokePoints))
+	{
+		return false;
+	}
+
 	const int32 MaxStrokePoints = QuickSDFProjectedPaintRendering::MaxProjectedPaintStrokePoints;
-	const double MaxChunkLength = FMath::Max(static_cast<double>(GetEffectiveBrushRadius()) * 6.0, 0.001);
+	const double MaxChunkLength = FMath::Max(static_cast<double>(GetEffectiveBrushRadius()) * 48.0, 0.001);
+	UTextureRenderTarget2D* CoverageRenderTarget = GetOrCreateProjectedPaintCoverageRenderTarget(RenderTarget->SizeX, RenderTarget->SizeY);
+	if (!CoverageRenderTarget)
+	{
+		return false;
+	}
+
+	FTextureRenderTargetResource* CoverageResource = CoverageRenderTarget->GameThread_GetRenderTargetResource();
+	if (!CoverageResource)
+	{
+		return false;
+	}
+
+	const int32 CoverageScale = FMath::Max(CoverageRenderTarget->SizeX / FMath::Max(RenderTarget->SizeX, 1), 1);
+	FCanvas CoverageCanvas(CoverageResource, nullptr, GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(), GMaxRHIFeatureLevel);
+	CoverageCanvas.Clear(FLinearColor::Black);
+
 	FIntRect BatchDirtyRect;
 	bool bHasBatchDirtyRect = false;
 	bool bDrewAnyChunk = false;
@@ -874,8 +927,15 @@ bool UQuickSDFPaintTool::PaintProjectedSurfaceStrokeToRenderTarget(UTextureRende
 			ChunkSamples.Add(CleanSamples[Index]);
 		}
 
+		TArray<FQuickSDFProjectedStrokePoint> ChunkStrokePoints;
+		if (!BuildProjectedStrokePoints(ChunkSamples, StablePaintParams, ChunkStrokePoints))
+		{
+			StartIndex = EndIndex + 1;
+			continue;
+		}
+
 		FIntRect ChunkDirtyRect;
-		if (PaintProjectedSurfaceStrokeChunkToRenderTarget(RenderTarget, ChunkSamples, &ChunkDirtyRect) &&
+		if (DrawProjectedSurfaceStrokeChunkCoverage(CoverageCanvas, RenderTarget, ChunkSamples, StablePaintParams, ChunkStrokePoints, CoverageScale, &ChunkDirtyRect) &&
 			ChunkDirtyRect.Width() > 0 && ChunkDirtyRect.Height() > 0)
 		{
 			BatchDirtyRect = bHasBatchDirtyRect ? UnionRects(BatchDirtyRect, ChunkDirtyRect) : ChunkDirtyRect;
@@ -894,34 +954,51 @@ bool UQuickSDFPaintTool::PaintProjectedSurfaceStrokeToRenderTarget(UTextureRende
 		}
 	}
 
-	if (OutDirtyRect && bHasBatchDirtyRect)
+	if (!bDrewAnyChunk || !bHasBatchDirtyRect)
 	{
-		*OutDirtyRect = BatchDirtyRect;
+		return false;
 	}
-	return bDrewAnyChunk;
+
+	ENQUEUE_RENDER_COMMAND(UpdateQuickSDFProjectedPaintStrokeCoverageRTCommand)(
+		[CoverageResource](FRHICommandListImmediate& RHICmdList)
+		{
+			TransitionAndCopyTexture(RHICmdList, CoverageResource->GetRenderTargetTexture(), CoverageResource->TextureRHI, {});
+		});
+
+	return ResolveProjectedPaintCoverageToRenderTarget(RenderTarget, CoverageRenderTarget, StablePaintParams, BatchDirtyRect, OutDirtyRect);
 }
 
-bool UQuickSDFPaintTool::PaintProjectedSurfaceStrokeChunkToRenderTarget(UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect)
+bool UQuickSDFPaintTool::DrawProjectedSurfaceStrokeChunkCoverage(
+	FCanvas& CoverageCanvas,
+	UTextureRenderTarget2D* RenderTarget,
+	const TArray<FQuickSDFStrokeSample>& Samples,
+	const FQuickSDFProjectedPaintParams& PaintParams,
+	const TArray<FQuickSDFProjectedStrokePoint>& StrokePoints,
+	int32 CoverageScale,
+	FIntRect* OutDirtyRect)
 {
 	if (OutDirtyRect)
 	{
 		*OutDirtyRect = FIntRect();
 	}
-	if (!RenderTarget || Samples.Num() == 0)
+	if (!RenderTarget || Samples.Num() == 0 || StrokePoints.Num() == 0)
 	{
 		return false;
 	}
 
-	FQuickSDFProjectedPaintParams PaintParams;
-	TArray<FQuickSDFProjectedStrokePoint> StrokePoints;
-	if (!BuildProjectedPaintParams(Samples, RenderTarget, PaintParams, StrokePoints))
+	FQuickSDFProjectedPaintParams ChunkPaintParams = PaintParams;
+	for (const FQuickSDFStrokeSample& Sample : Samples)
 	{
-		return false;
+		if (Sample.PaintChartID != INDEX_NONE)
+		{
+			ChunkPaintParams.PaintChartID = Sample.PaintChartID;
+			break;
+		}
 	}
 
 	TArray<FQuickSDFProjectedPaintTriangle> PaintTriangles;
 	FIntRect DirtyRect;
-	if (!GatherProjectedPaintTriangles(Samples, PaintParams, RenderTarget, PaintTriangles, DirtyRect))
+	if (!GatherProjectedPaintTriangles(Samples, ChunkPaintParams, RenderTarget, PaintTriangles, DirtyRect))
 	{
 		return false;
 	}
@@ -932,46 +1009,32 @@ bool UQuickSDFPaintTool::PaintProjectedSurfaceStrokeChunkToRenderTarget(UTexture
 		return false;
 	}
 
-	UTextureRenderTarget2D* CoverageRenderTarget = GetOrCreateProjectedPaintCoverageRenderTarget(RenderTarget->SizeX, RenderTarget->SizeY);
-	if (!CoverageRenderTarget)
-	{
-		return false;
-	}
-
-	FTextureRenderTargetResource* CoverageResource = CoverageRenderTarget->GameThread_GetRenderTargetResource();
-	FTextureRenderTargetResource* TargetResource = RenderTarget->GameThread_GetRenderTargetResource();
-	if (!CoverageResource || !TargetResource)
-	{
-		return false;
-	}
-
-	const int32 CoverageScale = FMath::Max(CoverageRenderTarget->SizeX / FMath::Max(RenderTarget->SizeX, 1), 1);
 	TRefCountPtr<FQuickSDFProjectedPaintCoverageBatchedElementParameters> CoverageParameters(new FQuickSDFProjectedPaintCoverageBatchedElementParameters());
 	CoverageParameters->ShaderParams.ProjectionOrigin = FVector4f(
-		static_cast<float>(PaintParams.ProjectionOrigin.X),
-		static_cast<float>(PaintParams.ProjectionOrigin.Y),
-		static_cast<float>(PaintParams.ProjectionOrigin.Z),
+		static_cast<float>(ChunkPaintParams.ProjectionOrigin.X),
+		static_cast<float>(ChunkPaintParams.ProjectionOrigin.Y),
+		static_cast<float>(ChunkPaintParams.ProjectionOrigin.Z),
 		0.0f);
 	CoverageParameters->ShaderParams.ProjectionAxisX = FVector4f(
-		static_cast<float>(PaintParams.ProjectionAxisX.X),
-		static_cast<float>(PaintParams.ProjectionAxisX.Y),
-		static_cast<float>(PaintParams.ProjectionAxisX.Z),
+		static_cast<float>(ChunkPaintParams.ProjectionAxisX.X),
+		static_cast<float>(ChunkPaintParams.ProjectionAxisX.Y),
+		static_cast<float>(ChunkPaintParams.ProjectionAxisX.Z),
 		0.0f);
 	CoverageParameters->ShaderParams.ProjectionAxisY = FVector4f(
-		static_cast<float>(PaintParams.ProjectionAxisY.X),
-		static_cast<float>(PaintParams.ProjectionAxisY.Y),
-		static_cast<float>(PaintParams.ProjectionAxisY.Z),
+		static_cast<float>(ChunkPaintParams.ProjectionAxisY.X),
+		static_cast<float>(ChunkPaintParams.ProjectionAxisY.Y),
+		static_cast<float>(ChunkPaintParams.ProjectionAxisY.Z),
 		0.0f);
 	CoverageParameters->ShaderParams.ProjectionNormal = FVector4f(
-		static_cast<float>(PaintParams.ProjectionNormal.X),
-		static_cast<float>(PaintParams.ProjectionNormal.Y),
-		static_cast<float>(PaintParams.ProjectionNormal.Z),
+		static_cast<float>(ChunkPaintParams.ProjectionNormal.X),
+		static_cast<float>(ChunkPaintParams.ProjectionNormal.Y),
+		static_cast<float>(ChunkPaintParams.ProjectionNormal.Z),
 		0.0f);
-	CoverageParameters->ShaderParams.BrushRadius = PaintParams.Radius;
-	CoverageParameters->ShaderParams.BrushRadialFalloffRange = PaintParams.RadialFalloffRange;
-	CoverageParameters->ShaderParams.BrushDepth = PaintParams.Depth;
-	CoverageParameters->ShaderParams.BrushDepthFalloffRange = PaintParams.DepthFalloffRange;
-	CoverageParameters->ShaderParams.BrushAntialiasWidth = PaintParams.AntialiasWidth;
+	CoverageParameters->ShaderParams.BrushRadius = ChunkPaintParams.Radius;
+	CoverageParameters->ShaderParams.BrushRadialFalloffRange = ChunkPaintParams.RadialFalloffRange;
+	CoverageParameters->ShaderParams.BrushDepth = ChunkPaintParams.Depth;
+	CoverageParameters->ShaderParams.BrushDepthFalloffRange = ChunkPaintParams.DepthFalloffRange;
+	CoverageParameters->ShaderParams.BrushAntialiasWidth = ChunkPaintParams.AntialiasWidth;
 	CoverageParameters->ShaderParams.StrokePoints.Reserve(StrokePoints.Num());
 	for (const FQuickSDFProjectedStrokePoint& StrokePoint : StrokePoints)
 	{
@@ -982,8 +1045,6 @@ bool UQuickSDFPaintTool::PaintProjectedSurfaceStrokeChunkToRenderTarget(UTexture
 			StrokePoint.Pressure));
 	}
 
-	FCanvas CoverageCanvas(CoverageResource, nullptr, GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(), GMaxRHIFeatureLevel);
-	CoverageCanvas.Clear(FLinearColor::Black);
 	FBatchedElements* CoverageElements = CoverageCanvas.GetBatchedElements(FCanvas::ET_Triangle, CoverageParameters, nullptr, SE_BLEND_Opaque);
 	CoverageElements->AddReserveVertices(PaintTriangles.Num() * 3);
 	CoverageElements->AddReserveTriangles(PaintTriangles.Num(), nullptr, SE_BLEND_Opaque);
@@ -1009,14 +1070,45 @@ bool UQuickSDFPaintTool::PaintProjectedSurfaceStrokeChunkToRenderTarget(UTexture
 
 		CoverageElements->AddTriangle(V0, V1, V2, CoverageParameters, SE_BLEND_Opaque);
 	}
+
 	CoverageCanvas.Flush_GameThread(false);
 
-	ENQUEUE_RENDER_COMMAND(UpdateQuickSDFProjectedPaintCoverageRTCommand)(
-		[CoverageResource](FRHICommandListImmediate& RHICmdList)
-		{
-			TransitionAndCopyTexture(RHICmdList, CoverageResource->GetRenderTargetTexture(), CoverageResource->TextureRHI, {});
-		});
+	if (OutDirtyRect)
+	{
+		*OutDirtyRect = DirtyRect;
+	}
+	return true;
+}
 
+bool UQuickSDFPaintTool::ResolveProjectedPaintCoverageToRenderTarget(
+	UTextureRenderTarget2D* RenderTarget,
+	UTextureRenderTarget2D* CoverageRenderTarget,
+	const FQuickSDFProjectedPaintParams& PaintParams,
+	const FIntRect& DirtyRect,
+	FIntRect* OutDirtyRect)
+{
+	if (OutDirtyRect)
+	{
+		*OutDirtyRect = FIntRect();
+	}
+	if (!RenderTarget || !CoverageRenderTarget)
+	{
+		return false;
+	}
+
+	const FIntRect ClampedDirtyRect = ClampDirtyRectToRenderTarget(DirtyRect, RenderTarget);
+	if (ClampedDirtyRect.Width() <= 0 || ClampedDirtyRect.Height() <= 0)
+	{
+		return false;
+	}
+
+	FTextureRenderTargetResource* TargetResource = RenderTarget->GameThread_GetRenderTargetResource();
+	if (!TargetResource)
+	{
+		return false;
+	}
+
+	const int32 CoverageScale = FMath::Max(CoverageRenderTarget->SizeX / FMath::Max(RenderTarget->SizeX, 1), 1);
 	TRefCountPtr<FQuickSDFProjectedPaintResolveBatchedElementParameters> ResolveParameters(new FQuickSDFProjectedPaintResolveBatchedElementParameters());
 	ResolveParameters->ShaderParams.BrushColor = PaintParams.Color;
 	ResolveParameters->ShaderParams.BrushStrength = PaintParams.Strength;
@@ -1037,29 +1129,29 @@ bool UQuickSDFPaintTool::PaintProjectedSurfaceStrokeChunkToRenderTarget(UTexture
 
 	const FVector2D TargetSize(RenderTarget->SizeX, RenderTarget->SizeY);
 	const FVector2D MinUV(
-		static_cast<double>(DirtyRect.Min.X) / TargetSize.X,
-		static_cast<double>(DirtyRect.Min.Y) / TargetSize.Y);
+		static_cast<double>(ClampedDirtyRect.Min.X) / TargetSize.X,
+		static_cast<double>(ClampedDirtyRect.Min.Y) / TargetSize.Y);
 	const FVector2D MaxUV(
-		static_cast<double>(DirtyRect.Max.X) / TargetSize.X,
-		static_cast<double>(DirtyRect.Max.Y) / TargetSize.Y);
+		static_cast<double>(ClampedDirtyRect.Max.X) / TargetSize.X,
+		static_cast<double>(ClampedDirtyRect.Max.Y) / TargetSize.Y);
 	const FHitProxyId ResolveHitProxyId = ResolveCanvas.GetHitProxyId();
 	const int32 R0 = ResolveElements->AddVertex(
-		FVector4(DirtyRect.Min.X, DirtyRect.Min.Y, 0.0, 1.0),
+		FVector4(ClampedDirtyRect.Min.X, ClampedDirtyRect.Min.Y, 0.0, 1.0),
 		MinUV,
 		FLinearColor::White,
 		ResolveHitProxyId);
 	const int32 R1 = ResolveElements->AddVertex(
-		FVector4(DirtyRect.Max.X, DirtyRect.Min.Y, 0.0, 1.0),
+		FVector4(ClampedDirtyRect.Max.X, ClampedDirtyRect.Min.Y, 0.0, 1.0),
 		FVector2D(MaxUV.X, MinUV.Y),
 		FLinearColor::White,
 		ResolveHitProxyId);
 	const int32 R2 = ResolveElements->AddVertex(
-		FVector4(DirtyRect.Max.X, DirtyRect.Max.Y, 0.0, 1.0),
+		FVector4(ClampedDirtyRect.Max.X, ClampedDirtyRect.Max.Y, 0.0, 1.0),
 		MaxUV,
 		FLinearColor::White,
 		ResolveHitProxyId);
 	const int32 R3 = ResolveElements->AddVertex(
-		FVector4(DirtyRect.Min.X, DirtyRect.Max.Y, 0.0, 1.0),
+		FVector4(ClampedDirtyRect.Min.X, ClampedDirtyRect.Max.Y, 0.0, 1.0),
 		FVector2D(MinUV.X, MaxUV.Y),
 		FLinearColor::White,
 		ResolveHitProxyId);
@@ -1076,9 +1168,56 @@ bool UQuickSDFPaintTool::PaintProjectedSurfaceStrokeChunkToRenderTarget(UTexture
 
 	if (OutDirtyRect)
 	{
-		*OutDirtyRect = DirtyRect;
+		*OutDirtyRect = ClampedDirtyRect;
 	}
 	return true;
+}
+
+bool UQuickSDFPaintTool::PaintProjectedSurfaceStrokeChunkToRenderTarget(
+	UTextureRenderTarget2D* RenderTarget,
+	const TArray<FQuickSDFStrokeSample>& Samples,
+	const FQuickSDFProjectedPaintParams& PaintParams,
+	const TArray<FQuickSDFProjectedStrokePoint>& StrokePoints,
+	FIntRect* OutDirtyRect)
+{
+	if (OutDirtyRect)
+	{
+		*OutDirtyRect = FIntRect();
+	}
+	if (!RenderTarget || Samples.Num() == 0 || StrokePoints.Num() == 0)
+	{
+		return false;
+	}
+
+	UTextureRenderTarget2D* CoverageRenderTarget = GetOrCreateProjectedPaintCoverageRenderTarget(RenderTarget->SizeX, RenderTarget->SizeY);
+	if (!CoverageRenderTarget)
+	{
+		return false;
+	}
+
+	FTextureRenderTargetResource* CoverageResource = CoverageRenderTarget->GameThread_GetRenderTargetResource();
+	if (!CoverageResource)
+	{
+		return false;
+	}
+
+	const int32 CoverageScale = FMath::Max(CoverageRenderTarget->SizeX / FMath::Max(RenderTarget->SizeX, 1), 1);
+	FCanvas CoverageCanvas(CoverageResource, nullptr, GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(), GMaxRHIFeatureLevel);
+	CoverageCanvas.Clear(FLinearColor::Black);
+
+	FIntRect DirtyRect;
+	if (!DrawProjectedSurfaceStrokeChunkCoverage(CoverageCanvas, RenderTarget, Samples, PaintParams, StrokePoints, CoverageScale, &DirtyRect))
+	{
+		return false;
+	}
+
+	ENQUEUE_RENDER_COMMAND(UpdateQuickSDFProjectedPaintChunkCoverageRTCommand)(
+		[CoverageResource](FRHICommandListImmediate& RHICmdList)
+		{
+			TransitionAndCopyTexture(RHICmdList, CoverageResource->GetRenderTargetTexture(), CoverageResource->TextureRHI, {});
+		});
+
+	return ResolveProjectedPaintCoverageToRenderTarget(RenderTarget, CoverageRenderTarget, PaintParams, DirtyRect, OutDirtyRect);
 }
 
 bool UQuickSDFPaintTool::PaintSurfaceBrushToRenderTarget(UTextureRenderTarget2D* RenderTarget, const FQuickSDFStrokeSample& Sample, FIntRect* OutDirtyRect)

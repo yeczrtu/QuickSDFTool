@@ -265,10 +265,13 @@ protected:
 	bool PaintSurfacePolylineToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect);
 	bool PaintUVBrushesToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, const TArray<FVector2D>& PixelSizes, FIntRect* OutDirtyRect);
 	bool BuildProjectedPaintParams(const TArray<FQuickSDFStrokeSample>& Samples, class UTextureRenderTarget2D* RenderTarget, FQuickSDFProjectedPaintParams& OutParams, TArray<FQuickSDFProjectedStrokePoint>& OutStrokePoints) const;
+	bool BuildProjectedStrokePoints(const TArray<FQuickSDFStrokeSample>& Samples, const FQuickSDFProjectedPaintParams& PaintParams, TArray<FQuickSDFProjectedStrokePoint>& OutStrokePoints) const;
 	bool GatherProjectedPaintTriangles(const TArray<FQuickSDFStrokeSample>& Samples, const FQuickSDFProjectedPaintParams& PaintParams, class UTextureRenderTarget2D* RenderTarget, TArray<FQuickSDFProjectedPaintTriangle>& OutTriangles, FIntRect& OutDirtyRect);
 	class UTextureRenderTarget2D* GetOrCreateProjectedPaintCoverageRenderTarget(int32 TargetWidth, int32 TargetHeight);
 	bool PaintProjectedSurfaceStrokeToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect);
-	bool PaintProjectedSurfaceStrokeChunkToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect);
+	bool DrawProjectedSurfaceStrokeChunkCoverage(class FCanvas& CoverageCanvas, class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, const FQuickSDFProjectedPaintParams& PaintParams, const TArray<FQuickSDFProjectedStrokePoint>& StrokePoints, int32 CoverageScale, FIntRect* OutDirtyRect);
+	bool ResolveProjectedPaintCoverageToRenderTarget(class UTextureRenderTarget2D* RenderTarget, class UTextureRenderTarget2D* CoverageRenderTarget, const FQuickSDFProjectedPaintParams& PaintParams, const FIntRect& DirtyRect, FIntRect* OutDirtyRect);
+	bool PaintProjectedSurfaceStrokeChunkToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, const FQuickSDFProjectedPaintParams& PaintParams, const TArray<FQuickSDFProjectedStrokePoint>& StrokePoints, FIntRect* OutDirtyRect);
 	bool ProjectSurfaceStrokeSample(const FQuickSDFStrokeSample& Sample, double MaxWorldDistance, FQuickSDFStrokeSample& OutSample);
 	void AppendStrokeSample(const FQuickSDFStrokeSample& Sample);
 	void StampLinearSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample);
