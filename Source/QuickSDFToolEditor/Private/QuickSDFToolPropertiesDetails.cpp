@@ -177,17 +177,12 @@ FName GetTextureSetStatusBrushName(int32 TextureSetIndex)
 	static const FName BakedBrushName(TEXT("QuickSDF.MaterialSlot.Status.Baked"));
 	static const FName EmptyBrushName(TEXT("QuickSDF.MaterialSlot.Status.Empty"));
 	static const FName DirtyBrushName(TEXT("QuickSDF.MaterialSlot.Status.Dirty"));
-	static const FName WarningBrushName(TEXT("QuickSDF.MaterialSlot.Status.Warning"));
 	static const FName MissingBrushName(TEXT("QuickSDF.MaterialSlot.Status.Missing"));
 
 	const FQuickSDFTextureSetData* TextureSet = GetTextureSetData(TextureSetIndex);
 	if (!TextureSet)
 	{
 		return MissingBrushName;
-	}
-	if (TextureSet->bHasWarning)
-	{
-		return WarningBrushName;
 	}
 	if (TextureSet->bDirty)
 	{
@@ -198,6 +193,31 @@ FName GetTextureSetStatusBrushName(int32 TextureSetIndex)
 		return BakedBrushName;
 	}
 	return EmptyBrushName;
+}
+
+FName GetTextureSetWarningBrushName()
+{
+	static const FName WarningBrushName(TEXT("QuickSDF.MaterialSlot.Status.Warning"));
+	return WarningBrushName;
+}
+
+bool ShouldShowTextureSetWarningIcon(int32 TextureSetIndex)
+{
+	const FQuickSDFTextureSetData* TextureSet = GetTextureSetData(TextureSetIndex);
+	return TextureSet && TextureSet->bHasWarning;
+}
+
+FText GetTextureSetWarningTooltip(int32 TextureSetIndex)
+{
+	const FQuickSDFTextureSetData* TextureSet = GetTextureSetData(TextureSetIndex);
+	if (!TextureSet || !TextureSet->bHasWarning)
+	{
+		return FText::GetEmpty();
+	}
+
+	return TextureSet->WarningMessage.IsEmpty()
+		? LOCTEXT("TextureSetWarningTooltip", "UV mirror note: The SDF was generated, but some mirrored UV areas may need review.")
+		: TextureSet->WarningMessage;
 }
 
 FName GetTextureSetAutoSymmetryBrushName()
@@ -395,6 +415,33 @@ TSharedRef<SWidget> MakeTextureSetAutoSymmetryPill(int32 TextureSetIndex)
 		];
 }
 
+TSharedRef<SWidget> MakeTextureSetWarningIcon(int32 TextureSetIndex)
+{
+	return SNew(SBox)
+		.WidthOverride(18.0f)
+		.HeightOverride(18.0f)
+		[
+			SNew(SBorder)
+			.BorderImage_Lambda([]()
+			{
+				return FQuickSDFToolStyle::GetBrush(GetTextureSetWarningBrushName());
+			})
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Center)
+			.ToolTipText_Lambda([TextureSetIndex]()
+			{
+				return GetTextureSetWarningTooltip(TextureSetIndex);
+			})
+			.Padding(FMargin(0.0f))
+			[
+				SNew(STextBlock)
+				.Text(LOCTEXT("TextureSetWarningIcon", "!"))
+				.Font(FAppStyle::GetFontStyle("SmallFont"))
+				.ColorAndOpacity(FLinearColor(1.0f, 0.92f, 0.82f, 1.0f))
+			]
+		];
+}
+
 TSharedRef<SWidget> MakeTextureSetBakeButton(int32 TextureSetIndex)
 {
 	return SNew(SBox)
@@ -549,6 +596,23 @@ TSharedRef<SWidget> MakeTextureSetRow(TWeakObjectPtr<UQuickSDFToolProperties> We
 						})
 						[
 							MakeTextureSetAutoSymmetryPill(TextureSetIndex)
+						]
+					]
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					[
+						SNew(SBorder)
+						.BorderImage(FAppStyle::GetBrush("NoBorder"))
+						.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+						.Visibility_Lambda([TextureSetIndex]()
+						{
+							return ShouldShowTextureSetWarningIcon(TextureSetIndex)
+								? EVisibility::Visible
+								: EVisibility::Collapsed;
+						})
+						[
+							MakeTextureSetWarningIcon(TextureSetIndex)
 						]
 					]
 					+ SHorizontalBox::Slot()

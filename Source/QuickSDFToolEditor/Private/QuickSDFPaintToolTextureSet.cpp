@@ -323,10 +323,6 @@ FText UQuickSDFPaintTool::GetTextureSetStatusText(int32 TextureSetIndex) const
 	}
 
 	const FQuickSDFTextureSetData& TextureSet = Asset->TextureSets[TextureSetIndex];
-	if (TextureSet.bHasWarning)
-	{
-		return LOCTEXT("TextureSetMirrorCheck", "Mirror Check");
-	}
 	if (TextureSet.bDirty)
 	{
 		return LOCTEXT("TextureSetDirty", "Dirty");
@@ -348,12 +344,6 @@ FText UQuickSDFPaintTool::GetTextureSetStatusTooltip(int32 TextureSetIndex) cons
 	}
 
 	const FQuickSDFTextureSetData& TextureSet = Asset->TextureSets[TextureSetIndex];
-	if (TextureSet.bHasWarning)
-	{
-		return TextureSet.WarningMessage.IsEmpty()
-			? LOCTEXT("TextureSetMirrorCheckTooltip", "The SDF was generated, but the UV mirror result should be checked.")
-			: TextureSet.WarningMessage;
-	}
 	if (TextureSet.bDirty)
 	{
 		return LOCTEXT("TextureSetDirtyTooltip", "This material slot has mask edits that have not been baked or generated yet.");
@@ -375,10 +365,6 @@ FLinearColor UQuickSDFPaintTool::GetTextureSetStatusColor(int32 TextureSetIndex)
 	}
 
 	const FQuickSDFTextureSetData& TextureSet = Asset->TextureSets[TextureSetIndex];
-	if (TextureSet.bHasWarning)
-	{
-		return FLinearColor(1.0f, 0.55f, 0.24f, 1.0f);
-	}
 	if (TextureSet.bDirty)
 	{
 		return FLinearColor(1.0f, 0.82f, 0.22f, 1.0f);
