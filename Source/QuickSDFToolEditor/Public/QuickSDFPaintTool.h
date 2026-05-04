@@ -107,6 +107,38 @@ struct FQuickSDFSurfacePaintTriangle
 	FVector3d WorldPositions[3];
 };
 
+struct FQuickSDFProjectedPaintParams
+{
+	FVector3d ProjectionOrigin = FVector3d::Zero();
+	FVector3d ProjectionAxisX = FVector3d(1.0, 0.0, 0.0);
+	FVector3d ProjectionAxisY = FVector3d(0.0, 1.0, 0.0);
+	FVector3d ProjectionNormal = FVector3d(0.0, 0.0, 1.0);
+	float Radius = 1.0f;
+	float RadialFalloffRange = 0.0f;
+	float Depth = 1.0f;
+	float DepthFalloffRange = 0.0f;
+	float Strength = 1.0f;
+	float AntialiasWidth = 0.0f;
+	FLinearColor Color = FLinearColor::White;
+	int32 PaintChartID = INDEX_NONE;
+};
+
+struct FQuickSDFProjectedStrokePoint
+{
+	FVector3d WorldPosition = FVector3d::Zero();
+	FVector2f ProjectedPosition = FVector2f::Zero();
+	FVector3d Normal = FVector3d(0.0, 0.0, 1.0);
+	float Pressure = 1.0f;
+};
+
+struct FQuickSDFProjectedPaintTriangle
+{
+	FVector2D UVs[3];
+	FVector2D PixelPositions[3];
+	FVector3d WorldPositions[3];
+	int32 PaintChartID = INDEX_NONE;
+};
+
 UCLASS()
 class UQuickSDFPaintTool : public UBaseBrushTool
 {
@@ -232,6 +264,11 @@ protected:
 	bool PaintSurfaceBrushesToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect);
 	bool PaintSurfacePolylineToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect);
 	bool PaintUVBrushesToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, const TArray<FVector2D>& PixelSizes, FIntRect* OutDirtyRect);
+	bool BuildProjectedPaintParams(const TArray<FQuickSDFStrokeSample>& Samples, class UTextureRenderTarget2D* RenderTarget, FQuickSDFProjectedPaintParams& OutParams, TArray<FQuickSDFProjectedStrokePoint>& OutStrokePoints) const;
+	bool GatherProjectedPaintTriangles(const TArray<FQuickSDFStrokeSample>& Samples, const FQuickSDFProjectedPaintParams& PaintParams, class UTextureRenderTarget2D* RenderTarget, TArray<FQuickSDFProjectedPaintTriangle>& OutTriangles, FIntRect& OutDirtyRect);
+	class UTextureRenderTarget2D* GetOrCreateProjectedPaintCoverageRenderTarget(int32 TargetWidth, int32 TargetHeight);
+	bool PaintProjectedSurfaceStrokeToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect);
+	bool PaintProjectedSurfaceStrokeChunkToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect);
 	bool ProjectSurfaceStrokeSample(const FQuickSDFStrokeSample& Sample, double MaxWorldDistance, FQuickSDFStrokeSample& OutSample);
 	void AppendStrokeSample(const FQuickSDFStrokeSample& Sample);
 	void StampLinearSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample);
@@ -339,6 +376,9 @@ protected:
 
 	UPROPERTY(Transient)
 	class UTexture2D* BrushMaskTexture;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextureRenderTarget2D> ProjectedPaintCoverageRenderTarget;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UQuickSDFBrushResizeInputBehavior> BrushResizeBehavior;

@@ -1,5 +1,6 @@
 #include "QuickSDFPaintTool.h"
 
+#include "QuickSDFProjectedPaintRendering.h"
 #include "QuickSDFSurfacePaintRendering.h"
 #include "CanvasTypes.h"
 #include "DynamicMesh/DynamicMeshAttributeSet.h"
@@ -12,6 +13,7 @@
 namespace
 {
 constexpr int32 SurfacePaintDirtyPadding = 4;
+constexpr int32 ProjectedPaintResolvePadding = 6;
 
 double GetConservativeLocalRadius(const FTransform& Transform, double WorldRadius)
 {
@@ -88,6 +90,39 @@ FIntRect MakeDirtyRectFromUVBounds(const FVector2D& UVMin, const FVector2D& UVMa
 	const int32 MaxX = FMath::CeilToInt(FMath::Clamp(UVMax.X, 0.0, 1.0) * RenderTarget->SizeX) + SurfacePaintDirtyPadding;
 	const int32 MaxY = FMath::CeilToInt(FMath::Clamp(UVMax.Y, 0.0, 1.0) * RenderTarget->SizeY) + SurfacePaintDirtyPadding;
 	return FIntRect(MinX, MinY, MaxX, MaxY);
+}
+
+FIntRect ClampDirtyRectToRenderTarget(const FIntRect& Rect, const UTextureRenderTarget2D* RenderTarget)
+{
+	if (!RenderTarget)
+	{
+		return FIntRect();
+	}
+
+	return FIntRect(
+		FMath::Clamp(Rect.Min.X, 0, RenderTarget->SizeX),
+		FMath::Clamp(Rect.Min.Y, 0, RenderTarget->SizeY),
+		FMath::Clamp(Rect.Max.X, 0, RenderTarget->SizeX),
+		FMath::Clamp(Rect.Max.Y, 0, RenderTarget->SizeY));
+}
+
+int32 GetProjectedPaintCoverageScale(const UTextureRenderTarget2D* RenderTarget)
+{
+	if (!RenderTarget)
+	{
+		return 1;
+	}
+
+	return (RenderTarget->SizeX * 2 <= 4096 && RenderTarget->SizeY * 2 <= 4096) ? 2 : 1;
+}
+
+bool AreProjectedStrokeSamplesContinuous(const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B)
+{
+	if (A.PaintChartID == INDEX_NONE || B.PaintChartID == INDEX_NONE)
+	{
+		return true;
+	}
+	return A.PaintChartID == B.PaintChartID;
 }
 }
 
@@ -538,11 +573,516 @@ bool UQuickSDFPaintTool::GatherSurfacePolylinePaintTriangles(
 	return OutTriangles.Num() > 0 && bHasDirtyRect;
 }
 
+bool UQuickSDFPaintTool::BuildProjectedPaintParams(
+	const TArray<FQuickSDFStrokeSample>& Samples,
+	UTextureRenderTarget2D* RenderTarget,
+	FQuickSDFProjectedPaintParams& OutParams,
+	TArray<FQuickSDFProjectedStrokePoint>& OutStrokePoints) const
+{
+	OutStrokePoints.Reset();
+	if (!RenderTarget || Samples.Num() == 0)
+	{
+		return false;
+	}
+
+	const FQuickSDFStrokeSample* AnchorSample = nullptr;
+	for (const FQuickSDFStrokeSample& Sample : Samples)
+	{
+		if (Sample.TriangleID != INDEX_NONE)
+		{
+			AnchorSample = &Sample;
+			break;
+		}
+	}
+	if (!AnchorSample)
+	{
+		return false;
+	}
+
+	FQuickSDFSurfaceBrushParams SurfaceBrushParams;
+	if (!BuildSurfaceBrushParams(*AnchorSample, RenderTarget, SurfaceBrushParams))
+	{
+		return false;
+	}
+
+	FVector3d ProjectionNormal = -AnchorSample->RayDirection.GetSafeNormal();
+	if (ProjectionNormal.IsNearlyZero())
+	{
+		ProjectionNormal = SurfaceBrushParams.Normal.GetSafeNormal();
+	}
+	if (ProjectionNormal.IsNearlyZero())
+	{
+		ProjectionNormal = FVector3d(0.0, 0.0, 1.0);
+	}
+
+	FVector ProjectionAxisXF;
+	FVector ProjectionAxisYF;
+	FVector(ProjectionNormal).FindBestAxisVectors(ProjectionAxisXF, ProjectionAxisYF);
+	FVector3d ProjectionAxisX(ProjectionAxisXF);
+	FVector3d ProjectionAxisY(ProjectionAxisYF);
+
+	OutParams.ProjectionOrigin = AnchorSample->WorldPos;
+	OutParams.ProjectionAxisX = ProjectionAxisX.GetSafeNormal();
+	OutParams.ProjectionAxisY = ProjectionAxisY.GetSafeNormal();
+	OutParams.ProjectionNormal = ProjectionNormal.GetSafeNormal();
+	OutParams.Radius = SurfaceBrushParams.Radius;
+	OutParams.RadialFalloffRange = SurfaceBrushParams.RadialFalloffRange;
+	OutParams.Depth = FMath::Max(SurfaceBrushParams.Depth * 1.5f, SurfaceBrushParams.Radius + SurfaceBrushParams.AntialiasWidth);
+	OutParams.DepthFalloffRange = SurfaceBrushParams.DepthFalloffRange;
+	OutParams.Strength = SurfaceBrushParams.Strength;
+	OutParams.AntialiasWidth = SurfaceBrushParams.AntialiasWidth;
+	OutParams.Color = SurfaceBrushParams.Color;
+	OutParams.PaintChartID = AnchorSample->PaintChartID;
+
+	OutStrokePoints.Reserve(Samples.Num());
+	for (const FQuickSDFStrokeSample& Sample : Samples)
+	{
+		if (Sample.TriangleID == INDEX_NONE)
+		{
+			continue;
+		}
+
+		if (OutStrokePoints.Num() > 0 &&
+			FVector3d::DistSquared(OutStrokePoints.Last().WorldPosition, Sample.WorldPos) <= 1e-8)
+		{
+			continue;
+		}
+
+		const FVector3d Delta = Sample.WorldPos - OutParams.ProjectionOrigin;
+		FQuickSDFProjectedStrokePoint& StrokePoint = OutStrokePoints.AddDefaulted_GetRef();
+		StrokePoint.WorldPosition = Sample.WorldPos;
+		StrokePoint.ProjectedPosition = FVector2f(
+			static_cast<float>(FVector3d::DotProduct(Delta, OutParams.ProjectionAxisX)),
+			static_cast<float>(FVector3d::DotProduct(Delta, OutParams.ProjectionAxisY)));
+		StrokePoint.Normal = -Sample.RayDirection.GetSafeNormal();
+		if (StrokePoint.Normal.IsNearlyZero())
+		{
+			StrokePoint.Normal = OutParams.ProjectionNormal;
+		}
+		StrokePoint.Pressure = 1.0f;
+	}
+
+	return OutStrokePoints.Num() > 0;
+}
+
+bool UQuickSDFPaintTool::GatherProjectedPaintTriangles(
+	const TArray<FQuickSDFStrokeSample>& Samples,
+	const FQuickSDFProjectedPaintParams& PaintParams,
+	UTextureRenderTarget2D* RenderTarget,
+	TArray<FQuickSDFProjectedPaintTriangle>& OutTriangles,
+	FIntRect& OutDirtyRect)
+{
+	OutTriangles.Reset();
+	OutDirtyRect = FIntRect();
+
+	if (!TargetMeshSpatial.IsValid() || !TargetMesh.IsValid() || !CurrentComponent.IsValid() || !Properties || !RenderTarget ||
+		!TargetMesh->HasAttributes() || Samples.Num() == 0)
+	{
+		return false;
+	}
+
+	const UE::Geometry::FDynamicMeshUVOverlay* UVOverlay = TargetMesh->Attributes()->GetUVLayer(Properties->UVChannel);
+	if (!UVOverlay)
+	{
+		return false;
+	}
+
+	const FTransform ComponentTransform = CurrentComponent->GetComponentTransform();
+	const double QueryRadiusWorld = FMath::Max(
+		static_cast<double>(PaintParams.Radius + PaintParams.AntialiasWidth),
+		static_cast<double>(PaintParams.Depth));
+	const double LocalQueryRadius = GetConservativeLocalRadius(ComponentTransform, QueryRadiusWorld);
+
+	FVector3d LocalMin(TNumericLimits<double>::Max(), TNumericLimits<double>::Max(), TNumericLimits<double>::Max());
+	FVector3d LocalMax(-TNumericLimits<double>::Max(), -TNumericLimits<double>::Max(), -TNumericLimits<double>::Max());
+	for (const FQuickSDFStrokeSample& Sample : Samples)
+	{
+		const FVector3d LocalPoint = ComponentTransform.InverseTransformPosition(Sample.WorldPos);
+		LocalMin.X = FMath::Min(LocalMin.X, LocalPoint.X);
+		LocalMin.Y = FMath::Min(LocalMin.Y, LocalPoint.Y);
+		LocalMin.Z = FMath::Min(LocalMin.Z, LocalPoint.Z);
+		LocalMax.X = FMath::Max(LocalMax.X, LocalPoint.X);
+		LocalMax.Y = FMath::Max(LocalMax.Y, LocalPoint.Y);
+		LocalMax.Z = FMath::Max(LocalMax.Z, LocalPoint.Z);
+	}
+
+	const FVector3d LocalPadding(LocalQueryRadius, LocalQueryRadius, LocalQueryRadius);
+	const UE::Geometry::FAxisAlignedBox3d LocalQueryBounds(LocalMin - LocalPadding, LocalMax + LocalPadding);
+
+	bool bHasDirtyRect = false;
+	UE::Geometry::FDynamicMeshAABBTree3::FTreeTraversal Traversal;
+	Traversal.NextBoxF = [&LocalQueryBounds](const UE::Geometry::FAxisAlignedBox3d& Box, int)
+	{
+		return Box.Intersects(LocalQueryBounds);
+	};
+	Traversal.NextTriangleF = [this, RenderTarget, UVOverlay, &ComponentTransform, &PaintParams, &OutTriangles, &OutDirtyRect, &bHasDirtyRect](int32 TriangleID)
+	{
+		if (!TargetMesh->IsTriangle(TriangleID) ||
+			!IsTriangleInTargetMaterialSlot(TriangleID) ||
+			!UVOverlay->IsSetTriangle(TriangleID))
+		{
+			return;
+		}
+
+		const int32 TrianglePaintChartID = GetPaintChartIDForTriangle(TriangleID);
+		if (PaintParams.PaintChartID != INDEX_NONE && TrianglePaintChartID != PaintParams.PaintChartID)
+		{
+			return;
+		}
+
+		const UE::Geometry::FIndex3i Tri = TargetMesh->GetTriangle(TriangleID);
+		const FVector3d WorldPositions[3] = {
+			ComponentTransform.TransformPosition(TargetMesh->GetVertex(Tri.A)),
+			ComponentTransform.TransformPosition(TargetMesh->GetVertex(Tri.B)),
+			ComponentTransform.TransformPosition(TargetMesh->GetVertex(Tri.C))
+		};
+
+		const UE::Geometry::FIndex3i UVTri = UVOverlay->GetTriangle(TriangleID);
+		FVector2D UVs[3] = {
+			FVector2D(UVOverlay->GetElement(UVTri.A)),
+			FVector2D(UVOverlay->GetElement(UVTri.B)),
+			FVector2D(UVOverlay->GetElement(UVTri.C))
+		};
+		OffsetUVsIntoPrimaryTile(UVs);
+
+		FVector2D UVMin;
+		FVector2D UVMax;
+		if (!ComputeUVBounds(UVs, UVMin, UVMax))
+		{
+			return;
+		}
+
+		FIntRect TriangleDirtyRect = MakeDirtyRectFromUVBounds(UVMin, UVMax, RenderTarget);
+		TriangleDirtyRect.Min.X -= ProjectedPaintResolvePadding;
+		TriangleDirtyRect.Min.Y -= ProjectedPaintResolvePadding;
+		TriangleDirtyRect.Max.X += ProjectedPaintResolvePadding;
+		TriangleDirtyRect.Max.Y += ProjectedPaintResolvePadding;
+		if (!bHasDirtyRect)
+		{
+			OutDirtyRect = TriangleDirtyRect;
+			bHasDirtyRect = true;
+		}
+		else
+		{
+			OutDirtyRect = UnionRects(OutDirtyRect, TriangleDirtyRect);
+		}
+
+		FQuickSDFProjectedPaintTriangle& PaintTriangle = OutTriangles.AddDefaulted_GetRef();
+		PaintTriangle.PaintChartID = TrianglePaintChartID;
+		for (int32 VertexIndex = 0; VertexIndex < 3; ++VertexIndex)
+		{
+			PaintTriangle.UVs[VertexIndex] = UVs[VertexIndex];
+			PaintTriangle.PixelPositions[VertexIndex] = FVector2D(
+				UVs[VertexIndex].X * static_cast<double>(RenderTarget->SizeX),
+				UVs[VertexIndex].Y * static_cast<double>(RenderTarget->SizeY));
+			PaintTriangle.WorldPositions[VertexIndex] = WorldPositions[VertexIndex];
+		}
+	};
+
+	TargetMeshSpatial->DoTraversal(Traversal);
+	return OutTriangles.Num() > 0 && bHasDirtyRect;
+}
+
+UTextureRenderTarget2D* UQuickSDFPaintTool::GetOrCreateProjectedPaintCoverageRenderTarget(int32 TargetWidth, int32 TargetHeight)
+{
+	if (TargetWidth <= 0 || TargetHeight <= 0)
+	{
+		return nullptr;
+	}
+
+	const int32 CoverageScale = (TargetWidth * 2 <= 4096 && TargetHeight * 2 <= 4096) ? 2 : 1;
+	const int32 CoverageWidth = TargetWidth * CoverageScale;
+	const int32 CoverageHeight = TargetHeight * CoverageScale;
+
+	if (!ProjectedPaintCoverageRenderTarget ||
+		ProjectedPaintCoverageRenderTarget->SizeX != CoverageWidth ||
+		ProjectedPaintCoverageRenderTarget->SizeY != CoverageHeight ||
+		ProjectedPaintCoverageRenderTarget->RenderTargetFormat != RTF_R16f)
+	{
+		ProjectedPaintCoverageRenderTarget = NewObject<UTextureRenderTarget2D>(this);
+		ProjectedPaintCoverageRenderTarget->ClearColor = FLinearColor::Black;
+		ProjectedPaintCoverageRenderTarget->RenderTargetFormat = RTF_R16f;
+		ProjectedPaintCoverageRenderTarget->AddressX = TA_Clamp;
+		ProjectedPaintCoverageRenderTarget->AddressY = TA_Clamp;
+		ProjectedPaintCoverageRenderTarget->bAutoGenerateMips = false;
+		ProjectedPaintCoverageRenderTarget->InitAutoFormat(CoverageWidth, CoverageHeight);
+		ProjectedPaintCoverageRenderTarget->UpdateResourceImmediate(true);
+	}
+
+	return ProjectedPaintCoverageRenderTarget.Get();
+}
+
+bool UQuickSDFPaintTool::PaintProjectedSurfaceStrokeToRenderTarget(UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect)
+{
+	if (OutDirtyRect)
+	{
+		*OutDirtyRect = FIntRect();
+	}
+	if (!RenderTarget || Samples.Num() == 0)
+	{
+		return false;
+	}
+
+	TArray<FQuickSDFStrokeSample> CleanSamples;
+	CleanSamples.Reserve(Samples.Num());
+	for (const FQuickSDFStrokeSample& Sample : Samples)
+	{
+		if (Sample.TriangleID == INDEX_NONE)
+		{
+			continue;
+		}
+		if (CleanSamples.Num() > 0 &&
+			FVector3d::DistSquared(CleanSamples.Last().WorldPos, Sample.WorldPos) <= 1e-8)
+		{
+			continue;
+		}
+		CleanSamples.Add(Sample);
+	}
+
+	if (CleanSamples.Num() == 0)
+	{
+		return false;
+	}
+
+	const int32 MaxStrokePoints = QuickSDFProjectedPaintRendering::MaxProjectedPaintStrokePoints;
+	FIntRect BatchDirtyRect;
+	bool bHasBatchDirtyRect = false;
+	bool bDrewAnyChunk = false;
+	int32 StartIndex = 0;
+	while (StartIndex < CleanSamples.Num())
+	{
+		int32 EndIndex = StartIndex;
+		while (EndIndex + 1 < CleanSamples.Num() &&
+			EndIndex - StartIndex + 1 < MaxStrokePoints &&
+			AreProjectedStrokeSamplesContinuous(CleanSamples[EndIndex], CleanSamples[EndIndex + 1]))
+		{
+			++EndIndex;
+		}
+
+		TArray<FQuickSDFStrokeSample> ChunkSamples;
+		ChunkSamples.Reserve(EndIndex - StartIndex + 1);
+		for (int32 Index = StartIndex; Index <= EndIndex; ++Index)
+		{
+			ChunkSamples.Add(CleanSamples[Index]);
+		}
+
+		FIntRect ChunkDirtyRect;
+		if (PaintProjectedSurfaceStrokeChunkToRenderTarget(RenderTarget, ChunkSamples, &ChunkDirtyRect) &&
+			ChunkDirtyRect.Width() > 0 && ChunkDirtyRect.Height() > 0)
+		{
+			BatchDirtyRect = bHasBatchDirtyRect ? UnionRects(BatchDirtyRect, ChunkDirtyRect) : ChunkDirtyRect;
+			bHasBatchDirtyRect = true;
+			bDrewAnyChunk = true;
+		}
+
+		if (EndIndex + 1 < CleanSamples.Num() &&
+			AreProjectedStrokeSamplesContinuous(CleanSamples[EndIndex], CleanSamples[EndIndex + 1]))
+		{
+			StartIndex = EndIndex;
+		}
+		else
+		{
+			StartIndex = EndIndex + 1;
+		}
+	}
+
+	if (OutDirtyRect && bHasBatchDirtyRect)
+	{
+		*OutDirtyRect = BatchDirtyRect;
+	}
+	return bDrewAnyChunk;
+}
+
+bool UQuickSDFPaintTool::PaintProjectedSurfaceStrokeChunkToRenderTarget(UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect)
+{
+	if (OutDirtyRect)
+	{
+		*OutDirtyRect = FIntRect();
+	}
+	if (!RenderTarget || Samples.Num() == 0)
+	{
+		return false;
+	}
+
+	FQuickSDFProjectedPaintParams PaintParams;
+	TArray<FQuickSDFProjectedStrokePoint> StrokePoints;
+	if (!BuildProjectedPaintParams(Samples, RenderTarget, PaintParams, StrokePoints))
+	{
+		return false;
+	}
+
+	TArray<FQuickSDFProjectedPaintTriangle> PaintTriangles;
+	FIntRect DirtyRect;
+	if (!GatherProjectedPaintTriangles(Samples, PaintParams, RenderTarget, PaintTriangles, DirtyRect))
+	{
+		return false;
+	}
+
+	DirtyRect = ClampDirtyRectToRenderTarget(DirtyRect, RenderTarget);
+	if (DirtyRect.Width() <= 0 || DirtyRect.Height() <= 0)
+	{
+		return false;
+	}
+
+	UTextureRenderTarget2D* CoverageRenderTarget = GetOrCreateProjectedPaintCoverageRenderTarget(RenderTarget->SizeX, RenderTarget->SizeY);
+	if (!CoverageRenderTarget)
+	{
+		return false;
+	}
+
+	FTextureRenderTargetResource* CoverageResource = CoverageRenderTarget->GameThread_GetRenderTargetResource();
+	FTextureRenderTargetResource* TargetResource = RenderTarget->GameThread_GetRenderTargetResource();
+	if (!CoverageResource || !TargetResource)
+	{
+		return false;
+	}
+
+	const int32 CoverageScale = FMath::Max(CoverageRenderTarget->SizeX / FMath::Max(RenderTarget->SizeX, 1), 1);
+	TRefCountPtr<FQuickSDFProjectedPaintCoverageBatchedElementParameters> CoverageParameters(new FQuickSDFProjectedPaintCoverageBatchedElementParameters());
+	CoverageParameters->ShaderParams.ProjectionOrigin = FVector4f(
+		static_cast<float>(PaintParams.ProjectionOrigin.X),
+		static_cast<float>(PaintParams.ProjectionOrigin.Y),
+		static_cast<float>(PaintParams.ProjectionOrigin.Z),
+		0.0f);
+	CoverageParameters->ShaderParams.ProjectionAxisX = FVector4f(
+		static_cast<float>(PaintParams.ProjectionAxisX.X),
+		static_cast<float>(PaintParams.ProjectionAxisX.Y),
+		static_cast<float>(PaintParams.ProjectionAxisX.Z),
+		0.0f);
+	CoverageParameters->ShaderParams.ProjectionAxisY = FVector4f(
+		static_cast<float>(PaintParams.ProjectionAxisY.X),
+		static_cast<float>(PaintParams.ProjectionAxisY.Y),
+		static_cast<float>(PaintParams.ProjectionAxisY.Z),
+		0.0f);
+	CoverageParameters->ShaderParams.ProjectionNormal = FVector4f(
+		static_cast<float>(PaintParams.ProjectionNormal.X),
+		static_cast<float>(PaintParams.ProjectionNormal.Y),
+		static_cast<float>(PaintParams.ProjectionNormal.Z),
+		0.0f);
+	CoverageParameters->ShaderParams.BrushRadius = PaintParams.Radius;
+	CoverageParameters->ShaderParams.BrushRadialFalloffRange = PaintParams.RadialFalloffRange;
+	CoverageParameters->ShaderParams.BrushDepth = PaintParams.Depth;
+	CoverageParameters->ShaderParams.BrushDepthFalloffRange = PaintParams.DepthFalloffRange;
+	CoverageParameters->ShaderParams.BrushAntialiasWidth = PaintParams.AntialiasWidth;
+	CoverageParameters->ShaderParams.StrokePoints.Reserve(StrokePoints.Num());
+	for (const FQuickSDFProjectedStrokePoint& StrokePoint : StrokePoints)
+	{
+		CoverageParameters->ShaderParams.StrokePoints.Add(FVector4f(
+			StrokePoint.ProjectedPosition.X,
+			StrokePoint.ProjectedPosition.Y,
+			0.0f,
+			StrokePoint.Pressure));
+	}
+
+	FCanvas CoverageCanvas(CoverageResource, nullptr, GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(), GMaxRHIFeatureLevel);
+	CoverageCanvas.Clear(FLinearColor::Black);
+	FBatchedElements* CoverageElements = CoverageCanvas.GetBatchedElements(FCanvas::ET_Triangle, CoverageParameters, nullptr, SE_BLEND_Opaque);
+	CoverageElements->AddReserveVertices(PaintTriangles.Num() * 3);
+	CoverageElements->AddReserveTriangles(PaintTriangles.Num(), nullptr, SE_BLEND_Opaque);
+
+	const FHitProxyId CoverageHitProxyId = CoverageCanvas.GetHitProxyId();
+	for (const FQuickSDFProjectedPaintTriangle& PaintTriangle : PaintTriangles)
+	{
+		const int32 V0 = CoverageElements->AddVertex(
+			FVector4(PaintTriangle.PixelPositions[0].X * CoverageScale, PaintTriangle.PixelPositions[0].Y * CoverageScale, 0.0, 1.0),
+			PaintTriangle.UVs[0],
+			FLinearColor(PaintTriangle.WorldPositions[0].X, PaintTriangle.WorldPositions[0].Y, PaintTriangle.WorldPositions[0].Z, 1.0f),
+			CoverageHitProxyId);
+		const int32 V1 = CoverageElements->AddVertex(
+			FVector4(PaintTriangle.PixelPositions[1].X * CoverageScale, PaintTriangle.PixelPositions[1].Y * CoverageScale, 0.0, 1.0),
+			PaintTriangle.UVs[1],
+			FLinearColor(PaintTriangle.WorldPositions[1].X, PaintTriangle.WorldPositions[1].Y, PaintTriangle.WorldPositions[1].Z, 1.0f),
+			CoverageHitProxyId);
+		const int32 V2 = CoverageElements->AddVertex(
+			FVector4(PaintTriangle.PixelPositions[2].X * CoverageScale, PaintTriangle.PixelPositions[2].Y * CoverageScale, 0.0, 1.0),
+			PaintTriangle.UVs[2],
+			FLinearColor(PaintTriangle.WorldPositions[2].X, PaintTriangle.WorldPositions[2].Y, PaintTriangle.WorldPositions[2].Z, 1.0f),
+			CoverageHitProxyId);
+
+		CoverageElements->AddTriangle(V0, V1, V2, CoverageParameters, SE_BLEND_Opaque);
+	}
+	CoverageCanvas.Flush_GameThread(false);
+
+	ENQUEUE_RENDER_COMMAND(UpdateQuickSDFProjectedPaintCoverageRTCommand)(
+		[CoverageResource](FRHICommandListImmediate& RHICmdList)
+		{
+			TransitionAndCopyTexture(RHICmdList, CoverageResource->GetRenderTargetTexture(), CoverageResource->TextureRHI, {});
+		});
+
+	TRefCountPtr<FQuickSDFProjectedPaintResolveBatchedElementParameters> ResolveParameters(new FQuickSDFProjectedPaintResolveBatchedElementParameters());
+	ResolveParameters->ShaderParams.BrushColor = PaintParams.Color;
+	ResolveParameters->ShaderParams.BrushStrength = PaintParams.Strength;
+	ResolveParameters->ShaderParams.ResolveMetrics = FVector4f(
+		1.0f / static_cast<float>(FMath::Max(CoverageRenderTarget->SizeX, 1)),
+		1.0f / static_cast<float>(FMath::Max(CoverageRenderTarget->SizeY, 1)),
+		static_cast<float>(CoverageScale),
+		0.0f);
+
+	FCanvas ResolveCanvas(TargetResource, nullptr, GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(), GMaxRHIFeatureLevel);
+	FBatchedElements* ResolveElements = ResolveCanvas.GetBatchedElements(
+		FCanvas::ET_Triangle,
+		ResolveParameters,
+		CoverageRenderTarget->GetResource(),
+		SE_BLEND_Translucent);
+	ResolveElements->AddReserveVertices(4);
+	ResolveElements->AddReserveTriangles(2, CoverageRenderTarget->GetResource(), SE_BLEND_Translucent);
+
+	const FVector2D TargetSize(RenderTarget->SizeX, RenderTarget->SizeY);
+	const FVector2D MinUV(
+		static_cast<double>(DirtyRect.Min.X) / TargetSize.X,
+		static_cast<double>(DirtyRect.Min.Y) / TargetSize.Y);
+	const FVector2D MaxUV(
+		static_cast<double>(DirtyRect.Max.X) / TargetSize.X,
+		static_cast<double>(DirtyRect.Max.Y) / TargetSize.Y);
+	const FHitProxyId ResolveHitProxyId = ResolveCanvas.GetHitProxyId();
+	const int32 R0 = ResolveElements->AddVertex(
+		FVector4(DirtyRect.Min.X, DirtyRect.Min.Y, 0.0, 1.0),
+		MinUV,
+		FLinearColor::White,
+		ResolveHitProxyId);
+	const int32 R1 = ResolveElements->AddVertex(
+		FVector4(DirtyRect.Max.X, DirtyRect.Min.Y, 0.0, 1.0),
+		FVector2D(MaxUV.X, MinUV.Y),
+		FLinearColor::White,
+		ResolveHitProxyId);
+	const int32 R2 = ResolveElements->AddVertex(
+		FVector4(DirtyRect.Max.X, DirtyRect.Max.Y, 0.0, 1.0),
+		MaxUV,
+		FLinearColor::White,
+		ResolveHitProxyId);
+	const int32 R3 = ResolveElements->AddVertex(
+		FVector4(DirtyRect.Min.X, DirtyRect.Max.Y, 0.0, 1.0),
+		FVector2D(MinUV.X, MaxUV.Y),
+		FLinearColor::White,
+		ResolveHitProxyId);
+
+	ResolveElements->AddTriangleExtensive(R0, R1, R2, ResolveParameters, CoverageRenderTarget->GetResource(), SE_BLEND_Translucent);
+	ResolveElements->AddTriangleExtensive(R0, R2, R3, ResolveParameters, CoverageRenderTarget->GetResource(), SE_BLEND_Translucent);
+	ResolveCanvas.Flush_GameThread(false);
+
+	ENQUEUE_RENDER_COMMAND(UpdateQuickSDFProjectedPaintTargetRTCommand)(
+		[TargetResource](FRHICommandListImmediate& RHICmdList)
+		{
+			TransitionAndCopyTexture(RHICmdList, TargetResource->GetRenderTargetTexture(), TargetResource->TextureRHI, {});
+		});
+
+	if (OutDirtyRect)
+	{
+		*OutDirtyRect = DirtyRect;
+	}
+	return true;
+}
+
 bool UQuickSDFPaintTool::PaintSurfaceBrushToRenderTarget(UTextureRenderTarget2D* RenderTarget, const FQuickSDFStrokeSample& Sample, FIntRect* OutDirtyRect)
 {
 	if (OutDirtyRect)
 	{
 		*OutDirtyRect = FIntRect();
+	}
+
+	if (ShouldUseSurfaceSpacePaint())
+	{
+		return PaintProjectedSurfaceStrokeToRenderTarget(RenderTarget, TArray<FQuickSDFStrokeSample>{ Sample }, OutDirtyRect);
 	}
 
 	FQuickSDFSurfaceBrushParams BrushParams;
@@ -929,6 +1469,12 @@ bool UQuickSDFPaintTool::PaintSurfacePolylineToRenderTarget(UTextureRenderTarget
 	{
 		*OutDirtyRect = FIntRect();
 	}
+
+	if (ShouldUseSurfaceSpacePaint())
+	{
+		return PaintProjectedSurfaceStrokeToRenderTarget(RenderTarget, Samples, OutDirtyRect);
+	}
+
 	if (!RenderTarget || Samples.Num() < 2)
 	{
 		return false;

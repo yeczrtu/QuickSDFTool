@@ -1671,25 +1671,36 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 	{
 		FIntRect BatchDirtyRect;
 		bool bHasBatchDirtyRect = false;
-		for (const FQuickSDFStrokeSample& Sample : Samples)
+		if (Samples.Num() > 1)
 		{
-			FIntRect SampleDirtyRect;
-			if (!PaintSurfaceBrushToRenderTarget(RT, Sample, &SampleDirtyRect) || SampleDirtyRect.Width() <= 0 || SampleDirtyRect.Height() <= 0)
+			if (PaintSurfacePolylineToRenderTarget(RT, Samples, &BatchDirtyRect) &&
+				BatchDirtyRect.Width() > 0 && BatchDirtyRect.Height() > 0)
 			{
-				continue;
-			}
-
-			if (!bHasBatchDirtyRect)
-			{
-				BatchDirtyRect = SampleDirtyRect;
 				bHasBatchDirtyRect = true;
 			}
-			else
+		}
+		else
+		{
+			for (const FQuickSDFStrokeSample& Sample : Samples)
 			{
-				BatchDirtyRect.Min.X = FMath::Min(BatchDirtyRect.Min.X, SampleDirtyRect.Min.X);
-				BatchDirtyRect.Min.Y = FMath::Min(BatchDirtyRect.Min.Y, SampleDirtyRect.Min.Y);
-				BatchDirtyRect.Max.X = FMath::Max(BatchDirtyRect.Max.X, SampleDirtyRect.Max.X);
-				BatchDirtyRect.Max.Y = FMath::Max(BatchDirtyRect.Max.Y, SampleDirtyRect.Max.Y);
+				FIntRect SampleDirtyRect;
+				if (!PaintSurfaceBrushToRenderTarget(RT, Sample, &SampleDirtyRect) || SampleDirtyRect.Width() <= 0 || SampleDirtyRect.Height() <= 0)
+				{
+					continue;
+				}
+
+				if (!bHasBatchDirtyRect)
+				{
+					BatchDirtyRect = SampleDirtyRect;
+					bHasBatchDirtyRect = true;
+				}
+				else
+				{
+					BatchDirtyRect.Min.X = FMath::Min(BatchDirtyRect.Min.X, SampleDirtyRect.Min.X);
+					BatchDirtyRect.Min.Y = FMath::Min(BatchDirtyRect.Min.Y, SampleDirtyRect.Min.Y);
+					BatchDirtyRect.Max.X = FMath::Max(BatchDirtyRect.Max.X, SampleDirtyRect.Max.X);
+					BatchDirtyRect.Max.Y = FMath::Max(BatchDirtyRect.Max.Y, SampleDirtyRect.Max.Y);
+				}
 			}
 		}
 

@@ -1,0 +1,158 @@
+#include "/Engine/Public/Platform.ush"
+
+float4x4 c_Transform;
+
+float4 c_ProjectionOrigin;
+float4 c_ProjectionAxisX;
+float4 c_ProjectionAxisY;
+float4 c_ProjectionNormal;
+
+// x = radius, y = radial falloff range, z = depth, w = depth falloff range
+float4 c_BrushMetrics;
+
+// x = stroke point count, y = antialias width in projected world units
+float4 c_StrokeMetrics;
+
+#define QUICK_SDF_MAX_PROJECTED_STROKE_POINTS 256
+float4 c_StrokePoints[QUICK_SDF_MAX_PROJECTED_STROKE_POINTS];
+
+Texture2D s_CoverageTexture;
+SamplerState s_CoverageTextureSampler;
+float4 c_BrushColor;
+// x = coverage texel width, y = coverage texel height, z = coverage scale
+float4 c_ResolveMetrics;
+float c_Gamma;
+
+struct FCoverageVSOut
+{
+	float4 Position : SV_POSITION;
+	float2 TextureCoordinates : TEXCOORD0;
+	float3 WorldPosition : TEXCOORD1;
+};
+
+void MainCoverageVS(
+	float4 InPosition : ATTRIBUTE0,
+	float2 InTextureCoordinates : ATTRIBUTE2,
+	float3 InWorldSpaceVertexPosition : ATTRIBUTE3,
+	out FCoverageVSOut Out)
+{
+	Out.Position = mul(InPosition, c_Transform);
+	Out.TextureCoordinates = InTextureCoordinates;
+	Out.WorldPosition = InWorldSpaceVertexPosition;
+}
+
+float ComputeFalloff(float Distance, float Radius, float FalloffRange, float AntialiasWidth)
+{
+	float Coverage = Distance <= Radius ? 1.0f : 0.0f;
+	if (FalloffRange > 0.0001f)
+	{
+		const float InnerRadius = max(Radius - FalloffRange, 0.0f);
+		Coverage = saturate((Radius - Distance) / max(Radius - InnerRadius, 0.0001f));
+	}
+	else if (AntialiasWidth > 0.0001f)
+	{
+		Coverage = smoothstep(Radius + AntialiasWidth, Radius - AntialiasWidth, Distance);
+	}
+	return Coverage;
+}
+
+float DistanceToProjectedSegment(float2 Position, float2 Start, float2 End)
+{
+	const float2 Segment = End - Start;
+	const float SegmentLengthSqr = dot(Segment, Segment);
+	if (SegmentLengthSqr <= 0.000001f)
+	{
+		return length(Position - Start);
+	}
+
+	const float SegmentAlpha = saturate(dot(Position - Start, Segment) / SegmentLengthSqr);
+	return length(Position - (Start + Segment * SegmentAlpha));
+}
+
+void MainCoveragePS(
+	FCoverageVSOut In,
+	out float4 OutColor : SV_Target0)
+{
+	const float3 Delta = In.WorldPosition - c_ProjectionOrigin.xyz;
+	const float2 ProjectedPosition = float2(dot(Delta, c_ProjectionAxisX.xyz), dot(Delta, c_ProjectionAxisY.xyz));
+	const float DepthDistance = abs(dot(Delta, c_ProjectionNormal.xyz));
+
+	const float BrushRadius = c_BrushMetrics.x;
+	const float BrushRadialFalloffRange = c_BrushMetrics.y;
+	const float BrushDepth = c_BrushMetrics.z;
+	const float BrushDepthFalloffRange = c_BrushMetrics.w;
+	const float AntialiasWidth = c_StrokeMetrics.y;
+
+	const int StrokePointCount = min((int)c_StrokeMetrics.x, QUICK_SDF_MAX_PROJECTED_STROKE_POINTS);
+	float RadialDistance = BrushRadius + AntialiasWidth + 1.0f;
+
+	if (StrokePointCount <= 1)
+	{
+		RadialDistance = length(ProjectedPosition - c_StrokePoints[0].xy);
+	}
+	else
+	{
+		for (int StrokePointIndex = 1; StrokePointIndex < StrokePointCount; ++StrokePointIndex)
+		{
+			RadialDistance = min(
+				RadialDistance,
+				DistanceToProjectedSegment(ProjectedPosition, c_StrokePoints[StrokePointIndex - 1].xy, c_StrokePoints[StrokePointIndex].xy));
+		}
+	}
+
+	float PaintCoverage =
+		ComputeFalloff(RadialDistance, BrushRadius, BrushRadialFalloffRange, AntialiasWidth) *
+		ComputeFalloff(DepthDistance, BrushDepth, BrushDepthFalloffRange, 0.0f);
+
+	OutColor = float4(PaintCoverage, PaintCoverage, PaintCoverage, PaintCoverage);
+}
+
+struct FResolveVSOut
+{
+	float4 Position : SV_POSITION;
+	float2 TextureCoordinates : TEXCOORD0;
+};
+
+void MainResolveVS(
+	float4 InPosition : ATTRIBUTE0,
+	float2 InTextureCoordinates : ATTRIBUTE2,
+	float4 InColor : ATTRIBUTE3,
+	out FResolveVSOut Out)
+{
+	Out.Position = mul(InPosition, c_Transform);
+	Out.TextureCoordinates = InTextureCoordinates;
+}
+
+float SampleCoverage(float2 UV)
+{
+	return s_CoverageTexture.SampleLevel(s_CoverageTextureSampler, UV, 0).r;
+}
+
+void MainResolvePS(
+	FResolveVSOut In,
+	out float4 OutColor : SV_Target0)
+{
+	float Coverage = 0.0f;
+	if (c_ResolveMetrics.z > 1.5f)
+	{
+		const float2 HalfSubPixel = c_ResolveMetrics.xy * 0.5f;
+		Coverage += SampleCoverage(In.TextureCoordinates + float2(-HalfSubPixel.x, -HalfSubPixel.y));
+		Coverage += SampleCoverage(In.TextureCoordinates + float2( HalfSubPixel.x, -HalfSubPixel.y));
+		Coverage += SampleCoverage(In.TextureCoordinates + float2(-HalfSubPixel.x,  HalfSubPixel.y));
+		Coverage += SampleCoverage(In.TextureCoordinates + float2( HalfSubPixel.x,  HalfSubPixel.y));
+		Coverage *= 0.25f;
+	}
+	else
+	{
+		Coverage = SampleCoverage(In.TextureCoordinates);
+	}
+
+	Coverage = saturate(Coverage);
+	float3 BrushRGB = c_BrushColor.rgb;
+	if (c_Gamma != 1.0f)
+	{
+		BrushRGB = pow(saturate(BrushRGB), c_Gamma);
+	}
+
+	OutColor = float4(BrushRGB, Coverage * c_BrushColor.a);
+}

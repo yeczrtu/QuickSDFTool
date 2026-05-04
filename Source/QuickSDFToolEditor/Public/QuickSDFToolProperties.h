@@ -117,7 +117,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint Through Context"))
 	bool bPaintThroughNonTargetGeometry = true;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Surface Space Paint (Experimental)"))
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Projected Surface Paint (Experimental)"))
 	bool bUseSurfaceSpacePaint = false;
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
