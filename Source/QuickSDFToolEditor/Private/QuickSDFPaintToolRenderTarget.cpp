@@ -245,7 +245,7 @@ void UQuickSDFPaintTool::BuildBrushMaskTexture()
 
 	const bool bUseAntialiasing = !Properties || Properties->bEnableBrushAntialiasing;
 	const float AAWidth = bUseAntialiasing
-		? FMath::Max(Properties ? Properties->BrushAntialiasingWidth : 1.25f, 0.25f)
+		? FMath::Max(Properties ? Properties->BrushAntialiasingWidth : 1.25f, 0.25f) * (static_cast<float>(QuickSDFBrushMaskResolution) / 256.0f)
 		: 0.0f;
 	const float Radius = (QuickSDFBrushMaskResolution - 1) * 0.5f;
 	const FVector2f Center(Radius, Radius);

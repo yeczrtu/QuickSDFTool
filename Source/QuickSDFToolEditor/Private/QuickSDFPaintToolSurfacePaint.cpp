@@ -1067,3 +1067,130 @@ bool UQuickSDFPaintTool::PaintSurfacePolylineToRenderTarget(UTextureRenderTarget
 	}
 	return true;
 }
+
+bool UQuickSDFPaintTool::PaintUVBrushesToRenderTarget(
+	UTextureRenderTarget2D* RenderTarget,
+	const TArray<FQuickSDFStrokeSample>& Samples,
+	const TArray<FVector2D>& PixelSizes,
+	FIntRect* OutDirtyRect)
+{
+	if (OutDirtyRect)
+	{
+		*OutDirtyRect = FIntRect();
+	}
+	if (!RenderTarget || Samples.Num() == 0 || Samples.Num() != PixelSizes.Num())
+	{
+		return false;
+	}
+
+	FTextureRenderTargetResource* RTResource = RenderTarget->GameThread_GetRenderTargetResource();
+	if (!RTResource)
+	{
+		return false;
+	}
+
+	const FVector2D RTSize(RenderTarget->SizeX, RenderTarget->SizeY);
+	const FLinearColor PaintColor = IsPaintingShadow() ? FLinearColor::Black : FLinearColor::White;
+	const float BrushAAWidthPixels = Properties && Properties->bEnableBrushAntialiasing
+		? FMath::Max(Properties->BrushAntialiasingWidth * 2.0f, 1.0f)
+		: 0.0f;
+
+	FCanvas Canvas(RTResource, nullptr, GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(), GMaxRHIFeatureLevel);
+	TArray<TRefCountPtr<FQuickSDFSurfacePaintBatchedElementParameters>> BrushParameters;
+	FIntRect BatchDirtyRect;
+	bool bHasBatchDirtyRect = false;
+	bool bDrewAnyBrush = false;
+	const FHitProxyId HitProxyId = Canvas.GetHitProxyId();
+
+	for (int32 Index = 0; Index < Samples.Num(); ++Index)
+	{
+		const FQuickSDFStrokeSample& Sample = Samples[Index];
+		const FVector2D PixelSize = PixelSizes[Index];
+		const double RadiusX = FMath::Max(PixelSize.X * 0.5, 0.5);
+		const double RadiusY = FMath::Max(PixelSize.Y * 0.5, 0.5);
+		const FVector2D PixelCenter(Sample.UV.X * RTSize.X, Sample.UV.Y * RTSize.Y);
+		const FVector2D StampMin(PixelCenter.X - RadiusX, PixelCenter.Y - RadiusY);
+		const FVector2D StampMax(PixelCenter.X + RadiusX, PixelCenter.Y + RadiusY);
+
+		const int32 DirtyPadding = FMath::CeilToInt(BrushAAWidthPixels) + 2;
+		const FIntRect BrushDirtyRect(
+			FMath::FloorToInt(StampMin.X) - DirtyPadding,
+			FMath::FloorToInt(StampMin.Y) - DirtyPadding,
+			FMath::CeilToInt(StampMax.X) + DirtyPadding,
+			FMath::CeilToInt(StampMax.Y) + DirtyPadding);
+		if (!bHasBatchDirtyRect)
+		{
+			BatchDirtyRect = BrushDirtyRect;
+			bHasBatchDirtyRect = true;
+		}
+		else
+		{
+			BatchDirtyRect = UnionRects(BatchDirtyRect, BrushDirtyRect);
+		}
+
+		TRefCountPtr<FQuickSDFSurfacePaintBatchedElementParameters> BatchedElementParameters(new FQuickSDFSurfacePaintBatchedElementParameters());
+		BatchedElementParameters->ShaderParams.WorldToBrushMatrix = FMatrix(
+			FPlane(1.0 / RadiusX, 0.0, 0.0, 0.0),
+			FPlane(0.0, 1.0 / RadiusY, 0.0, 0.0),
+			FPlane(0.0, 0.0, 1.0, 0.0),
+			FPlane(-PixelCenter.X / RadiusX, -PixelCenter.Y / RadiusY, 0.0, 1.0));
+		BatchedElementParameters->ShaderParams.BrushRadius = 1.0f;
+		BatchedElementParameters->ShaderParams.BrushRadialFalloffRange = 0.0f;
+		BatchedElementParameters->ShaderParams.BrushDepth = 1.0f;
+		BatchedElementParameters->ShaderParams.BrushDepthFalloffRange = 0.0f;
+		BatchedElementParameters->ShaderParams.BrushStrength = 1.0f;
+		BatchedElementParameters->ShaderParams.BrushAntialiasWidth = BrushAAWidthPixels / static_cast<float>(FMath::Max(FMath::Min(RadiusX, RadiusY), 1.0));
+		BatchedElementParameters->ShaderParams.BrushLineLength = 0.0f;
+		BatchedElementParameters->ShaderParams.BrushIsLine = 0.0f;
+		BatchedElementParameters->ShaderParams.BrushColor = PaintColor;
+		BrushParameters.Add(BatchedElementParameters);
+
+		FBatchedElements* BatchedElements = Canvas.GetBatchedElements(FCanvas::ET_Triangle, BatchedElementParameters, nullptr, SE_BLEND_Translucent);
+		BatchedElements->AddReserveVertices(4);
+		BatchedElements->AddReserveTriangles(2, nullptr, SE_BLEND_Translucent);
+
+		const int32 V0 = BatchedElements->AddVertex(
+			FVector4(StampMin.X, StampMin.Y, 0.0, 1.0),
+			FVector2D(0.0, 0.0),
+			FLinearColor(StampMin.X, StampMin.Y, 0.0f, 1.0f),
+			HitProxyId);
+		const int32 V1 = BatchedElements->AddVertex(
+			FVector4(StampMax.X, StampMin.Y, 0.0, 1.0),
+			FVector2D(1.0, 0.0),
+			FLinearColor(StampMax.X, StampMin.Y, 0.0f, 1.0f),
+			HitProxyId);
+		const int32 V2 = BatchedElements->AddVertex(
+			FVector4(StampMax.X, StampMax.Y, 0.0, 1.0),
+			FVector2D(1.0, 1.0),
+			FLinearColor(StampMax.X, StampMax.Y, 0.0f, 1.0f),
+			HitProxyId);
+		const int32 V3 = BatchedElements->AddVertex(
+			FVector4(StampMin.X, StampMax.Y, 0.0, 1.0),
+			FVector2D(0.0, 1.0),
+			FLinearColor(StampMin.X, StampMax.Y, 0.0f, 1.0f),
+			HitProxyId);
+
+		BatchedElements->AddTriangle(V0, V1, V2, BatchedElementParameters, SE_BLEND_Translucent);
+		BatchedElements->AddTriangle(V0, V2, V3, BatchedElementParameters, SE_BLEND_Translucent);
+		bDrewAnyBrush = true;
+	}
+
+	if (!bDrewAnyBrush)
+	{
+		return false;
+	}
+
+	Canvas.Flush_GameThread(false);
+
+	ENQUEUE_RENDER_COMMAND(UpdateQuickSDFUVBrushesPaintRTCommand)(
+		[RTResource](FRHICommandListImmediate& RHICmdList)
+		{
+			TransitionAndCopyTexture(RHICmdList, RTResource->GetRenderTargetTexture(), RTResource->TextureRHI, {});
+		});
+
+	if (OutDirtyRect && bHasBatchDirtyRect)
+	{
+		*OutDirtyRect = BatchDirtyRect;
+	}
+	return true;
+}

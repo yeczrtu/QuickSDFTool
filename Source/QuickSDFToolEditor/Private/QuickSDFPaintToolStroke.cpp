@@ -828,7 +828,8 @@ void UQuickSDFPaintTool::StampQuickLineResampledSamples(const TArray<FQuickSDFSt
 		return;
 	}
 
-	const double SpacingPixels = FMath::Max(GetCurrentStrokeSpacing(RT), 1.0);
+	const double QuickStrokeSpacingScale = ShouldUseSurfaceSpacePaint() ? 1.0 : 0.35;
+	const double SpacingPixels = FMath::Max(GetCurrentStrokeSpacing(RT) * QuickStrokeSpacingScale, 0.35);
 	const double MinControlSpacingPixels = FMath::Max(SpacingPixels * 0.5, 1.0);
 	const int32 MaxResampledSamples = ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ? 512 : 2048;
 
@@ -1704,18 +1705,10 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 		return;
 	}
 
-	if (!BrushMaskTexture) return;
-
-	FTextureRenderTargetResource* RTResource = RT->GameThread_GetRenderTargetResource();
-	if (!RTResource) return;
-
 	const FVector2D RTSize(RT->SizeX, RT->SizeY);
-	const FLinearColor PaintColor = IsPaintingShadow() ? FLinearColor::Black : FLinearColor::White;
 	
 	TArray<FVector2D> PixelSizes;
 	PixelSizes.Reserve(Samples.Num());
-	FIntRect BatchDirtyRect;
-	bool bHasBatchDirtyRect = false;
 	for (const FQuickSDFStrokeSample& Sample : Samples)
 	{
 		FVector2D PixelSize;
@@ -1731,57 +1724,19 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 			const float UVRadius = BrushRadiusWorld * FMath::Max(Sample.LocalUVScale, KINDA_SMALL_NUMBER);
 			PixelSize = FVector2D(UVRadius * RTSize.X * 2.0f, UVRadius * RTSize.Y * 2.0f);
 		}
-		const FVector2D PixelPos(Sample.UV.X * RTSize.X, Sample.UV.Y * RTSize.Y);
-		const FVector2D StampPos = PixelPos - (PixelSize * 0.5f);
-		if (bStrokeTransactionActive)
-		{
-			constexpr int32 DirtyPadding = 2;
-			const FIntRect StampRect(
-				FMath::FloorToInt(StampPos.X) - DirtyPadding,
-				FMath::FloorToInt(StampPos.Y) - DirtyPadding,
-				FMath::CeilToInt(StampPos.X + PixelSize.X) + DirtyPadding,
-				FMath::CeilToInt(StampPos.Y + PixelSize.Y) + DirtyPadding);
-			if (!bHasBatchDirtyRect)
-			{
-				BatchDirtyRect = StampRect;
-				bHasBatchDirtyRect = true;
-			}
-			else
-			{
-				BatchDirtyRect.Min.X = FMath::Min(BatchDirtyRect.Min.X, StampRect.Min.X);
-				BatchDirtyRect.Min.Y = FMath::Min(BatchDirtyRect.Min.Y, StampRect.Min.Y);
-				BatchDirtyRect.Max.X = FMath::Max(BatchDirtyRect.Max.X, StampRect.Max.X);
-				BatchDirtyRect.Max.Y = FMath::Max(BatchDirtyRect.Max.Y, StampRect.Max.Y);
-			}
-		}
 		PixelSizes.Add(PixelSize);
 	}
 
-	if (bHasBatchDirtyRect)
+	FIntRect BatchDirtyRect;
+	if (!PaintUVBrushesToRenderTarget(RT, Samples, PixelSizes, &BatchDirtyRect))
+	{
+		return;
+	}
+
+	if (bStrokeTransactionActive && BatchDirtyRect.Width() > 0 && BatchDirtyRect.Height() > 0)
 	{
 		AddStrokeDirtyRect(RT, BatchDirtyRect);
 	}
-
-	FCanvas Canvas(RTResource, nullptr, GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(), GMaxRHIFeatureLevel);
-
-	for (int32 Index = 0; Index < Samples.Num(); ++Index)
-	{
-		const FQuickSDFStrokeSample& Sample = Samples[Index];
-		const FVector2D PixelSize = PixelSizes[Index];
-		const FVector2D PixelPos(Sample.UV.X * RTSize.X, Sample.UV.Y * RTSize.Y);
-		const FVector2D StampPos = PixelPos - (PixelSize * 0.5f);
-		FCanvasTileItem BrushItem(StampPos, BrushMaskTexture->GetResource(), PixelSize, PaintColor);
-		BrushItem.BlendMode = SE_BLEND_Translucent;
-		Canvas.DrawItem(BrushItem);
-	}
-	
-	Canvas.Flush_GameThread(false);
-
-	ENQUEUE_RENDER_COMMAND(UpdateSDFPaintRTCommand)(
-		[RTResource](FRHICommandListImmediate& RHICmdList)
-		{
-			TransitionAndCopyTexture(RHICmdList, RTResource->GetRenderTargetTexture(), RTResource->TextureRHI, {});
-		});
 
 	if (!bStampingAllPaintTargets)
 	{

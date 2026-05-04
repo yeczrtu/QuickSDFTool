@@ -231,6 +231,7 @@ protected:
 	bool PaintSurfaceLineSegmentsToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect);
 	bool PaintSurfaceBrushesToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect);
 	bool PaintSurfacePolylineToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect);
+	bool PaintUVBrushesToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, const TArray<FVector2D>& PixelSizes, FIntRect* OutDirtyRect);
 	bool ProjectSurfaceStrokeSample(const FQuickSDFStrokeSample& Sample, double MaxWorldDistance, FQuickSDFStrokeSample& OutSample);
 	void AppendStrokeSample(const FQuickSDFStrokeSample& Sample);
 	void StampLinearSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample);
