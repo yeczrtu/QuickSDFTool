@@ -557,7 +557,7 @@ void UQuickSDFPaintTool::StampQuickLineSurfaceSegment(const FQuickSDFStrokeSampl
 
 		FIntRect DirtyRect;
 		TArray<FQuickSDFStrokeSample> CurveSamples;
-		const double SurfaceSnapDistance = FMath::Max(GetEffectiveBrushRadius() * 6.0, 2.0);
+		const double SurfaceSnapDistance = FMath::Max(GetEffectiveBrushRadius() * 6.0, 0.001);
 		auto AppendUniqueSurfaceSample = [](TArray<FQuickSDFStrokeSample>& Samples, const FQuickSDFStrokeSample& Sample)
 		{
 			if (Samples.Num() == 0 ||
@@ -606,136 +606,6 @@ void UQuickSDFPaintTool::StampQuickLineSurfaceSegment(const FQuickSDFStrokeSampl
 		{
 			StampSample(EndSample);
 			return;
-		}
-
-		const int32 MaxQuickStrokeSamples = 128;
-		if (CurveSamples.Num() == 2)
-		{
-			const double BrushStampSpacing = FMath::Max(GetCurrentStrokeSpacing(RT) * 0.35, 0.05);
-			const FQuickSDFStrokeSample SegmentStart = CurveSamples[0];
-			const FQuickSDFStrokeSample SegmentEnd = CurveSamples[1];
-			const double SegmentLength = FVector3d::Distance(SegmentStart.WorldPos, SegmentEnd.WorldPos);
-			const int32 StepCount = FMath::Clamp(FMath::CeilToInt(SegmentLength / BrushStampSpacing), 1, MaxQuickStrokeSamples - 1);
-
-			TArray<FQuickSDFStrokeSample> ResampledSamples;
-			ResampledSamples.Reserve(StepCount + 1);
-			AppendProjectedSurfaceSample(ResampledSamples, SegmentStart, true);
-			for (int32 Step = 1; Step <= StepCount; ++Step)
-			{
-				const double Alpha = static_cast<double>(Step) / static_cast<double>(StepCount);
-				AppendProjectedSurfaceSample(ResampledSamples, LerpStrokeSample(SegmentStart, SegmentEnd, Alpha), Step == StepCount);
-			}
-
-			if (ResampledSamples.Num() >= 2)
-			{
-				CurveSamples = MoveTemp(ResampledSamples);
-			}
-		}
-		else if (CurveSamples.Num() >= 3)
-		{
-			const double SplineSpacing = FMath::Max(GetCurrentStrokeSpacing(RT) * 0.35, 0.05);
-			TArray<FQuickSDFStrokeSample> SmoothedSamples;
-			SmoothedSamples.Reserve(FMath::Min(MaxQuickStrokeSamples, FMath::Max(CurveSamples.Num() * 4, 2)));
-
-			auto AddProjectedSplineSample = [this, &SmoothedSamples, MaxQuickStrokeSamples, SurfaceSnapDistance](const FQuickSDFStrokeSample& Candidate, bool bForceAdd)
-			{
-				FQuickSDFStrokeSample ProjectedSample;
-				if (!ProjectSurfaceStrokeSample(Candidate, SurfaceSnapDistance, ProjectedSample))
-				{
-					if (!bForceAdd)
-					{
-						return;
-					}
-					ProjectedSample = Candidate;
-				}
-
-				if (SmoothedSamples.Num() > 0 &&
-					FVector3d::DistSquared(SmoothedSamples.Last().WorldPos, ProjectedSample.WorldPos) <= 1e-8)
-				{
-					if (bForceAdd)
-					{
-						SmoothedSamples.Last() = ProjectedSample;
-					}
-					return;
-				}
-
-				if (SmoothedSamples.Num() < MaxQuickStrokeSamples)
-				{
-					SmoothedSamples.Add(ProjectedSample);
-				}
-				else if (bForceAdd && SmoothedSamples.Num() > 0)
-				{
-					SmoothedSamples.Last() = ProjectedSample;
-				}
-			};
-
-			auto EvaluateSpline = [](const FQuickSDFStrokeSample& P0,
-				const FQuickSDFStrokeSample& P1,
-				const FQuickSDFStrokeSample& P2,
-				const FQuickSDFStrokeSample& P3,
-				float Alpha) -> FQuickSDFStrokeSample
-			{
-				const FVector3d WorldTangent1 = (P2.WorldPos - P0.WorldPos) * 0.5;
-				const FVector3d WorldTangent2 = (P3.WorldPos - P1.WorldPos) * 0.5;
-				const FVector2f UVTangent1 = (P2.UV - P0.UV) * 0.5f;
-				const FVector2f UVTangent2 = (P3.UV - P1.UV) * 0.5f;
-				const FVector2D ScreenTangent1 = (P2.ScreenPosition - P0.ScreenPosition) * 0.5;
-				const FVector2D ScreenTangent2 = (P3.ScreenPosition - P1.ScreenPosition) * 0.5;
-				const FVector3d RayOriginTangent1 = (P2.RayOrigin - P0.RayOrigin) * 0.5;
-				const FVector3d RayOriginTangent2 = (P3.RayOrigin - P1.RayOrigin) * 0.5;
-
-				FQuickSDFStrokeSample OutSample;
-				OutSample.WorldPos = FMath::CubicInterp(P1.WorldPos, WorldTangent1, P2.WorldPos, WorldTangent2, Alpha);
-				OutSample.UV = FMath::CubicInterp(P1.UV, UVTangent1, P2.UV, UVTangent2, Alpha);
-				OutSample.LocalUVScale = FMath::Max(FMath::CubicInterp(P1.LocalUVScale, (P2.LocalUVScale - P0.LocalUVScale) * 0.5f, P2.LocalUVScale, (P3.LocalUVScale - P1.LocalUVScale) * 0.5f, Alpha), KINDA_SMALL_NUMBER);
-				OutSample.TriangleID = Alpha < 0.5f ? P1.TriangleID : P2.TriangleID;
-				OutSample.PaintChartID = P1.PaintChartID == P2.PaintChartID ? P1.PaintChartID : INDEX_NONE;
-				OutSample.ScreenPosition = FMath::CubicInterp(P1.ScreenPosition, ScreenTangent1, P2.ScreenPosition, ScreenTangent2, Alpha);
-				OutSample.RayOrigin = FMath::CubicInterp(P1.RayOrigin, RayOriginTangent1, P2.RayOrigin, RayOriginTangent2, Alpha);
-				OutSample.RayDirection = FMath::Lerp(P1.RayDirection, P2.RayDirection, static_cast<double>(Alpha)).GetSafeNormal();
-				return OutSample;
-			};
-
-			AddProjectedSplineSample(CurveSamples[0], true);
-			for (int32 SegmentIndex = 0; SegmentIndex + 1 < CurveSamples.Num(); ++SegmentIndex)
-			{
-				const FQuickSDFStrokeSample& P0 = SegmentIndex > 0 ? CurveSamples[SegmentIndex - 1] : CurveSamples[SegmentIndex];
-				const FQuickSDFStrokeSample& P1 = CurveSamples[SegmentIndex];
-				const FQuickSDFStrokeSample& P2 = CurveSamples[SegmentIndex + 1];
-				const FQuickSDFStrokeSample& P3 = SegmentIndex + 2 < CurveSamples.Num() ? CurveSamples[SegmentIndex + 2] : CurveSamples[SegmentIndex + 1];
-				const double SegmentLength = FVector3d::Distance(P1.WorldPos, P2.WorldPos);
-				const int32 StepCount = FMath::Clamp(FMath::CeilToInt(SegmentLength / SplineSpacing), 1, 64);
-				for (int32 Step = 1; Step <= StepCount; ++Step)
-				{
-					const bool bIsLastCurveSample = SegmentIndex + 2 == CurveSamples.Num() && Step == StepCount;
-					const float Alpha = static_cast<float>(Step) / static_cast<float>(StepCount);
-					AddProjectedSplineSample(EvaluateSpline(P0, P1, P2, P3, Alpha), bIsLastCurveSample);
-				}
-			}
-
-			if (SmoothedSamples.Num() >= 2)
-			{
-				CurveSamples = MoveTemp(SmoothedSamples);
-				AppendProjectedSurfaceSample(CurveSamples, EndSample, true);
-			}
-		}
-
-		if (CurveSamples.Num() > MaxQuickStrokeSamples)
-		{
-			TArray<FQuickSDFStrokeSample> ReducedSamples;
-			ReducedSamples.Reserve(MaxQuickStrokeSamples);
-			for (int32 Index = 0; Index < MaxQuickStrokeSamples; ++Index)
-			{
-				const double Alpha = static_cast<double>(Index) / static_cast<double>(MaxQuickStrokeSamples - 1);
-				const int32 SourceIndex = FMath::Clamp(FMath::RoundToInt(Alpha * static_cast<double>(CurveSamples.Num() - 1)), 0, CurveSamples.Num() - 1);
-				if (ReducedSamples.Num() == 0 ||
-					FVector3d::DistSquared(ReducedSamples.Last().WorldPos, CurveSamples[SourceIndex].WorldPos) > 1e-8)
-				{
-					ReducedSamples.Add(CurveSamples[SourceIndex]);
-				}
-			}
-			CurveSamples = MoveTemp(ReducedSamples);
-			AppendProjectedSurfaceSample(CurveSamples, EndSample, true);
 		}
 
 		if (!PaintSurfacePolylineToRenderTarget(RT, CurveSamples, &DirtyRect))
@@ -1461,6 +1331,14 @@ void UQuickSDFPaintTool::OnEndDrag(const FRay& Ray)
 		return;
 	}
 
+	if (ShouldUseSurfaceSpacePaint())
+	{
+		EndStrokeTransaction();
+		PointBuffer.Empty();
+		ResetStrokeState();
+		return;
+	}
+
 	if (Properties && Properties->bEnableStrokeStabilizer && bHasLastRawStrokeSample)
 	{
 		AppendStrokeSample(LastRawStrokeSample);
@@ -1809,6 +1687,41 @@ void UQuickSDFPaintTool::StampLinearSegment(const FQuickSDFStrokeSample& StartSa
 	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
 	if (!RT) return;
 
+	if (ShouldUseSurfaceSpacePaint())
+	{
+		const double SurfaceSnapDistance = FMath::Max(GetEffectiveBrushRadius() * 2.0, 0.001);
+		const double MaxProjectedStep = FMath::Max(GetEffectiveBrushRadius() * 2.0, 0.001);
+		const double SegmentLengthWorld = FVector3d::Distance(StartSample.WorldPos, EndSample.WorldPos);
+		const int32 StepCount = FMath::Clamp(FMath::CeilToInt(SegmentLengthWorld / MaxProjectedStep), 1, 128);
+		TArray<FQuickSDFStrokeSample> SegmentSamples;
+		SegmentSamples.Reserve(StepCount + 1);
+		auto AddProjectedSegmentSample = [this, SurfaceSnapDistance, &SegmentSamples](const FQuickSDFStrokeSample& Candidate)
+		{
+			FQuickSDFStrokeSample ProjectedSample;
+			if (!ProjectSurfaceStrokeSample(Candidate, SurfaceSnapDistance, ProjectedSample))
+			{
+				ProjectedSample = Candidate;
+			}
+			if (SegmentSamples.Num() == 0 ||
+				FVector3d::DistSquared(SegmentSamples.Last().WorldPos, ProjectedSample.WorldPos) > 1e-8)
+			{
+				SegmentSamples.Add(ProjectedSample);
+			}
+			else
+			{
+				SegmentSamples.Last() = ProjectedSample;
+			}
+		};
+
+		for (int32 Step = 0; Step <= StepCount; ++Step)
+		{
+			const double Alpha = static_cast<double>(Step) / static_cast<double>(StepCount);
+			AddProjectedSegmentSample(LerpStrokeSample(StartSample, EndSample, Alpha));
+		}
+		StampSamples(SegmentSamples);
+		return;
+	}
+
 	const double Spacing = GetCurrentStrokeSpacing(RT);
 	if (Spacing <= KINDA_SMALL_NUMBER) return;
 
@@ -1816,7 +1729,7 @@ void UQuickSDFPaintTool::StampLinearSegment(const FQuickSDFStrokeSample& StartSa
 	if (SegmentLength <= KINDA_SMALL_NUMBER) return;
 
 	const int32 StepCount = FMath::Clamp(FMath::CeilToInt(SegmentLength / FMath::Max(Spacing * 0.25, 0.25)), 1, 1000);
-	const double SurfaceSnapDistance = ShouldUseSurfaceSpacePaint() ? FMath::Max(GetEffectiveBrushRadius() * 2.0, 1.0) : 0.0;
+	const double SurfaceSnapDistance = ShouldUseSurfaceSpacePaint() ? FMath::Max(GetEffectiveBrushRadius() * 2.0, 0.001) : 0.0;
 	TArray<FQuickSDFStrokeSample> Batch;
 	FQuickSDFStrokeSample Prev = StartSample;
 
@@ -1936,10 +1849,46 @@ void UQuickSDFPaintTool::StampInterpolatedSegment(
     };
 	
     const double SegmentLength = GetSamplePixelDistance(P1, P2, RT);
+
+	if (ShouldUseSurfaceSpacePaint())
+	{
+		const double SurfaceSnapDistance = FMath::Max(GetEffectiveBrushRadius() * 2.0, 0.001);
+		const double SplineSpacing = FMath::Max(GetEffectiveBrushRadius() * 0.35, 0.001);
+		const int32 StepCount = FMath::Clamp(FMath::CeilToInt(SegmentLength / SplineSpacing), 2, 96);
+		TArray<FQuickSDFStrokeSample> SurfaceCurveSamples;
+		SurfaceCurveSamples.Reserve(StepCount + 1);
+
+		auto AddProjectedSplineSample = [this, SurfaceSnapDistance, &SurfaceCurveSamples](const FQuickSDFStrokeSample& Candidate)
+		{
+			FQuickSDFStrokeSample ProjectedSample;
+			if (!ProjectSurfaceStrokeSample(Candidate, SurfaceSnapDistance, ProjectedSample))
+			{
+				ProjectedSample = Candidate;
+			}
+			if (SurfaceCurveSamples.Num() == 0 ||
+				FVector3d::DistSquared(SurfaceCurveSamples.Last().WorldPos, ProjectedSample.WorldPos) > 1e-8)
+			{
+				SurfaceCurveSamples.Add(ProjectedSample);
+			}
+			else
+			{
+				SurfaceCurveSamples.Last() = ProjectedSample;
+			}
+		};
+
+		for (int32 Step = 0; Step <= StepCount; ++Step)
+		{
+			const double AlphaT = static_cast<double>(Step) / static_cast<double>(StepCount);
+			AddProjectedSplineSample(EvaluateSpline(FMath::Lerp(t1, t2, AlphaT)));
+		}
+
+		StampSamples(SurfaceCurveSamples);
+		return;
+	}
     
     const int32 SubSteps = FMath::Clamp(FMath::CeilToInt(SegmentLength / (Spacing * 0.1)), 20, 1000);
     const double dt = (t2 - t1) / (double)SubSteps;
-	const double SurfaceSnapDistance = ShouldUseSurfaceSpacePaint() ? FMath::Max(GetEffectiveBrushRadius() * 2.0, 1.0) : 0.0;
+	const double SurfaceSnapDistance = ShouldUseSurfaceSpacePaint() ? FMath::Max(GetEffectiveBrushRadius() * 2.0, 0.001) : 0.0;
 
     TArray<FQuickSDFStrokeSample> Batch;
     FQuickSDFStrokeSample Prev = EvaluateSpline(t1);

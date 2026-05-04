@@ -845,6 +845,7 @@ bool UQuickSDFPaintTool::PaintProjectedSurfaceStrokeToRenderTarget(UTextureRende
 	}
 
 	const int32 MaxStrokePoints = QuickSDFProjectedPaintRendering::MaxProjectedPaintStrokePoints;
+	const double MaxChunkLength = FMath::Max(static_cast<double>(GetEffectiveBrushRadius()) * 6.0, 0.001);
 	FIntRect BatchDirtyRect;
 	bool bHasBatchDirtyRect = false;
 	bool bDrewAnyChunk = false;
@@ -852,10 +853,17 @@ bool UQuickSDFPaintTool::PaintProjectedSurfaceStrokeToRenderTarget(UTextureRende
 	while (StartIndex < CleanSamples.Num())
 	{
 		int32 EndIndex = StartIndex;
+		double ChunkLength = 0.0;
 		while (EndIndex + 1 < CleanSamples.Num() &&
 			EndIndex - StartIndex + 1 < MaxStrokePoints &&
 			AreProjectedStrokeSamplesContinuous(CleanSamples[EndIndex], CleanSamples[EndIndex + 1]))
 		{
+			const double NextLength = FVector3d::Distance(CleanSamples[EndIndex].WorldPos, CleanSamples[EndIndex + 1].WorldPos);
+			if (EndIndex > StartIndex && ChunkLength + NextLength > MaxChunkLength)
+			{
+				break;
+			}
+			ChunkLength += NextLength;
 			++EndIndex;
 		}
 
