@@ -31,6 +31,7 @@ namespace
 {
 bool HasActiveSourceMasks();
 bool CanCreateThresholdMap();
+bool HasActiveIntermediateSDF();
 
 UMeshComponent* GetCurrentQuickSDFTarget()
 {
@@ -101,6 +102,14 @@ bool HasActiveSourceMasks()
 bool CanCreateThresholdMap()
 {
 	return GetCurrentQuickSDFTarget() != nullptr || HasActiveSourceMasks();
+}
+
+bool HasActiveIntermediateSDF()
+{
+	const UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	const UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	const FQuickSDFTextureSetData* TextureSet = Asset ? Asset->GetActiveTextureSet() : nullptr;
+	return TextureSet && TextureSet->IntermediateSDFTexture != nullptr;
 }
 
 void AddPropertyIfValid(IDetailCategoryBuilder& Category, const TSharedPtr<IPropertyHandle>& PropertyHandle)
@@ -745,7 +754,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 
 	AddPropertyIfValid(QuickCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, QualityPreset)));
 
-	QuickCategory.AddCustomRow(LOCTEXT("QuickActionsFilter", "Create Threshold Map Generate SDF File Import Assets Export Assets Export Files Overwrite Source Fill White Fill Black"))
+	QuickCategory.AddCustomRow(LOCTEXT("QuickActionsFilter", "Create Threshold Map Generate SDF File Convert Intermediate Import Assets Export Assets Export Files Overwrite Source Fill White Fill Black"))
 	.WholeRowContent()
 	[
 		SNew(SVerticalBox)
@@ -801,6 +810,30 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 							return FReply::Handled();
 						}))
 				]
+			]
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, 2.0f)
+		[
+			SNew(SBox)
+			.IsEnabled_Lambda([]()
+			{
+				return HasActiveIntermediateSDF();
+			})
+			[
+				QuickSDFToolUI::MakeIconLabelButton(
+					"QuickSDF.Action.CreateThresholdMap",
+					LOCTEXT("ConvertIntermediateSDFButton", "Convert Intermediate SDF"),
+					LOCTEXT("ConvertIntermediateSDFTooltip", "Convert the saved intermediate SDF to the selected output format without regenerating SDF data."),
+					FOnClicked::CreateLambda([WeakProperties]()
+					{
+						if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+						{
+							Props->ConvertIntermediateSDF();
+						}
+						return FReply::Handled();
+					}))
 			]
 		]
 		+ SVerticalBox::Slot()

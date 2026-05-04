@@ -23,6 +23,10 @@ public:
 	static TArray<uint8> UpscaleImage(const TArray<uint8>& Src, int32 SrcW, int32 SrcH, int32 Upscale);
 	static TArray<double> GenerateSDF(const TArray<uint8>& BinaryImg, int32 W, int32 H);
 	static void CombineSDFs(const TArray<FMaskData>& Masks, TArray<FVector4f>& OutCombined, int32 W, int32 H, ESDFOutputFormat Format, bool bSymmetry);
+	static TArray<FFloat16Color> DownscaleCombinedFieldToCanonical(const TArray<FVector4f>& CombinedField, int32 HighW, int32 HighH, int32 Factor);
+	static TArray<FFloat16Color> ConvertCanonicalToNative(const TArray<FFloat16Color>& CanonicalField, int32 Width, int32 Height);
+	static TArray<FFloat16Color> ConvertCanonicalToGrayscale(const TArray<FFloat16Color>& CanonicalField, int32 Width, int32 Height);
+	static TArray<FFloat16Color> ConvertCanonicalToLilToon(const TArray<FFloat16Color>& CanonicalField, int32 Width, int32 Height, EQuickSDFLilToonLeftChannelSource LeftChannelSource);
 	static TArray<FFloat16Color> DownscaleAndConvert(const TArray<FVector4f>& CombinedField, int32 HighW, int32 HighH, int32 Factor);
 	static TArray<FFloat16Color> DownscaleAndConvertToLilToon(const TArray<FVector4f>& CombinedField, int32 HighW, int32 HighH, int32 Factor, EQuickSDFLilToonLeftChannelSource LeftChannelSource);
 

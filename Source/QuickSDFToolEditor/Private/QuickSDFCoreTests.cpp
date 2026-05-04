@@ -310,9 +310,24 @@ bool FQuickSDFOutputFormatConversionTest::RunTest(const FString& Parameters)
 		static_cast<uint8>(EQuickSDFThresholdMapOutputMode::Native));
 
 	const TArray<FVector4f> Field = { FVector4f(0.25f, 0.5f, 0.75f, 1.0f) };
-	const TArray<FFloat16Color> LilToonInternalY = FSDFProcessor::DownscaleAndConvertToLilToon(
-		Field,
-		1,
+	const TArray<FFloat16Color> CanonicalPixels = FSDFProcessor::DownscaleCombinedFieldToCanonical(Field, 1, 1, 1);
+	TestEqual(TEXT("Canonical intermediate keeps internal R in R"), CanonicalPixels[0].R.GetFloat(), 0.25f);
+	TestEqual(TEXT("Canonical intermediate keeps internal G in G"), CanonicalPixels[0].G.GetFloat(), 0.5f);
+	TestEqual(TEXT("Canonical intermediate keeps internal B in B"), CanonicalPixels[0].B.GetFloat(), 0.75f);
+	TestEqual(TEXT("Canonical intermediate keeps internal A in A"), CanonicalPixels[0].A.GetFloat(), 1.0f);
+
+	const TArray<FFloat16Color> NativeFromCanonical = FSDFProcessor::ConvertCanonicalToNative(CanonicalPixels, 1, 1);
+	const TArray<FFloat16Color> NativePixels = FSDFProcessor::DownscaleAndConvert(Field, 1, 1, 1);
+	TestEqual(TEXT("Native conversion from canonical matches legacy R"), NativeFromCanonical[0].R.GetFloat(), NativePixels[0].R.GetFloat());
+	TestEqual(TEXT("Native conversion from canonical matches legacy G"), NativeFromCanonical[0].G.GetFloat(), NativePixels[0].G.GetFloat());
+	TestEqual(TEXT("Native conversion from canonical matches legacy B"), NativeFromCanonical[0].B.GetFloat(), NativePixels[0].B.GetFloat());
+	TestEqual(TEXT("Native conversion from canonical matches legacy A"), NativeFromCanonical[0].A.GetFloat(), NativePixels[0].A.GetFloat());
+
+	const TArray<FFloat16Color> GrayscalePixels = FSDFProcessor::ConvertCanonicalToGrayscale(CanonicalPixels, 1, 1);
+	TestEqual(TEXT("Grayscale conversion uses canonical R"), GrayscalePixels[0].R.GetFloat(), 0.25f);
+
+	const TArray<FFloat16Color> LilToonInternalY = FSDFProcessor::ConvertCanonicalToLilToon(
+		CanonicalPixels,
 		1,
 		1,
 		EQuickSDFLilToonLeftChannelSource::InternalY);
@@ -321,16 +336,36 @@ bool FQuickSDFOutputFormatConversionTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("LilToon conversion disables normal-shadow blend in B"), LilToonInternalY[0].B.GetFloat(), 0.0f);
 	TestEqual(TEXT("LilToon conversion writes full strength to A"), LilToonInternalY[0].A.GetFloat(), 1.0f);
 
-	const TArray<FFloat16Color> LilToonInternalW = FSDFProcessor::DownscaleAndConvertToLilToon(
-		Field,
-		1,
+	const TArray<FFloat16Color> LilToonInternalW = FSDFProcessor::ConvertCanonicalToLilToon(
+		CanonicalPixels,
 		1,
 		1,
 		EQuickSDFLilToonLeftChannelSource::InternalW);
 	TestEqual(TEXT("Island mirror left SDF uses internal W"), LilToonInternalW[0].G.GetFloat(), 1.0f);
 
-	const TArray<FFloat16Color> NativePixels = FSDFProcessor::DownscaleAndConvert(Field, 1, 1, 1);
-	TestEqual(TEXT("Grayscale output source remains native R"), NativePixels[0].R.GetFloat(), LilToonInternalY[0].R.GetFloat());
+	TArray<FFloat16Color> TwoPixelCanonical;
+	TwoPixelCanonical.SetNum(2);
+	TwoPixelCanonical[0].R = 0.25f;
+	TwoPixelCanonical[0].G = 0.5f;
+	TwoPixelCanonical[0].B = 0.0f;
+	TwoPixelCanonical[0].A = 0.75f;
+	TwoPixelCanonical[1].R = 0.75f;
+	TwoPixelCanonical[1].G = 0.5f;
+	TwoPixelCanonical[1].B = 0.0f;
+	TwoPixelCanonical[1].A = 0.25f;
+	const TArray<FFloat16Color> LilToonMirroredX = FSDFProcessor::ConvertCanonicalToLilToon(
+		TwoPixelCanonical,
+		2,
+		1,
+		EQuickSDFLilToonLeftChannelSource::MirroredX);
+	TestEqual(TEXT("Mirrored liltoon left side samples opposite X for first pixel"), LilToonMirroredX[0].G.GetFloat(), 0.75f);
+	TestEqual(TEXT("Mirrored liltoon left side samples opposite X for second pixel"), LilToonMirroredX[1].G.GetFloat(), 0.25f);
+
+	FQuickSDFIntermediateMetadata IslandMetadata;
+	IslandMetadata.Polarity = EQuickSDFIntermediatePolarity::Monopolar;
+	IslandMetadata.SymmetryMode = EQuickSDFIntermediateSymmetryMode::UVIslandChannelFlip90;
+	IslandMetadata.bForceRGBA16F = true;
+	TestTrue(TEXT("Island-channel intermediate metadata can force RGBA16F even for Monopolar data"), IslandMetadata.bForceRGBA16F);
 	return true;
 }
 
@@ -357,6 +392,10 @@ bool FQuickSDFAssetMigrationTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Active texture set owns the UV channel"), Asset->GetActiveUVChannel(), 2);
 	TestEqual(TEXT("Active texture set owns the angle data"), Asset->GetActiveAngleDataList().Num(), 2);
 	TestEqual(TEXT("Legacy mirror remains available after migration"), Asset->AngleDataList.Num(), 2);
+#if WITH_EDITORONLY_DATA
+	TestNull(TEXT("Migrated legacy asset has no intermediate texture until SDF is regenerated"), Asset->TextureSets[0].IntermediateSDFTexture);
+	TestEqual(TEXT("Intermediate metadata defaults to current schema"), Asset->TextureSets[0].IntermediateMetadata.SchemaVersion, 1);
+#endif
 	return true;
 }
 

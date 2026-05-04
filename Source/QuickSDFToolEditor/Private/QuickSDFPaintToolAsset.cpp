@@ -685,11 +685,219 @@ FText GetQuickSDFSymmetryModeShortText(EQuickSDFSymmetryMode Mode)
 	}
 }
 
+constexpr int32 QuickSDFIntermediateSchemaVersion = 1;
+const TCHAR* QuickSDFIntermediateFolder = TEXT("/Game/QuickSDF_INTERMEDIATE");
+
 EQuickSDFAutoSymmetryResolvedMode ToStoredAutoSymmetryResolvedMode(EQuickSDFSymmetryMode Mode)
 {
 	return Mode == EQuickSDFSymmetryMode::UVIslandChannelFlip90
 		? EQuickSDFAutoSymmetryResolvedMode::Island
 		: EQuickSDFAutoSymmetryResolvedMode::Texture;
+}
+
+EQuickSDFIntermediatePolarity ToIntermediatePolarity(ESDFOutputFormat Format)
+{
+	return Format == ESDFOutputFormat::Bipolar
+		? EQuickSDFIntermediatePolarity::Bipolar
+		: EQuickSDFIntermediatePolarity::Monopolar;
+}
+
+ESDFOutputFormat ToSDFOutputFormat(EQuickSDFIntermediatePolarity Polarity)
+{
+	return Polarity == EQuickSDFIntermediatePolarity::Bipolar
+		? ESDFOutputFormat::Bipolar
+		: ESDFOutputFormat::Monopolar;
+}
+
+EQuickSDFIntermediateSymmetryMode ToIntermediateSymmetryMode(EQuickSDFSymmetryMode Mode)
+{
+	if (Mode == EQuickSDFSymmetryMode::UVIslandChannelFlip90)
+	{
+		return EQuickSDFIntermediateSymmetryMode::UVIslandChannelFlip90;
+	}
+	if (Mode == EQuickSDFSymmetryMode::None180)
+	{
+		return EQuickSDFIntermediateSymmetryMode::None180;
+	}
+	return EQuickSDFIntermediateSymmetryMode::WholeTextureFlip90;
+}
+
+EQuickSDFIntermediateLilToonLeftSource ToIntermediateLilToonLeftSource(EQuickSDFLilToonLeftChannelSource Source)
+{
+	switch (Source)
+	{
+	case EQuickSDFLilToonLeftChannelSource::InternalW:
+		return EQuickSDFIntermediateLilToonLeftSource::InternalW;
+	case EQuickSDFLilToonLeftChannelSource::MirroredX:
+		return EQuickSDFIntermediateLilToonLeftSource::MirroredX;
+	case EQuickSDFLilToonLeftChannelSource::InternalY:
+	default:
+		return EQuickSDFIntermediateLilToonLeftSource::InternalY;
+	}
+}
+
+EQuickSDFLilToonLeftChannelSource ToProcessorLilToonLeftSource(EQuickSDFIntermediateLilToonLeftSource Source)
+{
+	switch (Source)
+	{
+	case EQuickSDFIntermediateLilToonLeftSource::InternalW:
+		return EQuickSDFLilToonLeftChannelSource::InternalW;
+	case EQuickSDFIntermediateLilToonLeftSource::MirroredX:
+		return EQuickSDFLilToonLeftChannelSource::MirroredX;
+	case EQuickSDFIntermediateLilToonLeftSource::InternalY:
+	default:
+		return EQuickSDFLilToonLeftChannelSource::InternalY;
+	}
+}
+
+EQuickSDFLilToonLeftChannelSource ResolveLilToonLeftChannelSource(EQuickSDFSymmetryMode EffectiveSymmetryMode)
+{
+	if (EffectiveSymmetryMode == EQuickSDFSymmetryMode::UVIslandChannelFlip90)
+	{
+		return EQuickSDFLilToonLeftChannelSource::InternalW;
+	}
+	if (EffectiveSymmetryMode == EQuickSDFSymmetryMode::WholeTextureFlip90)
+	{
+		return EQuickSDFLilToonLeftChannelSource::MirroredX;
+	}
+	return EQuickSDFLilToonLeftChannelSource::InternalY;
+}
+
+FString MakeTextureSetDerivedTextureName(
+	const UQuickSDFToolProperties* Properties,
+	const UQuickSDFAsset* Asset,
+	const FString& FallbackName,
+	const TCHAR* Suffix)
+{
+	if (Properties && Asset)
+	{
+		if (const FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet())
+		{
+			const FString AssetName = Properties->QuickSDFAssetName.IsEmpty() ? FString(TEXT("QuickSDF")) : Properties->QuickSDFAssetName;
+			const FString SlotName = ActiveSet->SlotName.IsNone()
+				? FString::Printf(TEXT("Slot_%d"), ActiveSet->MaterialSlotIndex)
+				: ActiveSet->SlotName.ToString();
+			return FString::Printf(
+				TEXT("T_%s_%s_%s"),
+				*ObjectTools::SanitizeObjectName(AssetName),
+				*ObjectTools::SanitizeObjectName(SlotName),
+				Suffix);
+		}
+	}
+
+	return ObjectTools::SanitizeObjectName(FallbackName);
+}
+
+FQuickSDFIntermediateMetadata MakeIntermediateMetadata(
+	const FIntPoint& Resolution,
+	int32 UVChannel,
+	int32 UpscaleFactor,
+	ESDFOutputFormat EffectiveFormat,
+	EQuickSDFSymmetryMode EffectiveSymmetryMode,
+	EQuickSDFLilToonLeftChannelSource LilToonLeftSource,
+	bool bForceRGBA16F)
+{
+	FQuickSDFIntermediateMetadata Metadata;
+	Metadata.SchemaVersion = QuickSDFIntermediateSchemaVersion;
+	Metadata.Resolution = Resolution;
+	Metadata.UVChannel = UVChannel;
+	Metadata.UpscaleFactor = UpscaleFactor;
+	Metadata.Polarity = ToIntermediatePolarity(EffectiveFormat);
+	Metadata.SymmetryMode = ToIntermediateSymmetryMode(EffectiveSymmetryMode);
+	Metadata.LilToonLeftSource = ToIntermediateLilToonLeftSource(LilToonLeftSource);
+	Metadata.bForceRGBA16F = bForceRGBA16F;
+	return Metadata;
+}
+
+bool BuildOutputPixelsFromCanonical(
+	const TArray<FFloat16Color>& CanonicalPixels,
+	const FIntPoint& Resolution,
+	const FQuickSDFIntermediateMetadata& Metadata,
+	EQuickSDFThresholdMapOutputMode OutputMode,
+	TArray<FFloat16Color>& OutFinalPixels,
+	ESDFOutputFormat& OutTextureSaveFormat,
+	bool& bOutForceRGBA16F,
+	bool& bOutSupportsGeneratedSDFPreview,
+	FText& OutError)
+{
+	if (Resolution.X <= 0 || Resolution.Y <= 0 || CanonicalPixels.Num() != Resolution.X * Resolution.Y)
+	{
+		OutError = LOCTEXT("InvalidCanonicalIntermediatePixels", "Intermediate SDF pixels are invalid.");
+		return false;
+	}
+
+	OutTextureSaveFormat = ToSDFOutputFormat(Metadata.Polarity);
+	bOutForceRGBA16F = Metadata.bForceRGBA16F;
+	bOutSupportsGeneratedSDFPreview = true;
+
+	if (OutputMode == EQuickSDFThresholdMapOutputMode::LilToonCompatible)
+	{
+		OutFinalPixels = FSDFProcessor::ConvertCanonicalToLilToon(
+			CanonicalPixels,
+			Resolution.X,
+			Resolution.Y,
+			ToProcessorLilToonLeftSource(Metadata.LilToonLeftSource));
+		OutTextureSaveFormat = ESDFOutputFormat::Bipolar;
+		bOutForceRGBA16F = true;
+		bOutSupportsGeneratedSDFPreview = false;
+	}
+	else if (OutputMode == EQuickSDFThresholdMapOutputMode::Grayscale)
+	{
+		OutFinalPixels = FSDFProcessor::ConvertCanonicalToGrayscale(CanonicalPixels, Resolution.X, Resolution.Y);
+		OutTextureSaveFormat = ESDFOutputFormat::Monopolar;
+		bOutForceRGBA16F = false;
+	}
+	else
+	{
+		OutFinalPixels = FSDFProcessor::ConvertCanonicalToNative(CanonicalPixels, Resolution.X, Resolution.Y);
+	}
+
+	if (OutFinalPixels.Num() != CanonicalPixels.Num())
+	{
+		OutError = LOCTEXT("ConvertCanonicalIntermediateFailed", "Failed to convert the intermediate SDF to the selected output format.");
+		return false;
+	}
+
+	return true;
+}
+
+bool ValidateIntermediateMetadata(
+	const FQuickSDFTextureSetData& TextureSet,
+	const FIntPoint& TextureResolution,
+	FText& OutError)
+{
+	if (TextureSet.IntermediateMetadata.SchemaVersion != QuickSDFIntermediateSchemaVersion)
+	{
+		OutError = FText::Format(
+			LOCTEXT("IntermediateSchemaMismatch", "Intermediate SDF schema mismatch. Expected {0}, found {1}. Regenerate the SDF."),
+			FText::AsNumber(QuickSDFIntermediateSchemaVersion),
+			FText::AsNumber(TextureSet.IntermediateMetadata.SchemaVersion));
+		return false;
+	}
+
+	if (TextureSet.IntermediateMetadata.Resolution != TextureResolution)
+	{
+		OutError = FText::Format(
+			LOCTEXT("IntermediateTextureSizeMismatch", "Intermediate SDF texture size {0}x{1} does not match its metadata {2}x{3}. Regenerate the SDF."),
+			FText::AsNumber(TextureResolution.X),
+			FText::AsNumber(TextureResolution.Y),
+			FText::AsNumber(TextureSet.IntermediateMetadata.Resolution.X),
+			FText::AsNumber(TextureSet.IntermediateMetadata.Resolution.Y));
+		return false;
+	}
+
+	if (TextureSet.Resolution != TextureSet.IntermediateMetadata.Resolution)
+	{
+		OutError = FText::Format(
+			LOCTEXT("IntermediateActiveResolutionMismatch", "Intermediate SDF resolution {0}x{1} does not match the active Texture Set resolution {2}x{3}. Regenerate the SDF."),
+			FText::AsNumber(TextureSet.IntermediateMetadata.Resolution.X),
+			FText::AsNumber(TextureSet.IntermediateMetadata.Resolution.Y),
+			FText::AsNumber(TextureSet.Resolution.X),
+			FText::AsNumber(TextureSet.Resolution.Y));
+		return false;
+	}
+
+	return true;
 }
 
 void UpdateAutoSymmetryProperties(UQuickSDFToolProperties* Properties, const FQuickSDFAutoSymmetryResult& Result)
@@ -888,6 +1096,142 @@ void UQuickSDFPaintTool::GenerateSDF()
 void UQuickSDFPaintTool::GenerateSDFToFile()
 {
 	GenerateSDFInternal(false, true);
+}
+
+void UQuickSDFPaintTool::ConvertIntermediateSDF()
+{
+	if (!Properties)
+	{
+		return;
+	}
+
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	FQuickSDFTextureSetData* ActiveSet = Asset ? Asset->GetActiveTextureSet() : nullptr;
+	if (!Subsystem || !Asset || !ActiveSet)
+	{
+		return;
+	}
+
+	if (!ActiveSet->IntermediateSDFTexture)
+	{
+		FMessageDialog::Open(EAppMsgType::Ok, LOCTEXT("NoIntermediateSDFTexture", "No intermediate SDF texture is available for the active Texture Set. Generate the SDF first."));
+		return;
+	}
+
+	if (ActiveSet->bDirty)
+	{
+		const EAppReturnType::Type Response = FMessageDialog::Open(
+			EAppMsgType::YesNo,
+			LOCTEXT("IntermediateSDFMayBeStale", "The active Texture Set has mask changes after the last SDF generation. Convert the existing intermediate SDF anyway?"));
+		if (Response != EAppReturnType::Yes)
+		{
+			return;
+		}
+	}
+
+	TArray<FFloat16Color> CanonicalPixels;
+	FIntPoint IntermediateResolution;
+	FText Error;
+	if (!Subsystem->ReadSDFIntermediateTexture(ActiveSet->IntermediateSDFTexture, CanonicalPixels, IntermediateResolution, &Error))
+	{
+		if (!Error.IsEmpty())
+		{
+			FMessageDialog::Open(EAppMsgType::Ok, Error);
+		}
+		return;
+	}
+
+	if (!ValidateIntermediateMetadata(*ActiveSet, IntermediateResolution, Error))
+	{
+		if (!Error.IsEmpty())
+		{
+			FMessageDialog::Open(EAppMsgType::Ok, Error);
+		}
+		return;
+	}
+
+	TArray<FFloat16Color> FinalPixels;
+	ESDFOutputFormat TextureSaveFormat = ToSDFOutputFormat(ActiveSet->IntermediateMetadata.Polarity);
+	bool bForceRGBA16F = ActiveSet->IntermediateMetadata.bForceRGBA16F;
+	bool bSupportsGeneratedSDFPreview = true;
+	if (!BuildOutputPixelsFromCanonical(
+		CanonicalPixels,
+		IntermediateResolution,
+		ActiveSet->IntermediateMetadata,
+		Properties->SDFOutputFormat,
+		FinalPixels,
+		TextureSaveFormat,
+		bForceRGBA16F,
+		bSupportsGeneratedSDFPreview,
+		Error))
+	{
+		if (!Error.IsEmpty())
+		{
+			FMessageDialog::Open(EAppMsgType::Ok, Error);
+		}
+		return;
+	}
+
+	const FString OutputTextureName = MakeTextureSetDerivedTextureName(
+		Properties,
+		Asset,
+		Properties->SDFTextureName,
+		TEXT("Threshold"));
+	FText SaveError;
+	UTexture2D* FinalTexture = Subsystem->CreateSDFTexture(
+		FinalPixels,
+		IntermediateResolution.X,
+		IntermediateResolution.Y,
+		Properties->SDFOutputFolder,
+		OutputTextureName,
+		TextureSaveFormat,
+		Properties->bOverwriteExistingSDF,
+		&SaveError,
+		bForceRGBA16F);
+	if (!FinalTexture)
+	{
+		if (!SaveError.IsEmpty())
+		{
+			FMessageDialog::Open(EAppMsgType::Ok, SaveError);
+		}
+		return;
+	}
+
+	const EQuickSDFMaterialPreviewMode PreviousPreviewMode = Properties->MaterialPreviewMode;
+	const bool bWasDirty = ActiveSet->bDirty;
+	Asset->Modify();
+	Asset->GetActiveFinalSDFTexture() = FinalTexture;
+	ActiveSet = Asset->GetActiveTextureSet();
+	if (ActiveSet)
+	{
+		ActiveSet->FinalSDFTexture = FinalTexture;
+		ActiveSet->bInitialBakeComplete = true;
+		ActiveSet->bDirty = bWasDirty;
+	}
+	Asset->SyncLegacyFromActiveTextureSet();
+	Asset->MarkPackageDirty();
+	OpenContentBrowserToTextureAsset(FinalTexture);
+
+	if (Properties->bAutoPreviewGeneratedSDF && bSupportsGeneratedSDFPreview)
+	{
+		Properties->Modify();
+		Properties->MaterialPreviewMode = EQuickSDFMaterialPreviewMode::GeneratedSDF;
+	}
+	else if (!bSupportsGeneratedSDFPreview && Properties->MaterialPreviewMode == EQuickSDFMaterialPreviewMode::GeneratedSDF)
+	{
+		Properties->Modify();
+		Properties->MaterialPreviewMode = EQuickSDFMaterialPreviewMode::Mask;
+	}
+	RefreshPreviewMaterial();
+	if (bSupportsGeneratedSDFPreview)
+	{
+		ShowGeneratedSDFPreviewNotification(PreviousPreviewMode, FinalTexture);
+	}
+	if (GEditor)
+	{
+		GEditor->RedrawAllViewports(false);
+	}
 }
 
 void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFileExport)
@@ -1111,50 +1455,78 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 		return;
 	}
 
+	const EQuickSDFLilToonLeftChannelSource LilToonLeftSource = ResolveLilToonLeftChannelSource(SymmetryResolution.EffectiveMode);
+	const FQuickSDFIntermediateMetadata IntermediateMetadata = MakeIntermediateMetadata(
+		FIntPoint(OrigW, OrigH),
+		Properties->UVChannel,
+		Upscale,
+		EffectiveFormat,
+		SymmetryResolution.EffectiveMode,
+		LilToonLeftSource,
+		bIslandChannelSymmetry);
+	const TArray<FFloat16Color> CanonicalPixels = FSDFProcessor::DownscaleCombinedFieldToCanonical(CombinedField, HighW, HighH, Upscale);
+
+	if (bSaveAsset)
+	{
+		FText IntermediateSaveError;
+		const FString IntermediateTextureName = MakeTextureSetDerivedTextureName(
+			Properties,
+			Asset,
+			Properties->SDFTextureName.IsEmpty()
+				? FString(TEXT("T_QuickSDF_SDFIntermediate"))
+				: FString::Printf(TEXT("%s_Intermediate"), *Properties->SDFTextureName),
+			TEXT("SDFIntermediate"));
+		if (UTexture2D* IntermediateTexture = Subsystem->CreateSDFIntermediateTexture(
+			CanonicalPixels,
+			OrigW,
+			OrigH,
+			QuickSDFIntermediateFolder,
+			IntermediateTextureName,
+			true,
+			&IntermediateSaveError))
+		{
+			Asset->Modify();
+			if (FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet())
+			{
+				ActiveSet->IntermediateSDFTexture = IntermediateTexture;
+				ActiveSet->IntermediateMetadata = IntermediateMetadata;
+			}
+			Asset->MarkPackageDirty();
+		}
+		else if (!IntermediateSaveError.IsEmpty())
+		{
+			FMessageDialog::Open(EAppMsgType::Ok, IntermediateSaveError);
+		}
+	}
+
 	const EQuickSDFThresholdMapOutputMode OutputMode = Properties->SDFOutputFormat;
 	ESDFOutputFormat TextureSaveFormat = EffectiveFormat;
 	bool bForceRGBA16F = bIslandChannelSymmetry;
 	bool bSupportsGeneratedSDFPreview = true;
 	TArray<FFloat16Color> FinalPixels;
-	if (OutputMode == EQuickSDFThresholdMapOutputMode::LilToonCompatible)
-	{
-		EQuickSDFLilToonLeftChannelSource LeftChannelSource = EQuickSDFLilToonLeftChannelSource::InternalY;
-		if (bIslandChannelSymmetry)
-		{
-			LeftChannelSource = EQuickSDFLilToonLeftChannelSource::InternalW;
-		}
-		else if (SymmetryResolution.EffectiveMode == EQuickSDFSymmetryMode::WholeTextureFlip90)
-		{
-			LeftChannelSource = EQuickSDFLilToonLeftChannelSource::MirroredX;
-		}
-
-		FinalPixels = FSDFProcessor::DownscaleAndConvertToLilToon(CombinedField, HighW, HighH, Upscale, LeftChannelSource);
-		TextureSaveFormat = ESDFOutputFormat::Bipolar;
-		bForceRGBA16F = true;
-		bSupportsGeneratedSDFPreview = false;
-	}
-	else
-	{
-		FinalPixels = FSDFProcessor::DownscaleAndConvert(CombinedField, HighW, HighH, Upscale);
-		if (OutputMode == EQuickSDFThresholdMapOutputMode::Grayscale)
-		{
-			TextureSaveFormat = ESDFOutputFormat::Monopolar;
-			bForceRGBA16F = false;
-		}
-	}
 	FText SaveError;
-	FString OutputTextureName = Properties->SDFTextureName;
-	if (const FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet())
+	if (!BuildOutputPixelsFromCanonical(
+		CanonicalPixels,
+		FIntPoint(OrigW, OrigH),
+		IntermediateMetadata,
+		OutputMode,
+		FinalPixels,
+		TextureSaveFormat,
+		bForceRGBA16F,
+		bSupportsGeneratedSDFPreview,
+		SaveError))
 	{
-		const FString AssetName = Properties->QuickSDFAssetName.IsEmpty() ? FString(TEXT("QuickSDF")) : Properties->QuickSDFAssetName;
-		const FString SlotName = ActiveSet->SlotName.IsNone()
-			? FString::Printf(TEXT("Slot_%d"), ActiveSet->MaterialSlotIndex)
-			: ActiveSet->SlotName.ToString();
-		OutputTextureName = FString::Printf(
-			TEXT("T_%s_%s_Threshold"),
-			*ObjectTools::SanitizeObjectName(AssetName),
-			*ObjectTools::SanitizeObjectName(SlotName));
+		if (!SaveError.IsEmpty())
+		{
+			FMessageDialog::Open(EAppMsgType::Ok, SaveError);
+		}
+		return;
 	}
+	FString OutputTextureName = MakeTextureSetDerivedTextureName(
+		Properties,
+		Asset,
+		Properties->SDFTextureName,
+		TEXT("Threshold"));
 
 	if (bExportFile)
 	{

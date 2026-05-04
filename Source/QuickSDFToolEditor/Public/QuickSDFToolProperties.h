@@ -297,6 +297,9 @@ public:
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Generate SDF Threshold Map to File"))
 	void GenerateSDFThresholdMapToFile();
 
+	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Convert Intermediate SDF"))
+	void ConvertIntermediateSDF();
+
 	UFUNCTION(CallInEditor, Category = "Actions", meta = (DisplayName = "Validate Monotonic Guard"))
 	void ValidateMonotonicGuard();
 

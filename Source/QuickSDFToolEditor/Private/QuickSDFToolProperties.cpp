@@ -415,6 +415,14 @@ void UQuickSDFToolProperties::GenerateSDFThresholdMapToFile()
 	}
 }
 
+void UQuickSDFToolProperties::ConvertIntermediateSDF()
+{
+	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))
+	{
+		Tool->ConvertIntermediateSDF();
+	}
+}
+
 void UQuickSDFToolProperties::ValidateMonotonicGuard()
 {
 	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(GetOuter()))

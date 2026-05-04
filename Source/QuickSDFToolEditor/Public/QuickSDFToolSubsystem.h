@@ -31,6 +31,8 @@ public:
 	
 	class UTexture2D* CreateMaskTexture(class UTextureRenderTarget2D* RT, const FString& FolderPath, const FString& TextureName, bool bOverwriteExisting, FText* OutError = nullptr);
 	class UTexture2D* CreateSDFTexture(const TArray<FFloat16Color>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName, ESDFOutputFormat Format, bool bOverwriteExisting, FText* OutError = nullptr, bool bForceRGBA16F = false);
+	class UTexture2D* CreateSDFIntermediateTexture(const TArray<FFloat16Color>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName, bool bOverwriteExisting, FText* OutError = nullptr);
+	bool ReadSDFIntermediateTexture(class UTexture2D* Texture, TArray<FFloat16Color>& OutPixels, FIntPoint& OutResolution, FText* OutError = nullptr) const;
 	bool OverwriteTextureWithRenderTarget(class UTexture2D* Texture, class UTextureRenderTarget2D* RT, FText* OutError = nullptr);
 	
 	UPROPERTY()

@@ -394,6 +394,90 @@ UTexture2D* UQuickSDFToolSubsystem::CreateSDFTexture(const TArray<FFloat16Color>
 	return NewTex;
 }
 
+UTexture2D* UQuickSDFToolSubsystem::CreateSDFIntermediateTexture(const TArray<FFloat16Color>& Pixels, int32 Width, int32 Height, const FString& FolderPath, const FString& TextureName, bool bOverwriteExisting, FText* OutError)
+{
+	if (Pixels.Num() != Width * Height)
+	{
+		if (OutError)
+		{
+			*OutError = LOCTEXT("InvalidSDFIntermediatePixelCount", "Cannot save the intermediate SDF because the pixel count does not match the output resolution.");
+		}
+		return nullptr;
+	}
+
+	UTexture2D* NewTex = FindOrCreateTextureAsset(FolderPath, TextureName, bOverwriteExisting, OutError);
+	if (!NewTex)
+	{
+		return nullptr;
+	}
+
+	NewTex->Source.Init(Width, Height, 1, 1, TSF_RGBA16F);
+	FFloat16Color* MipData = reinterpret_cast<FFloat16Color*>(NewTex->Source.LockMip(0));
+	FMemory::Memcpy(MipData, Pixels.GetData(), Pixels.Num() * sizeof(FFloat16Color));
+	NewTex->Source.UnlockMip(0);
+
+	NewTex->SRGB = false;
+	NewTex->CompressionSettings = TC_HDR;
+	NewTex->MipGenSettings = TMGS_NoMipmaps;
+	NewTex->Filter = TF_Bilinear;
+
+	FinalizeTextureAsset(NewTex);
+	return NewTex;
+}
+
+bool UQuickSDFToolSubsystem::ReadSDFIntermediateTexture(UTexture2D* Texture, TArray<FFloat16Color>& OutPixels, FIntPoint& OutResolution, FText* OutError) const
+{
+	OutPixels.Reset();
+	OutResolution = FIntPoint::ZeroValue;
+
+	if (!Texture)
+	{
+		if (OutError)
+		{
+			*OutError = LOCTEXT("MissingSDFIntermediateTexture", "No intermediate SDF texture is assigned to the active Texture Set.");
+		}
+		return false;
+	}
+
+	if (!Texture->Source.IsValid() || Texture->Source.GetFormat() != TSF_RGBA16F)
+	{
+		if (OutError)
+		{
+			*OutError = FText::Format(
+				LOCTEXT("InvalidSDFIntermediateFormat", "The intermediate SDF texture must contain RGBA16F source data: {0}"),
+				FText::FromString(Texture->GetPathName()));
+		}
+		return false;
+	}
+
+	const int32 Width = static_cast<int32>(Texture->Source.GetSizeX());
+	const int32 Height = static_cast<int32>(Texture->Source.GetSizeY());
+	if (Width <= 0 || Height <= 0)
+	{
+		if (OutError)
+		{
+			*OutError = LOCTEXT("InvalidSDFIntermediateSize", "The intermediate SDF texture has an invalid size.");
+		}
+		return false;
+	}
+
+	const uint8* MipData = Texture->Source.LockMipReadOnly(0);
+	if (!MipData)
+	{
+		if (OutError)
+		{
+			*OutError = LOCTEXT("ReadSDFIntermediateFailed", "Failed to read the intermediate SDF texture source data.");
+		}
+		return false;
+	}
+
+	OutPixels.SetNumUninitialized(Width * Height);
+	FMemory::Memcpy(OutPixels.GetData(), MipData, OutPixels.Num() * sizeof(FFloat16Color));
+	Texture->Source.UnlockMip(0);
+	OutResolution = FIntPoint(Width, Height);
+	return true;
+}
+
 void UQuickSDFToolSubsystem::DrawTextureToRenderTarget(UTexture2D* SourceTex, UTextureRenderTarget2D* TargetRT)
 {
 	if (!SourceTex || !TargetRT) return;

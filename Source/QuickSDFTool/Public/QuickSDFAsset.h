@@ -23,6 +23,59 @@ enum class EQuickSDFAutoSymmetryResolvedMode : uint8
 	Island UMETA(DisplayName = "Island")
 };
 
+UENUM(BlueprintType)
+enum class EQuickSDFIntermediatePolarity : uint8
+{
+	Monopolar UMETA(DisplayName = "Monopolar"),
+	Bipolar UMETA(DisplayName = "Bipolar")
+};
+
+UENUM(BlueprintType)
+enum class EQuickSDFIntermediateSymmetryMode : uint8
+{
+	None180 UMETA(DisplayName = "Off"),
+	WholeTextureFlip90 UMETA(DisplayName = "Texture Flip"),
+	UVIslandChannelFlip90 UMETA(DisplayName = "UV Island Channel Flip")
+};
+
+UENUM(BlueprintType)
+enum class EQuickSDFIntermediateLilToonLeftSource : uint8
+{
+	InternalY UMETA(DisplayName = "Internal Y"),
+	InternalW UMETA(DisplayName = "Internal W"),
+	MirroredX UMETA(DisplayName = "Mirrored X")
+};
+
+USTRUCT(BlueprintType)
+struct FQuickSDFIntermediateMetadata
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Intermediate SDF")
+	int32 SchemaVersion = 1;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Intermediate SDF")
+	FIntPoint Resolution = FIntPoint::ZeroValue;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Intermediate SDF")
+	int32 UVChannel = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Intermediate SDF")
+	int32 UpscaleFactor = 1;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Intermediate SDF")
+	EQuickSDFIntermediatePolarity Polarity = EQuickSDFIntermediatePolarity::Monopolar;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Intermediate SDF")
+	EQuickSDFIntermediateSymmetryMode SymmetryMode = EQuickSDFIntermediateSymmetryMode::WholeTextureFlip90;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Intermediate SDF")
+	EQuickSDFIntermediateLilToonLeftSource LilToonLeftSource = EQuickSDFIntermediateLilToonLeftSource::InternalY;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Intermediate SDF")
+	bool bForceRGBA16F = false;
+};
+
 USTRUCT(BlueprintType)
 struct FQuickSDFIslandMirrorPair
 {
@@ -94,6 +147,12 @@ struct FQuickSDFTextureSetData
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SDF Result")
 	class UTexture2D* FinalSDFTexture = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Intermediate SDF")
+	class UTexture2D* IntermediateSDFTexture = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Intermediate SDF")
+	FQuickSDFIntermediateMetadata IntermediateMetadata;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Island Mirror")
 	TArray<FQuickSDFIslandMirrorPair> IslandMirrorPairs;

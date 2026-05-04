@@ -1,35 +1,5 @@
 #include "SDFProcessor.h"
 
-namespace
-{
-FVector4f DownscaleSampleCombinedField(const TArray<FVector4f>& CombinedField, int32 HighW, int32 HighH, int32 Factor, float CenterX, float CenterY)
-{
-	const int32 Radius = FMath::Max(1, FMath::CeilToInt(Factor * 1.5f));
-	FVector4f Sum(0.0f, 0.0f, 0.0f, 0.0f);
-	float WeightSum = 0.0f;
-
-	for (int32 Dy = -Radius; Dy <= Radius; ++Dy)
-	{
-		const int32 Hy = FMath::Clamp(FMath::RoundToInt(CenterY) + Dy, 0, HighH - 1);
-		const float DistY = FMath::Abs(CenterY - (Hy + 0.5f));
-		const float Wy = FMath::Max(0.0f, 1.0f - (DistY / (Radius + 0.5f)));
-
-		for (int32 Dx = -Radius; Dx <= Radius; ++Dx)
-		{
-			const int32 Hx = FMath::Clamp(FMath::RoundToInt(CenterX) + Dx, 0, HighW - 1);
-			const float DistX = FMath::Abs(CenterX - (Hx + 0.5f));
-			const float Wx = FMath::Max(0.0f, 1.0f - (DistX / (Radius + 0.5f)));
-			const float Weight = Wx * Wy;
-
-			Sum += CombinedField[Hy * HighW + Hx] * Weight;
-			WeightSum += Weight;
-		}
-	}
-
-	return Sum / FMath::Max(WeightSum, 1e-6f);
-}
-}
-
 TArray<uint8> FSDFProcessor::ConvertToGrayscale(const TArray<FColor>& Src)
 {
 	TArray<uint8> Dst;
@@ -250,12 +220,21 @@ void FSDFProcessor::CombineSDFs(const TArray<FMaskData>& Masks, TArray<FVector4f
 
 TArray<FFloat16Color> FSDFProcessor::DownscaleAndConvert(const TArray<FVector4f>& CombinedField, int32 HighW, int32 HighH, int32 Factor)
 {
-	int32 OrigW = HighW / FMath::Max(1, Factor);
-	int32 OrigH = HighH / FMath::Max(1, Factor);
+	const int32 SafeFactor = FMath::Max(1, Factor);
+	const int32 OrigW = HighW / SafeFactor;
+	const int32 OrigH = HighH / SafeFactor;
+	return ConvertCanonicalToNative(DownscaleCombinedFieldToCanonical(CombinedField, HighW, HighH, SafeFactor), OrigW, OrigH);
+}
+
+TArray<FFloat16Color> FSDFProcessor::DownscaleCombinedFieldToCanonical(const TArray<FVector4f>& CombinedField, int32 HighW, int32 HighH, int32 Factor)
+{
+	const int32 SafeFactor = FMath::Max(1, Factor);
+	const int32 OrigW = HighW / SafeFactor;
+	const int32 OrigH = HighH / SafeFactor;
 	TArray<FFloat16Color> Out;
 	Out.SetNumUninitialized(OrigW * OrigH);
 	
-	int32 Radius = FMath::Max(1, FMath::CeilToInt(Factor * 1.5f)); 
+	int32 Radius = FMath::Max(1, FMath::CeilToInt(SafeFactor * 1.5f)); 
 
 	for (int32 y = 0; y < OrigH; ++y)
 	{
@@ -264,8 +243,8 @@ TArray<FFloat16Color> FSDFProcessor::DownscaleAndConvert(const TArray<FVector4f>
 			FVector4f sum(0.0f, 0.0f, 0.0f, 0.0f);
 			float weightSum = 0.0f;
         	
-			float cx = (x + 0.5f) * Factor;
-			float cy = (y + 0.5f) * Factor;
+			float cx = (x + 0.5f) * SafeFactor;
+			float cy = (y + 0.5f) * SafeFactor;
 
 			for(int32 dy = -Radius; dy <= Radius; ++dy)
 			{
@@ -289,16 +268,98 @@ TArray<FFloat16Color> FSDFProcessor::DownscaleAndConvert(const TArray<FVector4f>
             
 			sum /= FMath::Max(weightSum, 1e-6f);
 			
-			// Keep B compatible with existing textures; only swizzle the final export to R/A/B/G.
 			FFloat16Color Color;
 			Color.R = FMath::Clamp(sum.X, 0.0f, 1.0f);
-			Color.G = FMath::Clamp(sum.W, 0.0f, 1.0f);
+			Color.G = FMath::Clamp(sum.Y, 0.0f, 1.0f);
 			Color.B = FMath::Clamp(sum.Z, 0.0f, 1.0f);
-			Color.A = FMath::Clamp(sum.Y, 0.0f, 1.0f);
+			Color.A = FMath::Clamp(sum.W, 0.0f, 1.0f);
 			
 			Out[y * OrigW + x] = Color;
 		}
 	}
+	return Out;
+}
+
+TArray<FFloat16Color> FSDFProcessor::ConvertCanonicalToNative(const TArray<FFloat16Color>& CanonicalField, int32 Width, int32 Height)
+{
+	TArray<FFloat16Color> Out;
+	if (Width <= 0 || Height <= 0 || CanonicalField.Num() != Width * Height)
+	{
+		return Out;
+	}
+
+	Out.SetNumUninitialized(CanonicalField.Num());
+	for (int32 Index = 0; Index < CanonicalField.Num(); ++Index)
+	{
+		const FFloat16Color& Canonical = CanonicalField[Index];
+		FFloat16Color Color;
+		Color.R = FMath::Clamp(Canonical.R.GetFloat(), 0.0f, 1.0f);
+		Color.G = FMath::Clamp(Canonical.A.GetFloat(), 0.0f, 1.0f);
+		Color.B = FMath::Clamp(Canonical.B.GetFloat(), 0.0f, 1.0f);
+		Color.A = FMath::Clamp(Canonical.G.GetFloat(), 0.0f, 1.0f);
+		Out[Index] = Color;
+	}
+	return Out;
+}
+
+TArray<FFloat16Color> FSDFProcessor::ConvertCanonicalToGrayscale(const TArray<FFloat16Color>& CanonicalField, int32 Width, int32 Height)
+{
+	TArray<FFloat16Color> Out;
+	if (Width <= 0 || Height <= 0 || CanonicalField.Num() != Width * Height)
+	{
+		return Out;
+	}
+
+	Out.SetNumUninitialized(CanonicalField.Num());
+	for (int32 Index = 0; Index < CanonicalField.Num(); ++Index)
+	{
+		const float Value = FMath::Clamp(CanonicalField[Index].R.GetFloat(), 0.0f, 1.0f);
+		FFloat16Color Color;
+		Color.R = Value;
+		Color.G = Value;
+		Color.B = Value;
+		Color.A = 1.0f;
+		Out[Index] = Color;
+	}
+	return Out;
+}
+
+TArray<FFloat16Color> FSDFProcessor::ConvertCanonicalToLilToon(const TArray<FFloat16Color>& CanonicalField, int32 Width, int32 Height, EQuickSDFLilToonLeftChannelSource LeftChannelSource)
+{
+	TArray<FFloat16Color> Out;
+	if (Width <= 0 || Height <= 0 || CanonicalField.Num() != Width * Height)
+	{
+		return Out;
+	}
+
+	Out.SetNumUninitialized(CanonicalField.Num());
+	for (int32 Y = 0; Y < Height; ++Y)
+	{
+		for (int32 X = 0; X < Width; ++X)
+		{
+			const int32 Index = Y * Width + X;
+			const FFloat16Color& RightSample = CanonicalField[Index];
+
+			float LeftValue = RightSample.G.GetFloat();
+			if (LeftChannelSource == EQuickSDFLilToonLeftChannelSource::InternalW)
+			{
+				LeftValue = RightSample.A.GetFloat();
+			}
+			else if (LeftChannelSource == EQuickSDFLilToonLeftChannelSource::MirroredX)
+			{
+				const int32 MirroredX = FMath::Clamp(Width - 1 - X, 0, Width - 1);
+				LeftValue = CanonicalField[Y * Width + MirroredX].R.GetFloat();
+			}
+
+			FFloat16Color Color;
+			Color.R = FMath::Clamp(RightSample.R.GetFloat(), 0.0f, 1.0f);
+			Color.G = FMath::Clamp(LeftValue, 0.0f, 1.0f);
+			Color.B = 0.0f;
+			Color.A = 1.0f;
+			Out[Index] = Color;
+		}
+	}
+
 	return Out;
 }
 
@@ -307,38 +368,7 @@ TArray<FFloat16Color> FSDFProcessor::DownscaleAndConvertToLilToon(const TArray<F
 	const int32 SafeFactor = FMath::Max(1, Factor);
 	const int32 OrigW = HighW / SafeFactor;
 	const int32 OrigH = HighH / SafeFactor;
-	TArray<FFloat16Color> Out;
-	Out.SetNumUninitialized(OrigW * OrigH);
-
-	for (int32 Y = 0; Y < OrigH; ++Y)
-	{
-		for (int32 X = 0; X < OrigW; ++X)
-		{
-			const float CenterX = (X + 0.5f) * SafeFactor;
-			const float CenterY = (Y + 0.5f) * SafeFactor;
-			const FVector4f RightSample = DownscaleSampleCombinedField(CombinedField, HighW, HighH, SafeFactor, CenterX, CenterY);
-
-			float LeftValue = RightSample.Y;
-			if (LeftChannelSource == EQuickSDFLilToonLeftChannelSource::InternalW)
-			{
-				LeftValue = RightSample.W;
-			}
-			else if (LeftChannelSource == EQuickSDFLilToonLeftChannelSource::MirroredX)
-			{
-				const float MirroredCenterX = static_cast<float>(HighW) - CenterX;
-				LeftValue = DownscaleSampleCombinedField(CombinedField, HighW, HighH, SafeFactor, MirroredCenterX, CenterY).X;
-			}
-
-			FFloat16Color Color;
-			Color.R = FMath::Clamp(RightSample.X, 0.0f, 1.0f);
-			Color.G = FMath::Clamp(LeftValue, 0.0f, 1.0f);
-			Color.B = 0.0f;
-			Color.A = 1.0f;
-			Out[Y * OrigW + X] = Color;
-		}
-	}
-
-	return Out;
+	return ConvertCanonicalToLilToon(DownscaleCombinedFieldToCanonical(CombinedField, HighW, HighH, SafeFactor), OrigW, OrigH, LeftChannelSource);
 }
 
 // 1D 距離変換 (Felzenszwalb & Huttenlocher 法)
