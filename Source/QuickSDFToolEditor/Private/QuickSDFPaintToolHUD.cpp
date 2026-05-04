@@ -436,9 +436,6 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
 	const FString TargetModeLabel = QuickSDFToolUI::GetPaintTargetModeLabel(QuickSDFToolUI::GetPaintTargetMode(Properties)).ToString();
 	const FString TextureSetStatus = Properties ? GetTextureSetStatusText(Properties->ActiveTextureSetIndex).ToString() : FString(TEXT("Idle"));
 	const FString PreviewStatus = GetMaterialPreviewStatusText().ToString();
-	const FString ProjectionModeLabel = Properties && Properties->BrushProjectionMode == EQuickSDFBrushProjectionMode::ViewProjected
-		? FString(TEXT("View Projected"))
-		: FString(TEXT("Surface / UV"));
 
 	FCanvasTextItem SetText(
 		FVector2D(10.0f, 275.0f),
@@ -450,7 +447,7 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
 
 	FCanvasTextItem ModeText(
 		FVector2D(10.0f, 292.0f),
-		FText::FromString(FString::Printf(TEXT("Paint: %s  Target: %s  Projection: %s  Set: %s  Preview: %s"), *PaintModeLabel, *TargetModeLabel, *ProjectionModeLabel, *TextureSetStatus, *PreviewStatus)),
+		FText::FromString(FString::Printf(TEXT("Paint: %s  Target: %s  Set: %s  Preview: %s"), *PaintModeLabel, *TargetModeLabel, *TextureSetStatus, *PreviewStatus)),
 		GEngine->GetSmallFont(),
 		FLinearColor::White);
 	ModeText.EnableShadow(FLinearColor::Black);

@@ -255,16 +255,6 @@ The timeline is split into two interaction lanes to reduce accidental edits.
 - Keep `Quick Reshape` separate from `Stroke Auto Fill`: `Stroke Auto Fill` is a single-line fill helper, while `Quick Reshape` creates masks from a multi-angle boundary plan.
 - Allow `Monotonic Guard` to validate Quick Reshape output during or after baking so repeated `black -> white -> black` or `white -> black -> white` transitions can be caught.
 
-#### Brush Projection Mode
-
-- Add a streamlined `Brush Projection Mode` option for artists who want to paint by final screen-space appearance instead of only by the current surface/UV-based behavior.
-- Keep the first version intentionally small: `Surface / UV` preserves the current precise texture-space workflow, while `View Projected` shows the brush shape in screen space and projects that footprint onto visible mesh surfaces.
-- `View Projected` should feel similar to Blender/Substance-style camera-projected painting for quick face-shadow shape design, especially when artists care more about the visible silhouette than the UV-space brush footprint.
-- Avoid exposing a large matrix of projection, alignment, and size-space options at first; the goal is a quick mode switch, not a full texture-paint system.
-- The projected brush should affect visible hit surfaces by default and avoid painting through the model with backface and occlusion protection.
-- Existing brush controls such as radius, falloff, antialiasing, pressure radius, quick stroke, and paint target modes should work where practical in both projection modes.
-- The viewport cursor should clearly indicate the active projection mode because the same stroke may produce different UV results depending on the mode.
-
 #### Actor Mesh Component Selection
 
 - Address the current limitation where a single actor that owns multiple mesh components does not provide a clear way to choose which mesh should be edited by QuickSDFTool.
@@ -302,7 +292,6 @@ The timeline is split into two interaction lanes to reduce accidental edits.
 
 - `Quick Nose` should support nose-position picking, preset placement, vector adjustment, baking, and Undo.
 - `Quick Reshape` should support multiple boundary lines such as `0 / 30 / 60 / 90` degrees on one guide layer, update only the matching angle masks, keep the guide layer editable after baking, and warn for lines that do not split a UV island or close a region.
-- `Brush Projection Mode` should let artists switch between the current `Surface / UV` behavior and a `View Projected` brush, preserve the visible brush shape in screen space, and avoid painting hidden or back-facing surfaces.
 - `Actor Mesh Component Selection` should let a single actor with multiple mesh components choose one target component, paint and bake only that component, and preserve separate QuickSDF state when switching between components.
 - `Threshold Map Reverse Conversion` should let artists specify an angle, preview the reconstructed mask from a completed threshold map, and extract it for repair or reuse.
 - `Mask Freeze` should lower VRAM usage in a high-resolution, multi-mask setup, restore frozen masks without visual changes, and automatically thaw every affected mask before applying multi-mask edits.

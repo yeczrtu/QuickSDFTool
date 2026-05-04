@@ -194,7 +194,6 @@ protected:
 	bool CanInterpolateStrokeSamples(const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B) const;
 	void StampSample(const FQuickSDFStrokeSample& Sample);
 	void StampSamples(const TArray<FQuickSDFStrokeSample>& Samples);
-	void StampProjectedSamples(const TArray<FQuickSDFStrokeSample>& Samples);
 	void AppendStrokeSample(const FQuickSDFStrokeSample& Sample);
 	void StampLinearSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample);
 	void FlushStrokeTail();
