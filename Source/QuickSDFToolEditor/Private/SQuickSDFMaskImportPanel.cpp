@@ -682,7 +682,7 @@ float SQuickSDFMaskImportPanel::GetFallbackAssignmentStep() const
 
 	UQuickSDFPaintTool* Tool = PaintTool.Get();
 	const UQuickSDFToolProperties* Properties = Tool ? Tool->Properties.Get() : nullptr;
-	const bool bSymmetry = !Properties || Properties->bSymmetryMode;
+	const bool bSymmetry = !Properties || Properties->UsesFrontHalfAngles();
 	const int32 DefaultCount = QuickSDFPaintToolPrivate::GetQuickSDFDefaultAngleCount(bSymmetry);
 	return (bSymmetry ? 90.0f : 180.0f) / static_cast<float>(FMath::Max(DefaultCount - 1, 1));
 }
@@ -693,7 +693,7 @@ void SQuickSDFMaskImportPanel::RebuildRows()
 
 	UQuickSDFPaintTool* Tool = PaintTool.Get();
 	UQuickSDFToolProperties* Properties = Tool ? Tool->Properties.Get() : nullptr;
-	const bool bBaseSymmetry = !Properties || Properties->bSymmetryMode;
+	const bool bBaseSymmetry = !Properties || Properties->UsesFrontHalfAngles();
 
 	bool bNeedsFullRange = false;
 	TArray<TSharedPtr<FQuickSDFMaskImportRowData>> SourceRows;
@@ -864,7 +864,7 @@ void SQuickSDFMaskImportPanel::RefreshValidation()
 {
 	UQuickSDFPaintTool* Tool = PaintTool.Get();
 	UQuickSDFToolProperties* Properties = Tool ? Tool->Properties.Get() : nullptr;
-	const bool bBaseSymmetry = !Properties || Properties->bSymmetryMode;
+	const bool bBaseSymmetry = !Properties || Properties->UsesFrontHalfAngles();
 	const bool bNeedsFullRange = Rows.ContainsByPredicate([](const TSharedPtr<FQuickSDFMaskImportRowData>& Row)
 	{
 		return Row.IsValid() && Row->bHasSource && Row->Angle > 90.01f;
@@ -1290,7 +1290,7 @@ FReply SQuickSDFMaskImportPanel::OnCompleteClicked()
 {
 	UQuickSDFPaintTool* Tool = PaintTool.Get();
 	const UQuickSDFToolProperties* Properties = Tool ? Tool->Properties.Get() : nullptr;
-	const bool bSymmetry = !Properties || Properties->bSymmetryMode;
+	const bool bSymmetry = !Properties || Properties->UsesFrontHalfAngles();
 	ExpectedCountOverride = QuickSDFPaintToolPrivate::GetQuickSDFDefaultAngleCount(bSymmetry);
 	RebuildRows();
 	if (RowListView.IsValid())
@@ -1313,7 +1313,7 @@ FReply SQuickSDFMaskImportPanel::OnEvenClicked()
 
 	UQuickSDFPaintTool* Tool = PaintTool.Get();
 	const UQuickSDFToolProperties* Properties = Tool ? Tool->Properties.Get() : nullptr;
-	const bool bSymmetry = !Properties || Properties->bSymmetryMode;
+	const bool bSymmetry = !Properties || Properties->UsesFrontHalfAngles();
 	const float MaxAngle = bSymmetry ? 90.0f : 180.0f;
 	for (int32 Index = 0; Index < SourceRows.Num(); ++Index)
 	{

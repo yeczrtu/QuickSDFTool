@@ -91,6 +91,59 @@ bool NeedsBipolarOutput(const TArray<FMaskData>& MaskData, int32 PixelCount)
 	return false;
 }
 
+float MeasureTextureMirrorOccupancyScore(const TArray<int32>& PixelChartIDs, int32 Width, int32 Height)
+{
+	if (Width <= 0 || Height <= 0 || PixelChartIDs.Num() != Width * Height)
+	{
+		return 0.0f;
+	}
+
+	int32 OccupiedUnionPixels = 0;
+	int32 MatchedPixels = 0;
+	for (int32 Y = 0; Y < Height; ++Y)
+	{
+		for (int32 X = 0; X < Width; ++X)
+		{
+			const int32 LeftIndex = Y * Width + X;
+			const int32 RightIndex = Y * Width + (Width - 1 - X);
+			const bool bLeftOccupied = PixelChartIDs[LeftIndex] != INDEX_NONE;
+			const bool bRightOccupied = PixelChartIDs[RightIndex] != INDEX_NONE;
+			if (!bLeftOccupied && !bRightOccupied)
+			{
+				continue;
+			}
+
+			++OccupiedUnionPixels;
+			if (bLeftOccupied == bRightOccupied)
+			{
+				++MatchedPixels;
+			}
+		}
+	}
+
+	return OccupiedUnionPixels > 0
+		? static_cast<float>(MatchedPixels) / static_cast<float>(OccupiedUnionPixels)
+		: 0.0f;
+}
+
+EQuickSDFSymmetryMode ResolveAutoSymmetryModeFromAnalysis(bool bHasValidUVData, float TextureMirrorScore, int32 AmbiguousPixelCount, int32 OutOfRangeIslandCount)
+{
+	if (!bHasValidUVData)
+	{
+		return EQuickSDFSymmetryMode::WholeTextureFlip90;
+	}
+
+	if (AmbiguousPixelCount > 0 || OutOfRangeIslandCount > 0)
+	{
+		return EQuickSDFSymmetryMode::UVIslandChannelFlip90;
+	}
+
+	constexpr float TextureMirrorThreshold = 0.97f;
+	return TextureMirrorScore >= TextureMirrorThreshold
+		? EQuickSDFSymmetryMode::WholeTextureFlip90
+		: EQuickSDFSymmetryMode::UVIslandChannelFlip90;
+}
+
 int32 GetQuickSDFPresetSize(EQuickSDFQualityPreset Preset)
 {
 	switch (Preset)

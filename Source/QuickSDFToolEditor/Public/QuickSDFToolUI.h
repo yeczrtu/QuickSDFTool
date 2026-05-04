@@ -7,6 +7,7 @@ class UQuickSDFPaintTool;
 class UQuickSDFToolProperties;
 enum class EQuickSDFMaterialPreviewMode : uint8;
 enum class EQuickSDFPaintTargetMode : uint8;
+enum class EQuickSDFSymmetryMode : uint8;
 
 enum class EQuickSDFPaintToggle : uint8
 {
@@ -28,6 +29,7 @@ using FGetPaintTool = TFunction<UQuickSDFPaintTool*()>;
 const TArray<EQuickSDFPaintToggle>& GetPaintToggles();
 const TArray<EQuickSDFMaterialPreviewMode>& GetMaterialPreviewModes();
 const TArray<EQuickSDFPaintTargetMode>& GetPaintTargetModes();
+const TArray<EQuickSDFSymmetryMode>& GetSymmetryModes();
 UQuickSDFPaintTool* GetActivePaintTool();
 EQuickSDFMaterialPreviewMode GetMaterialPreviewMode(const UQuickSDFToolProperties* Properties);
 FText GetMaterialPreviewModeLabel(EQuickSDFMaterialPreviewMode Mode);
@@ -41,6 +43,9 @@ FText GetPaintTargetModeDescription(EQuickSDFPaintTargetMode Mode);
 FName GetPaintTargetModeIconName(EQuickSDFPaintTargetMode Mode);
 void SetPaintTargetMode(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties, EQuickSDFPaintTargetMode Mode);
 void CyclePaintTargetMode(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties);
+FText GetSymmetryModeLabel(EQuickSDFSymmetryMode Mode);
+FText GetSymmetryModeDescription(EQuickSDFSymmetryMode Mode);
+void SetSymmetryMode(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties, EQuickSDFSymmetryMode Mode);
 FName GetTogglePropertyName(EQuickSDFPaintToggle Toggle);
 FText GetToggleLabel(EQuickSDFPaintToggle Toggle);
 FText GetToggleDescription(EQuickSDFPaintToggle Toggle);
@@ -52,6 +57,7 @@ TSharedRef<SWidget> MakeIconLabelButton(const FName IconName, const FText& Label
 TSharedRef<SWidget> MakeMaterialPreviewModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
 TSharedRef<SWidget> MakeAutoSDFPreviewToggle(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
 TSharedRef<SWidget> MakePaintTargetModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
+TSharedRef<SWidget> MakeSymmetryModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
 TSharedRef<SWidget> MakePaintToggleButton(EQuickSDFPaintToggle Toggle, FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
 TSharedRef<SWidget> MakePaintToggleBar(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
 TSharedRef<SWidget> MakeQuickToggleMenu(FGetPaintTool GetPaintTool);

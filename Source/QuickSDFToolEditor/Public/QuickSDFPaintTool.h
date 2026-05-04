@@ -155,6 +155,7 @@ public:
 	bool CanUseGeneratedSDFPreview() const;
 	FText GetGeneratedSDFPreviewUnavailableText() const;
 	FText GetMaterialPreviewStatusText() const;
+	FQuickSDFAutoSymmetryResult ResolveEffectiveSymmetryMode(bool bAllowExpensiveAnalysis = true);
 	
 	void AddKeyframe();
 	void AddKeyframeAtAngle(float Angle);
@@ -236,6 +237,7 @@ protected:
 	int32 ValidateMonotonicGuardForAsset(class UQuickSDFAsset* Asset, int32* OutTransitionViolations = nullptr) const;
 	void WarnIfMonotonicGuardViolations(const FText& Context);
 	void ResetStrokeState();
+	void InvalidateAutoSymmetryCache();
 	void InvalidatePaintChartCache();
 	void EnsurePaintChartCache();
 	int32 GetPaintChartIDForTriangle(int32 TriangleID);
@@ -340,6 +342,11 @@ protected:
 	bool bPaintChartCacheDirty = true;
 	int32 CachedPaintChartUVChannel = INDEX_NONE;
 	int32 CachedPaintChartMaterialSlot = INDEX_NONE;
+	FQuickSDFAutoSymmetryResult CachedAutoSymmetryResult;
+	bool bCachedAutoSymmetryResultValid = false;
+	int32 CachedAutoSymmetryUVChannel = INDEX_NONE;
+	int32 CachedAutoSymmetryMaterialSlot = INDEX_NONE;
+	bool bCachedAutoSymmetryHasTargetMesh = false;
 	int32 StrokeTransactionAngleIndex = INDEX_NONE;
 	TArray<int32> StrokeTransactionAngleIndices;
 	TArray<FIntRect> StrokeDirtyRectsByAngle;

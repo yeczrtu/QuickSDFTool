@@ -290,8 +290,9 @@ void UQuickSDFPaintTool::Setup()
 		{
 			ActiveAsset->GetActiveResolution() = FIntPoint(1024, 1024);
 			ActiveAsset->GetActiveUVChannel() = 0;
-			const float InitialMaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
-			const int32 InitialAngleCount = GetQuickSDFDefaultAngleCount(Properties->bSymmetryMode);
+			const bool bInitialFrontHalfAngles = Properties->UsesFrontHalfAngles();
+			const float InitialMaxAngle = bInitialFrontHalfAngles ? 90.0f : 180.0f;
+			const int32 InitialAngleCount = GetQuickSDFDefaultAngleCount(bInitialFrontHalfAngles);
 			for (int32 i = 0; i < InitialAngleCount; ++i)
 			{
 				FQuickSDFAngleData Data;
@@ -576,6 +577,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 
 	if (!CurrentComponent.IsValid())
 	{
+		ResolveEffectiveSymmetryMode(false);
 		return;
 	}
 
@@ -586,6 +588,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 	if (!bValidMeshLoaded || TempMesh->TriangleCount() <= 0)
 	{
 		CurrentComponent.Reset();
+		ResolveEffectiveSymmetryMode(false);
 		return;
 	}
 
@@ -641,6 +644,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 
 	RefreshTextureSetsForCurrentComponent();
 	EnsureInitialMasksReady();
+	ResolveEffectiveSymmetryMode(false);
 	RefreshPreviewMaterial();
 }
 

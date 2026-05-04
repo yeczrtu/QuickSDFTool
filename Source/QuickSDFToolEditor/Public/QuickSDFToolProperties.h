@@ -36,9 +36,26 @@ enum class EQuickSDFBrushProjectionMode : uint8
 UENUM(BlueprintType)
 enum class EQuickSDFSymmetryMode : uint8
 {
-	None180 UMETA(DisplayName = "None (0-180 Paint)"),
-	WholeTextureFlip90 UMETA(DisplayName = "Whole Texture Flip (0-90 Paint)"),
-	UVIslandChannelFlip90 UMETA(DisplayName = "UV Island Channel Flip (0-90 Paint)")
+	None180 = 0 UMETA(DisplayName = "Off (0-180 Paint)"),
+	WholeTextureFlip90 = 1 UMETA(DisplayName = "Texture Flip (0-90 Paint)"),
+	UVIslandChannelFlip90 = 2 UMETA(DisplayName = "UV Island Channel Flip (0-90 Paint)"),
+	Auto = 3 UMETA(DisplayName = "Auto (0-90 Paint)")
+};
+
+struct FQuickSDFAutoSymmetryResult
+{
+	EQuickSDFSymmetryMode RequestedMode = EQuickSDFSymmetryMode::Auto;
+	EQuickSDFSymmetryMode EffectiveMode = EQuickSDFSymmetryMode::WholeTextureFlip90;
+	float Confidence = 0.0f;
+	float TextureMirrorScore = 0.0f;
+	int32 IslandCount = 0;
+	int32 UnpairedIslandCount = 0;
+	int32 AmbiguousPixelCount = 0;
+	int32 OutOfRangeIslandCount = 0;
+	bool bUsedAuto = false;
+	bool bHasValidUVData = false;
+	bool bUsedFallback = false;
+	FText StatusText;
 };
 
 UENUM(BlueprintType)
@@ -147,7 +164,28 @@ public:
 	bool bEnableOnionSkin = false;
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Symmetry Mode"))
-	EQuickSDFSymmetryMode SymmetryMode = EQuickSDFSymmetryMode::WholeTextureFlip90;
+	EQuickSDFSymmetryMode SymmetryMode = EQuickSDFSymmetryMode::Auto;
+
+	UPROPERTY(VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Resolved Symmetry"))
+	EQuickSDFSymmetryMode AutoSymmetryResolvedMode = EQuickSDFSymmetryMode::WholeTextureFlip90;
+
+	UPROPERTY(VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Status", MultiLine = true))
+	FText AutoSymmetryStatus;
+
+	UPROPERTY(VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Confidence", ClampMin = "0.0", ClampMax = "1.0"))
+	float AutoSymmetryConfidence = 0.0f;
+
+	UPROPERTY(VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Islands"))
+	int32 AutoSymmetryIslandCount = 0;
+
+	UPROPERTY(VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Unpaired Islands"))
+	int32 AutoSymmetryUnpairedIslandCount = 0;
+
+	UPROPERTY(VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Ambiguous Pixels"))
+	int32 AutoSymmetryAmbiguousPixelCount = 0;
+
+	UPROPERTY(VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Out-of-Range Islands"))
+	int32 AutoSymmetryOutOfRangeIslandCount = 0;
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DeprecatedProperty, DeprecationMessage = "Use SymmetryMode instead.", HideInDetailPanel))
 	bool bSymmetryMode = true;

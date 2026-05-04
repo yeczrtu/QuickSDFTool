@@ -127,7 +127,7 @@ void UQuickSDFToolProperties::SetSymmetryMode(EQuickSDFSymmetryMode NewMode)
 
 void UQuickSDFToolProperties::SetSymmetryEnabled(bool bEnabled)
 {
-	SetSymmetryMode(bEnabled ? EQuickSDFSymmetryMode::WholeTextureFlip90 : EQuickSDFSymmetryMode::None180);
+	SetSymmetryMode(bEnabled ? EQuickSDFSymmetryMode::Auto : EQuickSDFSymmetryMode::None180);
 }
 
 void UQuickSDFToolProperties::SyncLegacySymmetryFlag()

@@ -47,6 +47,8 @@ bool TryBuildMaskData(
 	FMaskData& OutData);
 void SortMaskData(TArray<FMaskData>& MaskData);
 bool NeedsBipolarOutput(const TArray<FMaskData>& MaskData, int32 PixelCount);
+float MeasureTextureMirrorOccupancyScore(const TArray<int32>& PixelChartIDs, int32 Width, int32 Height);
+EQuickSDFSymmetryMode ResolveAutoSymmetryModeFromAnalysis(bool bHasValidUVData, float TextureMirrorScore, int32 AmbiguousPixelCount, int32 OutOfRangeIslandCount);
 bool TryExtractAngleFromName(const FString& Name, float& OutAngle);
 bool HasImportedSourceMasks(const UQuickSDFAsset* Asset);
 bool HasNonWhitePaintMasks(const UQuickSDFPaintTool& Tool, const UQuickSDFAsset* Asset);
@@ -71,6 +73,10 @@ void RestoreMaskStateOnNextTick(
 	const TArray<TArray<FColor>>& PixelsByMask);
 FVector2f TransformIslandMirrorLocalUV(const FVector2f& LocalUV, EQuickSDFIslandMirrorTransform Transform);
 FVector4f SampleCombinedFieldBilinear(const TArray<FVector4f>& CombinedField, int32 Width, int32 Height, const FVector2f& UV);
+void AutoBuildIslandMirrorPairs(
+	const TArray<FQuickSDFIslandMirrorChart>& Charts,
+	const TArray<FQuickSDFIslandMirrorPair>& ExistingPairs,
+	TArray<FQuickSDFIslandMirrorPair>& OutPairs);
 FQuickSDFIslandMirrorApplyResult ApplyIslandMirrorToCombinedField(
 	TArray<FVector4f>& CombinedField,
 	int32 Width,

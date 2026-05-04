@@ -120,7 +120,7 @@ void UQuickSDFPaintTool::InitializeDefaultAngleData(TArray<FQuickSDFAngleData>& 
 		return;
 	}
 
-	const bool bSymmetry = Properties ? Properties->bSymmetryMode : true;
+	const bool bSymmetry = !Properties || Properties->UsesFrontHalfAngles();
 	const float MaxAngle = bSymmetry ? 90.0f : 180.0f;
 	const int32 AngleCount = GetQuickSDFDefaultAngleCount(bSymmetry);
 	AngleData.Reset();

@@ -108,6 +108,7 @@ void UQuickSDFPaintTool::InvalidatePaintChartCache()
 	bPaintChartCacheDirty = true;
 	CachedPaintChartUVChannel = INDEX_NONE;
 	CachedPaintChartMaterialSlot = INDEX_NONE;
+	InvalidateAutoSymmetryCache();
 }
 
 void UQuickSDFPaintTool::EnsurePaintChartCache()

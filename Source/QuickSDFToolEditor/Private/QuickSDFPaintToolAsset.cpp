@@ -421,6 +421,46 @@ EQuickSDFIslandMirrorTransform GetInverseIslandMirrorTransform(EQuickSDFIslandMi
 	}
 }
 
+FVector2f GetChartCenter(const FQuickSDFIslandMirrorChart& Chart)
+{
+	return (Chart.UVMin + Chart.UVMax) * 0.5f;
+}
+
+float GetIslandAreaSimilarity(const FQuickSDFIslandMirrorChart& A, const FQuickSDFIslandMirrorChart& B)
+{
+	const float MaxArea = FMath::Max(FMath::Max(A.Area, B.Area), KINDA_SMALL_NUMBER);
+	return FMath::Clamp(1.0f - (FMath::Abs(A.Area - B.Area) / MaxArea), 0.0f, 1.0f);
+}
+
+float GetIslandAspectSimilarity(const FQuickSDFIslandMirrorChart& A, const FQuickSDFIslandMirrorChart& B)
+{
+	const float SafeA = FMath::Max(A.AspectRatio, KINDA_SMALL_NUMBER);
+	const float SafeB = FMath::Max(B.AspectRatio, KINDA_SMALL_NUMBER);
+	const float Ratio = FMath::Max(SafeA, SafeB) / FMath::Max(FMath::Min(SafeA, SafeB), KINDA_SMALL_NUMBER);
+	return FMath::Clamp(1.0f - ((Ratio - 1.0f) / 2.0f), 0.0f, 1.0f);
+}
+
+float GetIslandMirrorCenterScore(const FQuickSDFIslandMirrorChart& Source, const FQuickSDFIslandMirrorChart& Target)
+{
+	const FVector2f SourceCenter = GetChartCenter(Source);
+	const FVector2f TargetCenter = GetChartCenter(Target);
+	const FVector2f MirroredSourceCenter(1.0f - SourceCenter.X, SourceCenter.Y);
+	const float Distance = FMath::Sqrt(FVector2f::DistSquared(MirroredSourceCenter, TargetCenter));
+	return FMath::Clamp(1.0f - (Distance / 0.25f), 0.0f, 1.0f);
+}
+
+float ScoreIslandMirrorPair(
+	const FQuickSDFIslandMirrorChart& Source,
+	const FQuickSDFIslandMirrorChart& Target,
+	EQuickSDFIslandMirrorTransform Transform)
+{
+	const float ShapeScore = CompareIslandShapeMasks(Source.ShapeMask, Target.ShapeMask, Transform);
+	const float AreaScore = GetIslandAreaSimilarity(Source, Target);
+	const float AspectScore = GetIslandAspectSimilarity(Source, Target);
+	const float CenterScore = Source.Key == Target.Key ? 1.0f : GetIslandMirrorCenterScore(Source, Target);
+	return ShapeScore * 0.55f + AreaScore * 0.20f + AspectScore * 0.15f + CenterScore * 0.10f;
+}
+
 bool BuildIslandMirrorData(
 	const UE::Geometry::FDynamicMesh3& Mesh,
 	int32 UVChannel,
@@ -550,7 +590,7 @@ bool BuildIslandMirrorData(
 	return OutCharts.Num() > 0;
 }
 
-void AutoBuildIslandMirrorPairs(
+void BuildAutoIslandMirrorPairsInternal(
 	const TArray<FQuickSDFIslandMirrorChart>& Charts,
 	const TArray<FQuickSDFIslandMirrorPair>& ExistingPairs,
 	TArray<FQuickSDFIslandMirrorPair>& OutPairs)
@@ -573,14 +613,254 @@ void AutoBuildIslandMirrorPairs(
 			continue;
 		}
 
-		FQuickSDFIslandMirrorPair SelfPair;
-		SelfPair.SourceIslandKey = Chart.Key;
-		SelfPair.TargetIslandKey = Chart.Key;
-		SelfPair.Transform = EQuickSDFIslandMirrorTransform::FlipU;
-		SelfPair.Confidence = 1.0f;
-		OutPairs.Add(SelfPair);
+		FQuickSDFIslandMirrorPair BestPair;
+		BestPair.SourceIslandKey = Chart.Key;
+		BestPair.TargetIslandKey = Chart.Key;
+		BestPair.Transform = EQuickSDFIslandMirrorTransform::FlipU;
+		BestPair.Confidence = ScoreIslandMirrorPair(Chart, Chart, BestPair.Transform) * 0.70f;
+
+		for (const FQuickSDFIslandMirrorChart& CandidateSource : Charts)
+		{
+			if (CandidateSource.Key == Chart.Key)
+			{
+				continue;
+			}
+
+			const EQuickSDFIslandMirrorTransform Transforms[] = {
+				EQuickSDFIslandMirrorTransform::FlipU,
+				EQuickSDFIslandMirrorTransform::FlipV,
+				EQuickSDFIslandMirrorTransform::Rotate180,
+				EQuickSDFIslandMirrorTransform::SwapUVFlipU,
+				EQuickSDFIslandMirrorTransform::SwapUVFlipV
+			};
+
+			for (EQuickSDFIslandMirrorTransform Transform : Transforms)
+			{
+				const float ShapeScore = CompareIslandShapeMasks(CandidateSource.ShapeMask, Chart.ShapeMask, Transform);
+				if (ShapeScore < 0.75f)
+				{
+					continue;
+				}
+
+				const float Score = ScoreIslandMirrorPair(CandidateSource, Chart, Transform);
+				if (Score > BestPair.Confidence && Score >= 0.75f)
+				{
+					BestPair.SourceIslandKey = CandidateSource.Key;
+					BestPair.TargetIslandKey = Chart.Key;
+					BestPair.Transform = Transform;
+					BestPair.Confidence = Score;
+				}
+			}
+		}
+
+		OutPairs.Add(BestPair);
 	}
 }
+}
+
+namespace QuickSDFPaintToolPrivate
+{
+void AutoBuildIslandMirrorPairs(
+	const TArray<FQuickSDFIslandMirrorChart>& Charts,
+	const TArray<FQuickSDFIslandMirrorPair>& ExistingPairs,
+	TArray<FQuickSDFIslandMirrorPair>& OutPairs)
+{
+	BuildAutoIslandMirrorPairsInternal(Charts, ExistingPairs, OutPairs);
+}
+}
+
+FText GetQuickSDFSymmetryModeShortText(EQuickSDFSymmetryMode Mode)
+{
+	switch (Mode)
+	{
+	case EQuickSDFSymmetryMode::None180:
+		return LOCTEXT("SymmetryModeOffShort", "Off");
+	case EQuickSDFSymmetryMode::UVIslandChannelFlip90:
+		return LOCTEXT("SymmetryModeIslandShort", "Island");
+	case EQuickSDFSymmetryMode::Auto:
+		return LOCTEXT("SymmetryModeAutoShort", "Auto");
+	case EQuickSDFSymmetryMode::WholeTextureFlip90:
+	default:
+		return LOCTEXT("SymmetryModeTextureShort", "Texture");
+	}
+}
+
+void UpdateAutoSymmetryProperties(UQuickSDFToolProperties* Properties, const FQuickSDFAutoSymmetryResult& Result)
+{
+	if (!Properties)
+	{
+		return;
+	}
+
+	Properties->AutoSymmetryResolvedMode = Result.EffectiveMode;
+	Properties->AutoSymmetryStatus = Result.StatusText;
+	Properties->AutoSymmetryConfidence = Result.Confidence;
+	Properties->AutoSymmetryIslandCount = Result.IslandCount;
+	Properties->AutoSymmetryUnpairedIslandCount = Result.UnpairedIslandCount;
+	Properties->AutoSymmetryAmbiguousPixelCount = Result.AmbiguousPixelCount;
+	Properties->AutoSymmetryOutOfRangeIslandCount = Result.OutOfRangeIslandCount;
+}
+
+void UQuickSDFPaintTool::InvalidateAutoSymmetryCache()
+{
+	bCachedAutoSymmetryResultValid = false;
+	CachedAutoSymmetryUVChannel = INDEX_NONE;
+	CachedAutoSymmetryMaterialSlot = INDEX_NONE;
+	bCachedAutoSymmetryHasTargetMesh = false;
+}
+
+FQuickSDFAutoSymmetryResult UQuickSDFPaintTool::ResolveEffectiveSymmetryMode(bool bAllowExpensiveAnalysis)
+{
+	FQuickSDFAutoSymmetryResult Result;
+	if (!Properties)
+	{
+		Result.bUsedFallback = true;
+		Result.StatusText = LOCTEXT("AutoSymmetryNoProperties", "Auto -> Texture (tool properties are unavailable)");
+		return Result;
+	}
+
+	Result.RequestedMode = Properties->SymmetryMode;
+	Result.EffectiveMode = Properties->SymmetryMode;
+	Result.bUsedAuto = Properties->SymmetryMode == EQuickSDFSymmetryMode::Auto;
+
+	if (!Result.bUsedAuto)
+	{
+		Result.Confidence = 1.0f;
+		Result.StatusText = FText::Format(
+			LOCTEXT("ManualSymmetryStatus", "Manual -> {0}"),
+			GetQuickSDFSymmetryModeShortText(Result.EffectiveMode));
+		UpdateAutoSymmetryProperties(Properties, Result);
+		return Result;
+	}
+
+	Result.EffectiveMode = EQuickSDFSymmetryMode::WholeTextureFlip90;
+	const bool bCacheCurrent =
+		bCachedAutoSymmetryResultValid &&
+		CachedAutoSymmetryUVChannel == Properties->UVChannel &&
+		CachedAutoSymmetryMaterialSlot == Properties->TargetMaterialSlot &&
+		bCachedAutoSymmetryHasTargetMesh == TargetMesh.IsValid();
+	if (bCacheCurrent)
+	{
+		UpdateAutoSymmetryProperties(Properties, CachedAutoSymmetryResult);
+		return CachedAutoSymmetryResult;
+	}
+
+	if (!bAllowExpensiveAnalysis)
+	{
+		Result.StatusText = LOCTEXT("AutoSymmetryDeferredStatus", "Auto (analysis deferred; using Texture until Generate SDF or status hover resolves it)");
+		UpdateAutoSymmetryProperties(Properties, Result);
+		return Result;
+	}
+
+	constexpr int32 AnalysisSize = 64;
+	TArray<FQuickSDFIslandMirrorChart> IslandCharts;
+	TArray<int32> PixelChartIDs;
+	TArray<uint8> AmbiguousPixelFlags;
+	bool bBuiltIslandData = false;
+
+	if (TargetMesh.IsValid() && TargetMesh->HasAttributes())
+	{
+		EnsurePaintChartCache();
+		bBuiltIslandData = BuildIslandMirrorData(
+			*TargetMesh,
+			Properties->UVChannel,
+			TargetTrianglePaintChartIDs,
+			AnalysisSize,
+			AnalysisSize,
+			IslandCharts,
+			PixelChartIDs,
+			AmbiguousPixelFlags);
+	}
+
+	Result.bHasValidUVData = bBuiltIslandData;
+	if (!bBuiltIslandData)
+	{
+		Result.bUsedFallback = true;
+		Result.Confidence = 0.0f;
+		Result.StatusText = LOCTEXT("AutoSymmetryFallbackTextureStatus", "Auto -> Texture (no valid mesh or UV data; using fallback)");
+		UpdateAutoSymmetryProperties(Properties, Result);
+		CachedAutoSymmetryResult = Result;
+		bCachedAutoSymmetryResultValid = true;
+		CachedAutoSymmetryUVChannel = Properties->UVChannel;
+		CachedAutoSymmetryMaterialSlot = Properties->TargetMaterialSlot;
+		bCachedAutoSymmetryHasTargetMesh = TargetMesh.IsValid();
+		return Result;
+	}
+
+	Result.IslandCount = IslandCharts.Num();
+	for (uint8 Flag : AmbiguousPixelFlags)
+	{
+		if (Flag != 0)
+		{
+			++Result.AmbiguousPixelCount;
+		}
+	}
+	for (const FQuickSDFIslandMirrorChart& Chart : IslandCharts)
+	{
+		if (Chart.bOutOfRange)
+		{
+			++Result.OutOfRangeIslandCount;
+		}
+	}
+
+	Result.TextureMirrorScore = MeasureTextureMirrorOccupancyScore(PixelChartIDs, AnalysisSize, AnalysisSize);
+	Result.EffectiveMode = ResolveAutoSymmetryModeFromAnalysis(
+		Result.bHasValidUVData,
+		Result.TextureMirrorScore,
+		Result.AmbiguousPixelCount,
+		Result.OutOfRangeIslandCount);
+
+	if (Result.EffectiveMode == EQuickSDFSymmetryMode::UVIslandChannelFlip90)
+	{
+		TArray<FQuickSDFIslandMirrorPair> PreviewPairs;
+		const FQuickSDFTextureSetData* ActiveSet = nullptr;
+		if (const UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr)
+		{
+			if (const UQuickSDFAsset* ActiveAsset = Subsystem->GetActiveSDFAsset())
+			{
+				ActiveSet = ActiveAsset->GetActiveTextureSet();
+			}
+		}
+
+		TArray<FQuickSDFIslandMirrorPair> ExistingPairs;
+		if (ActiveSet)
+		{
+			ExistingPairs = ActiveSet->IslandMirrorPairs;
+		}
+		AutoBuildIslandMirrorPairs(IslandCharts, ExistingPairs, PreviewPairs);
+		for (const FQuickSDFIslandMirrorPair& Pair : PreviewPairs)
+		{
+			if (Pair.bEnabled && Pair.SourceIslandKey == Pair.TargetIslandKey && Pair.Confidence < 0.75f)
+			{
+				++Result.UnpairedIslandCount;
+			}
+		}
+
+		Result.Confidence = FMath::Clamp(1.0f - Result.TextureMirrorScore, 0.0f, 1.0f);
+		Result.StatusText = FText::Format(
+			LOCTEXT("AutoSymmetryIslandStatus", "Auto -> Island (texture mirror {0}%, islands {1}, unpaired {2}, ambiguous pixels {3}, out-of-range islands {4})"),
+			FText::AsNumber(FMath::RoundToInt(Result.TextureMirrorScore * 100.0f)),
+			FText::AsNumber(Result.IslandCount),
+			FText::AsNumber(Result.UnpairedIslandCount),
+			FText::AsNumber(Result.AmbiguousPixelCount),
+			FText::AsNumber(Result.OutOfRangeIslandCount));
+	}
+	else
+	{
+		Result.Confidence = Result.TextureMirrorScore;
+		Result.StatusText = FText::Format(
+			LOCTEXT("AutoSymmetryTextureStatus", "Auto -> Texture (texture mirror {0}%, islands {1})"),
+			FText::AsNumber(FMath::RoundToInt(Result.TextureMirrorScore * 100.0f)),
+			FText::AsNumber(Result.IslandCount));
+	}
+
+	UpdateAutoSymmetryProperties(Properties, Result);
+	CachedAutoSymmetryResult = Result;
+	bCachedAutoSymmetryResultValid = true;
+	CachedAutoSymmetryUVChannel = Properties->UVChannel;
+	CachedAutoSymmetryMaterialSlot = Properties->TargetMaterialSlot;
+	bCachedAutoSymmetryHasTargetMesh = TargetMesh.IsValid();
+	return Result;
 }
 
 void UQuickSDFPaintTool::GenerateSDF()
@@ -615,13 +895,38 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 	}
 
 	Properties->SyncLegacySymmetryFlag();
-	const bool bFrontHalfAngles = Properties->UsesFrontHalfAngles();
-	const bool bIslandChannelSymmetry = Properties->UsesIslandChannelSymmetry();
-	if (FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet())
+	const FQuickSDFAutoSymmetryResult SymmetryResolution = ResolveEffectiveSymmetryMode();
+	const bool bFrontHalfAngles = SymmetryResolution.EffectiveMode != EQuickSDFSymmetryMode::None180;
+	const bool bIslandChannelSymmetry = SymmetryResolution.EffectiveMode == EQuickSDFSymmetryMode::UVIslandChannelFlip90;
+	FQuickSDFTextureSetData* ActiveSetForWarnings = Asset->GetActiveTextureSet();
+	if (ActiveSetForWarnings)
 	{
-		ActiveSet->bHasWarning = false;
-		ActiveSet->WarningMessage = FText::GetEmpty();
+		ActiveSetForWarnings->bHasWarning = false;
+		ActiveSetForWarnings->WarningMessage = FText::GetEmpty();
 	}
+
+	auto AppendActiveSetWarning = [ActiveSetForWarnings](const FText& Warning)
+	{
+		if (!ActiveSetForWarnings || Warning.IsEmpty())
+		{
+			return;
+		}
+
+		ActiveSetForWarnings->bHasWarning = true;
+		ActiveSetForWarnings->WarningMessage = ActiveSetForWarnings->WarningMessage.IsEmpty()
+			? Warning
+			: FText::Format(LOCTEXT("CombinedTextureSetWarning", "{0} / {1}"), ActiveSetForWarnings->WarningMessage, Warning);
+	};
+
+	if (SymmetryResolution.bUsedAuto &&
+		(SymmetryResolution.bUsedFallback ||
+		 SymmetryResolution.UnpairedIslandCount > 0 ||
+		 SymmetryResolution.AmbiguousPixelCount > 0 ||
+		 SymmetryResolution.OutOfRangeIslandCount > 0))
+	{
+		AppendActiveSetWarning(SymmetryResolution.StatusText);
+	}
+
 	const TArray<int32> ProcessableIndices = CollectProcessableMaskIndices(*Asset, bFrontHalfAngles);
 	if (ProcessableIndices.Num() == 0)
 	{
@@ -744,19 +1049,17 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 				IslandMirrorResult.AmbiguousPixels > 0 ||
 				OutOfRangeIslandCount > 0)
 			{
-				ActiveSet->bHasWarning = true;
-				ActiveSet->WarningMessage = FText::Format(
+				AppendActiveSetWarning(FText::Format(
 					LOCTEXT("IslandMirrorGenerateWarning", "Island Mirror used fallback pixels. Missing pairs: {0}, missing sources: {1}, ambiguous UV pixels: {2}, out-of-range islands: {3}."),
 					FText::AsNumber(IslandMirrorResult.MissingPairPixels),
 					FText::AsNumber(IslandMirrorResult.MissingSourcePixels),
 					FText::AsNumber(IslandMirrorResult.AmbiguousPixels),
-					FText::AsNumber(OutOfRangeIslandCount));
+					FText::AsNumber(OutOfRangeIslandCount)));
 			}
 		}
 		else if (ActiveSet)
 		{
-			ActiveSet->bHasWarning = true;
-			ActiveSet->WarningMessage = LOCTEXT("IslandMirrorNoMeshWarning", "Island Mirror needs a selected mesh with a valid UV channel. 90-180 channels were copied from 0-90.");
+			AppendActiveSetWarning(LOCTEXT("IslandMirrorNoMeshWarning", "Island Mirror needs a selected mesh with a valid UV channel. 90-180 channels were copied from 0-90."));
 			TArray<int32> FallbackCharts;
 			TArray<uint8> FallbackAmbiguous;
 			FallbackCharts.Init(INDEX_NONE, HighW * HighH);
@@ -792,7 +1095,7 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 		{
 			LeftChannelSource = EQuickSDFLilToonLeftChannelSource::InternalW;
 		}
-		else if (Properties->UsesWholeTextureSymmetry())
+		else if (SymmetryResolution.EffectiveMode == EQuickSDFSymmetryMode::WholeTextureFlip90)
 		{
 			LeftChannelSource = EQuickSDFLilToonLeftChannelSource::MirroredX;
 		}
@@ -1306,7 +1609,7 @@ bool UQuickSDFPaintTool::ImportEditedMasksFromTextures(const TArray<UTexture2D*>
 			Properties->SetSymmetryEnabled(false);
 	}
 
-	const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
+	const float MaxAngle = Properties->UsesFrontHalfAngles() ? 90.0f : 180.0f;
 	int32 AutoAngleIndex = 0;
 	int32 AutoAngleCount = 0;
 	for (const FImportTextureItem& Item : Items)
@@ -1444,7 +1747,7 @@ bool UQuickSDFPaintTool::ImportEditedMasksFromTexturesWithAngles(const TArray<UT
 			Properties->SetSymmetryEnabled(false);
 	}
 
-	const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
+	const float MaxAngle = Properties->UsesFrontHalfAngles() ? 90.0f : 180.0f;
 	for (FImportTextureItem& Item : Items)
 	{
 		Item.Angle = FMath::Clamp(Item.Angle, 0.0f, MaxAngle);
@@ -1800,14 +2103,15 @@ void UQuickSDFPaintTool::CompleteToEightMasks()
 
 	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
 	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
-	const int32 TargetAngleCount = GetQuickSDFDefaultAngleCount(Properties->bSymmetryMode);
+	const bool bFrontHalfAngles = Properties->UsesFrontHalfAngles();
+	const int32 TargetAngleCount = GetQuickSDFDefaultAngleCount(bFrontHalfAngles);
 	if (!Subsystem || !Asset || Asset->GetActiveAngleDataList().Num() >= TargetAngleCount)
 	{
 		return;
 	}
 
 	TArray<float> AddedAngles;
-	const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
+	const float MaxAngle = bFrontHalfAngles ? 90.0f : 180.0f;
 	TArray<float> StandardAngles;
 	for (int32 Index = 0; Index < TargetAngleCount; ++Index)
 	{
@@ -1943,7 +2247,7 @@ void UQuickSDFPaintTool::RedistributeAnglesEvenly()
 		return A.Angle < B.Angle;
 	});
 
-	const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
+	const float MaxAngle = Properties->UsesFrontHalfAngles() ? 90.0f : 180.0f;
 	const int32 NumAngles = Asset->GetActiveAngleDataList().Num();
 	for (int32 Index = 0; Index < NumAngles; ++Index)
 	{
@@ -2077,10 +2381,12 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SymmetryMode))
 			{
 				Properties->SyncLegacySymmetryFlag();
+				ResolveEffectiveSymmetryMode(false);
 			}
 			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bSymmetryMode))
 			{
 				Properties->SetSymmetryEnabled(Properties->bSymmetryMode);
+				ResolveEffectiveSymmetryMode(false);
 			}
 			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bEnableBrushAntialiasing) ||
 				Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, BrushAntialiasingWidth))
@@ -2266,6 +2572,7 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 			{
 				ActiveAsset->GetActiveUVChannel() = Properties->UVChannel;
 				InvalidateUVOverlayCache();
+				ResolveEffectiveSymmetryMode(false);
 				RefreshPreviewMaterial();
 				MarkMasksChanged();
 			}
@@ -2284,6 +2591,7 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bIsolateTargetMaterialSlot)))
 		{
 			InvalidateUVOverlayCache();
+			ResolveEffectiveSymmetryMode(false);
 			ApplyTargetMaterialSlotIsolation();
 		}
 	}
@@ -2363,7 +2671,7 @@ void UQuickSDFPaintTool::AddKeyframeInternal(float RequestedAngle, bool bUseRequ
 		OutInsertIndex = CurrentIndex + 1;
 		if (OutInsertIndex >= Asset->GetActiveAngleDataList().Num())
 		{
-			const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
+			const float MaxAngle = Properties->UsesFrontHalfAngles() ? 90.0f : 180.0f;
 			OutAngle = FMath::Min(Asset->GetActiveAngleDataList().Last().Angle + 10.0f, MaxAngle);
 		}
 		else
@@ -2379,7 +2687,7 @@ void UQuickSDFPaintTool::AddKeyframeInternal(float RequestedAngle, bool bUseRequ
 
 	if (bUseRequestedAngle)
 	{
-		const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
+		const float MaxAngle = Properties->UsesFrontHalfAngles() ? 90.0f : 180.0f;
 		NewAngle = FMath::Clamp(RequestedAngle, 0.0f, MaxAngle);
 
 		bool bOverlapsExistingKey = false;

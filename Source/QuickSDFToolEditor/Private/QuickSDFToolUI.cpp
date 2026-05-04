@@ -31,6 +31,26 @@ UQuickSDFToolProperties* GetProperties(UQuickSDFPaintTool* Tool, TWeakObjectPtr<
 FText GetToggleToolTip(UQuickSDFToolProperties* Properties, EQuickSDFPaintToggle Toggle)
 {
 	const bool bEnabled = QuickSDFToolUI::GetToggleValue(Properties, Toggle);
+	if (Toggle == EQuickSDFPaintToggle::Symmetry && Properties)
+	{
+		if (Properties->AutoSymmetryStatus.IsEmpty())
+		{
+			return FText::Format(
+				LOCTEXT("SymmetryToggleTooltipNoStatusFormat", "{0}: {1}\nMode: {2}\n{3}"),
+				QuickSDFToolUI::GetToggleLabel(Toggle),
+				bEnabled ? LOCTEXT("ToggleOn", "On") : LOCTEXT("ToggleOff", "Off"),
+				QuickSDFToolUI::GetSymmetryModeLabel(Properties->SymmetryMode),
+				QuickSDFToolUI::GetToggleDescription(Toggle));
+		}
+		return FText::Format(
+			LOCTEXT("SymmetryToggleTooltipFormat", "{0}: {1}\nMode: {2}\n{3}\n{4}"),
+			QuickSDFToolUI::GetToggleLabel(Toggle),
+			bEnabled ? LOCTEXT("ToggleOn", "On") : LOCTEXT("ToggleOff", "Off"),
+			QuickSDFToolUI::GetSymmetryModeLabel(Properties->SymmetryMode),
+			Properties->AutoSymmetryStatus,
+			QuickSDFToolUI::GetToggleDescription(Toggle));
+	}
+
 	return FText::Format(
 		LOCTEXT("ToggleTooltipFormat", "{0}: {1}\n{2}"),
 		QuickSDFToolUI::GetToggleLabel(Toggle),
@@ -104,6 +124,17 @@ const TArray<EQuickSDFPaintTargetMode>& QuickSDFToolUI::GetPaintTargetModes()
 		EQuickSDFPaintTargetMode::All,
 		EQuickSDFPaintTargetMode::BeforeCurrent,
 		EQuickSDFPaintTargetMode::AfterCurrent,
+	};
+	return Modes;
+}
+
+const TArray<EQuickSDFSymmetryMode>& QuickSDFToolUI::GetSymmetryModes()
+{
+	static const TArray<EQuickSDFSymmetryMode> Modes = {
+		EQuickSDFSymmetryMode::Auto,
+		EQuickSDFSymmetryMode::WholeTextureFlip90,
+		EQuickSDFSymmetryMode::UVIslandChannelFlip90,
+		EQuickSDFSymmetryMode::None180,
 	};
 	return Modes;
 }
@@ -331,6 +362,59 @@ void QuickSDFToolUI::CyclePaintTargetMode(UQuickSDFPaintTool* Tool, UQuickSDFToo
 	SetPaintTargetMode(Tool, Properties, Modes[NextIndex]);
 }
 
+FText QuickSDFToolUI::GetSymmetryModeLabel(EQuickSDFSymmetryMode Mode)
+{
+	switch (Mode)
+	{
+	case EQuickSDFSymmetryMode::Auto:
+		return LOCTEXT("SymmetryAutoLabel", "Auto");
+	case EQuickSDFSymmetryMode::WholeTextureFlip90:
+		return LOCTEXT("SymmetryTextureLabel", "Texture");
+	case EQuickSDFSymmetryMode::UVIslandChannelFlip90:
+		return LOCTEXT("SymmetryIslandLabel", "Island");
+	case EQuickSDFSymmetryMode::None180:
+	default:
+		return LOCTEXT("SymmetryOffLabel", "Off");
+	}
+}
+
+FText QuickSDFToolUI::GetSymmetryModeDescription(EQuickSDFSymmetryMode Mode)
+{
+	switch (Mode)
+	{
+	case EQuickSDFSymmetryMode::Auto:
+		return LOCTEXT("SymmetryAutoDesc", "Automatically chooses Texture or Island symmetry from the active UV layout.");
+	case EQuickSDFSymmetryMode::WholeTextureFlip90:
+		return LOCTEXT("SymmetryTextureDesc", "Paints 0-90 degrees and mirrors the texture for 90-180 degrees.");
+	case EQuickSDFSymmetryMode::UVIslandChannelFlip90:
+		return LOCTEXT("SymmetryIslandDesc", "Paints 0-90 degrees and mirrors 90-180 degrees per UV island.");
+	case EQuickSDFSymmetryMode::None180:
+	default:
+		return LOCTEXT("SymmetryOffDesc", "Paints the full 0-180 degree range.");
+	}
+}
+
+void QuickSDFToolUI::SetSymmetryMode(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties, EQuickSDFSymmetryMode Mode)
+{
+	if (!Properties || Properties->SymmetryMode == Mode)
+	{
+		return;
+	}
+
+	Properties->Modify();
+	Properties->SetSymmetryMode(Mode);
+	if (Tool)
+	{
+		FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SymmetryMode));
+		Tool->OnPropertyModified(Properties, Prop);
+	}
+
+	if (GEditor)
+	{
+		GEditor->RedrawAllViewports(false);
+	}
+}
+
 FName QuickSDFToolUI::GetTogglePropertyName(EQuickSDFPaintToggle Toggle)
 {
 	switch (Toggle)
@@ -404,7 +488,7 @@ FText QuickSDFToolUI::GetToggleDescription(EQuickSDFPaintToggle Toggle)
 	case EQuickSDFPaintToggle::QuickLine:
 		return LOCTEXT("QuickLineDesc", "Enables hold-to-line quick stroke drawing.");
 	case EQuickSDFPaintToggle::Symmetry:
-		return LOCTEXT("SymmetryDesc", "Uses a 0-90 degree front-half sweep. Choose the exact mirror mode in Advanced settings.");
+		return LOCTEXT("SymmetryDesc", "Uses a 0-90 degree front-half sweep. Auto chooses Texture or Island symmetry from the active UV layout.");
 	case EQuickSDFPaintToggle::MonotonicGuard:
 		return LOCTEXT("MonotonicGuardDesc", "Clips brush strokes that would create repeated light/shadow flips in the active angle range.");
 	default:
@@ -705,6 +789,76 @@ TSharedRef<SWidget> QuickSDFToolUI::MakePaintTargetModeSelector(FGetPaintTool Ge
 	return ModeRow;
 }
 
+TSharedRef<SWidget> QuickSDFToolUI::MakeSymmetryModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties)
+{
+	TSharedRef<SUniformGridPanel> SymmetryGrid = SNew(SUniformGridPanel)
+		.SlotPadding(FMargin(3.0f));
+
+	const TArray<EQuickSDFSymmetryMode>& Modes = GetSymmetryModes();
+	for (int32 Index = 0; Index < Modes.Num(); ++Index)
+	{
+		const EQuickSDFSymmetryMode Mode = Modes[Index];
+		SymmetryGrid->AddSlot(Index, 0)
+		[
+			SNew(SBox)
+			.WidthOverride(78.0f)
+			.HeightOverride(34.0f)
+			[
+				SNew(SCheckBox)
+				.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
+				.ToolTipText_Lambda([Mode, GetPaintTool, FallbackProperties]()
+				{
+					UQuickSDFPaintTool* Tool = GetPaintTool();
+					if (Tool && Tool->Properties && Tool->Properties->SymmetryMode == EQuickSDFSymmetryMode::Auto)
+					{
+						Tool->ResolveEffectiveSymmetryMode();
+					}
+					UQuickSDFToolProperties* Properties = GetProperties(Tool, FallbackProperties);
+					if (!Properties || Mode != EQuickSDFSymmetryMode::Auto || Properties->AutoSymmetryStatus.IsEmpty())
+					{
+						return GetSymmetryModeDescription(Mode);
+					}
+					return FText::Format(
+						LOCTEXT("SymmetryModeTooltipFormat", "{0}\n{1}"),
+						GetSymmetryModeDescription(Mode),
+						Properties->AutoSymmetryStatus);
+				})
+				.IsChecked_Lambda([Mode, GetPaintTool, FallbackProperties]()
+				{
+					const UQuickSDFToolProperties* Properties = GetProperties(GetPaintTool(), FallbackProperties);
+					return Properties && Properties->SymmetryMode == Mode
+							? ECheckBoxState::Checked
+							: ECheckBoxState::Unchecked;
+				})
+				.OnCheckStateChanged_Lambda([Mode, GetPaintTool, FallbackProperties](ECheckBoxState NewState)
+				{
+					if (NewState == ECheckBoxState::Checked)
+					{
+						UQuickSDFPaintTool* Tool = GetPaintTool();
+						SetSymmetryMode(Tool, GetProperties(Tool, FallbackProperties), Mode);
+					}
+				})
+				.Padding(FMargin(6.0f, 4.0f))
+				[
+					SNew(STextBlock)
+					.Text(GetSymmetryModeLabel(Mode))
+					.Justification(ETextJustify::Center)
+					.Font(FAppStyle::GetFontStyle("SmallFont"))
+					.ColorAndOpacity_Lambda([Mode, GetPaintTool, FallbackProperties]()
+					{
+						const UQuickSDFToolProperties* Properties = GetProperties(GetPaintTool(), FallbackProperties);
+						return Properties && Properties->SymmetryMode == Mode
+							? FSlateColor(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
+							: FSlateColor(FLinearColor(0.68f, 0.68f, 0.68f, 1.0f));
+					})
+				]
+			]
+		];
+	}
+
+	return SymmetryGrid;
+}
+
 TSharedRef<SWidget> QuickSDFToolUI::MakePaintToggleButton(EQuickSDFPaintToggle Toggle, FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties)
 {
 	return SNew(SBox)
@@ -715,7 +869,12 @@ TSharedRef<SWidget> QuickSDFToolUI::MakePaintToggleButton(EQuickSDFPaintToggle T
 			.Style(FQuickSDFToolStyle::Get().Get(), "QuickSDF.Timeline.ToggleButton")
 			.ToolTipText_Lambda([Toggle, GetPaintTool, FallbackProperties]()
 			{
-				return GetToggleToolTip(GetProperties(GetPaintTool(), FallbackProperties), Toggle);
+				UQuickSDFPaintTool* Tool = GetPaintTool();
+				if (Toggle == EQuickSDFPaintToggle::Symmetry && Tool)
+				{
+					Tool->ResolveEffectiveSymmetryMode();
+				}
+				return GetToggleToolTip(GetProperties(Tool, FallbackProperties), Toggle);
 			})
 			.IsChecked_Lambda([Toggle, GetPaintTool, FallbackProperties]()
 			{
@@ -923,10 +1082,16 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeQuickToggleMenu(FGetPaintTool GetPaintTo
 		.SlotPadding(FMargin(3.0f));
 
 	const TArray<EQuickSDFPaintToggle>& Toggles = GetPaintToggles();
+	int32 VisibleToggleIndex = 0;
 	for (int32 Index = 0; Index < Toggles.Num(); ++Index)
 	{
 		const EQuickSDFPaintToggle Toggle = Toggles[Index];
-		Grid->AddSlot(Index % 4, Index / 4)
+		if (Toggle == EQuickSDFPaintToggle::Symmetry)
+		{
+			continue;
+		}
+
+		Grid->AddSlot(VisibleToggleIndex % 4, VisibleToggleIndex / 4)
 		[
 			SNew(SBox)
 			.WidthOverride(92.0f)
@@ -979,6 +1144,7 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeQuickToggleMenu(FGetPaintTool GetPaintTo
 				]
 			]
 		];
+		++VisibleToggleIndex;
 	}
 
 	return SNew(SBorder)
@@ -1002,6 +1168,12 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeQuickToggleMenu(FGetPaintTool GetPaintTo
 			.Padding(0.0f, 6.0f, 0.0f, 0.0f)
 			[
 				PaintModeGrid
+			]
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0.0f, 6.0f, 0.0f, 0.0f)
+			[
+				MakeSymmetryModeSelector(GetPaintTool)
 			]
 			+ SVerticalBox::Slot()
 			.AutoHeight()

@@ -336,17 +336,18 @@ void UQuickSDFPaintTool::UpdateGeneratedSDFMaterialParameters()
 		SDFToonPreviewMaterial->SetTextureParameterValue(TEXT("ThresholdMapGray"), FinalTexture);
 	}
 
-	const bool bSymmetryUV = Properties->UsesWholeTextureSymmetry();
+	const FQuickSDFAutoSymmetryResult SymmetryResolution = ResolveEffectiveSymmetryMode(false);
+	const bool bSymmetryUV = SymmetryResolution.EffectiveMode == EQuickSDFSymmetryMode::WholeTextureFlip90;
 	const bool bUseGrayscaleTexture = FinalTexture &&
 		FinalTexture->CompressionSettings == TC_Grayscale &&
-		!Properties->UsesIslandChannelSymmetry();
+		SymmetryResolution.EffectiveMode != EQuickSDFSymmetryMode::UVIslandChannelFlip90;
 
 	const FQuickSDFMeshBakeBasis BakeBasis = FQuickSDFMeshComponentAdapter::GetBakeBasisForComponent(CurrentComponent.Get());
 	const FVector ForwardVector = BakeBasis.Forward.GetSafeNormal();
 
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("UVChannel"), static_cast<float>(Properties->UVChannel));
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("SymmetryUV"), bSymmetryUV ? 1.0f : 0.0f);
-	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("SymmetryMode"), static_cast<float>(static_cast<uint8>(Properties->SymmetryMode)));
+	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("SymmetryMode"), static_cast<float>(static_cast<uint8>(SymmetryResolution.EffectiveMode)));
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("UseGrayscaleTexture"), bUseGrayscaleTexture ? 1.0f : 0.0f);
 	SDFToonPreviewMaterial->SetVectorParameterValue(TEXT("ForwardVector"), FLinearColor(ForwardVector.X, ForwardVector.Y, ForwardVector.Z, 0.0f));
 }
@@ -948,7 +949,7 @@ bool UQuickSDFPaintTool::ApplyMonotonicGuardToStroke(UQuickSDFAsset* Asset)
 		return false;
 	}
 
-	TArray<int32> GuardAngleIndices = CollectProcessableMaskIndices(*Asset, Properties->bSymmetryMode);
+	TArray<int32> GuardAngleIndices = CollectProcessableMaskIndices(*Asset, Properties->UsesFrontHalfAngles());
 	for (int32 AngleIndex : StrokeTransactionAngleIndices)
 	{
 		GuardAngleIndices.AddUnique(AngleIndex);
@@ -1143,7 +1144,7 @@ int32 UQuickSDFPaintTool::ValidateMonotonicGuardForAsset(UQuickSDFAsset* Asset, 
 		return 0;
 	}
 
-	TArray<int32> ProcessableIndices = CollectProcessableMaskIndices(*Asset, Properties->bSymmetryMode);
+	TArray<int32> ProcessableIndices = CollectProcessableMaskIndices(*Asset, Properties->UsesFrontHalfAngles());
 	if (ProcessableIndices.Num() < 2)
 	{
 		return 0;

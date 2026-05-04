@@ -63,7 +63,7 @@ FLinearColor GetQuickSDFTimelineAccentColor(float Alpha = 1.0f)
 
 float GetQuickSDFTimelineMaxAngle(const UQuickSDFToolProperties* Props)
 {
-	return Props && Props->bSymmetryMode ? 90.0f : 180.0f;
+	return Props && Props->UsesFrontHalfAngles() ? 90.0f : 180.0f;
 }
 
 TArray<int32> BuildQuickSDFTimelineVisualIndices(const UQuickSDFToolProperties* Props)
@@ -74,7 +74,7 @@ TArray<int32> BuildQuickSDFTimelineVisualIndices(const UQuickSDFToolProperties* 
 		return Indices;
 	}
 
-	const bool bSymmetry = Props->bSymmetryMode;
+	const bool bSymmetry = Props->UsesFrontHalfAngles();
 	const float MaxAngle = GetQuickSDFTimelineMaxAngle(Props);
 	for (int32 Index = 0; Index < Props->TargetAngles.Num(); ++Index)
 	{
@@ -266,7 +266,7 @@ FQuickSDFTimelineRangeStatus BuildTimelineRangeStatus(const UQuickSDFPaintTool* 
 		Props->EditAngleIndex,
 		Props->PaintTargetMode,
 		Props->bPaintAllAngles,
-		Props->bSymmetryMode);
+		Props->UsesFrontHalfAngles());
 }
 
 FQuickSDFTimelineKeyStatus BuildTimelineKeyStatus(const UQuickSDFPaintTool* Tool, int32 KeyIndex)
@@ -755,7 +755,7 @@ FText SQuickSDFTimeline::GetCompleteMaskButtonText() const
 {
 	const UQuickSDFPaintTool* Tool = GetActivePaintTool();
 	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
-	const bool bSymmetryMode = !Props || Props->bSymmetryMode;
+	const bool bSymmetryMode = !Props || Props->UsesFrontHalfAngles();
 	const int32 TargetCount = QuickSDFPaintToolPrivate::GetQuickSDFDefaultAngleCount(bSymmetryMode);
 	return FText::AsNumber(TargetCount);
 }
@@ -764,7 +764,7 @@ FText SQuickSDFTimeline::GetCompleteMaskTooltipText() const
 {
 	const UQuickSDFPaintTool* Tool = GetActivePaintTool();
 	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
-	const bool bSymmetryMode = !Props || Props->bSymmetryMode;
+	const bool bSymmetryMode = !Props || Props->UsesFrontHalfAngles();
 	const int32 TargetCount = QuickSDFPaintToolPrivate::GetQuickSDFDefaultAngleCount(bSymmetryMode);
 	const int32 MaxAngle = bSymmetryMode ? 90 : 180;
 	return FText::Format(
@@ -854,7 +854,7 @@ float SQuickSDFTimeline::GetCurrentLightYaw() const
 					}
 
 					// If symmetry mode is on, we only care about 0-90
-					bool bSymmetry = Tool->Properties && Tool->Properties->bSymmetryMode;
+					bool bSymmetry = Tool->Properties && Tool->Properties->UsesFrontHalfAngles();
 					if (bSymmetry)
 					{
 						// Map 0-180 to 0-90 in a symmetric way around the front (90)
@@ -876,7 +876,7 @@ float SQuickSDFTimeline::GetCurrentSeekAngle() const
 {
 	UQuickSDFPaintTool* Tool = GetActivePaintTool();
 	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
-	const float MaxAngle = Props && Props->bSymmetryMode ? 90.0f : 180.0f;
+	const float MaxAngle = Props && Props->UsesFrontHalfAngles() ? 90.0f : 180.0f;
 
 	if (bHasSeekAngle)
 	{
@@ -901,7 +901,7 @@ void SQuickSDFTimeline::SetSeekAngle(float Angle)
 {
 	UQuickSDFPaintTool* Tool = GetActivePaintTool();
 	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
-	const float MaxAngle = Props && Props->bSymmetryMode ? 90.0f : 180.0f;
+	const float MaxAngle = Props && Props->UsesFrontHalfAngles() ? 90.0f : 180.0f;
 	LastSeekAngle = FMath::Clamp(Angle, 0.0f, MaxAngle);
 	bHasSeekAngle = true;
 	Invalidate(EInvalidateWidgetReason::PaintAndVolatility);
@@ -949,14 +949,15 @@ int32 SQuickSDFTimeline::FindKeyframeAtScreenPosition(const FVector2D& ScreenPos
 	}
 
 	const float TrackWidth = FMath::Max(LocalSize.X - (QuickSDFTimelineTrackPadding * 2.0f), 1.0f);
-	const float MaxAngle = Props->bSymmetryMode ? 90.0f : 180.0f;
+	const bool bSymmetryMode = Props->UsesFrontHalfAngles();
+	const float MaxAngle = bSymmetryMode ? 90.0f : 180.0f;
 	int32 BestIndex = INDEX_NONE;
 	float BestDistance = TNumericLimits<float>::Max();
 
 	for (int32 Index = 0; Index < Props->TargetAngles.Num(); ++Index)
 	{
 		const float Angle = Props->TargetAngles[Index];
-		if (Props->bSymmetryMode && Angle > MaxAngle)
+		if (bSymmetryMode && Angle > MaxAngle)
 		{
 			continue;
 		}
@@ -990,7 +991,8 @@ void SQuickSDFTimeline::SeekTimelineAtScreenPosition(const FVector2D& ScreenPosi
 	const FGeometry TrackGeometry = TimelineTrackCanvas->GetTickSpaceGeometry();
 	const FVector2D LocalPosition = TrackGeometry.AbsoluteToLocal(ScreenPosition);
 	const float TrackWidth = FMath::Max(TrackGeometry.GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f), 1.0f);
-	const float MaxAngle = Props->bSymmetryMode ? 90.0f : 180.0f;
+	const bool bSymmetryMode = Props->UsesFrontHalfAngles();
+	const float MaxAngle = bSymmetryMode ? 90.0f : 180.0f;
 	const float SeekPercent = FMath::Clamp((LocalPosition.X - QuickSDFTimelineTrackPadding) / TrackWidth, 0.0f, 1.0f);
 	const float SeekAngle = SeekPercent * MaxAngle;
 	LastSeekAngle = SeekAngle;
@@ -1000,7 +1002,7 @@ void SQuickSDFTimeline::SeekTimelineAtScreenPosition(const FVector2D& ScreenPosi
 	float BestDistance = TNumericLimits<float>::Max();
 	for (int32 Index = 0; Index < Props->TargetAngles.Num(); ++Index)
 	{
-		if (Props->bSymmetryMode && Props->TargetAngles[Index] > MaxAngle)
+		if (bSymmetryMode && Props->TargetAngles[Index] > MaxAngle)
 		{
 			continue;
 		}
@@ -1159,7 +1161,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 	.Position(FVector2D(QuickSDFTimelineTrackPadding, QuickSDFTimelineRailY))
 	.Size(TAttribute<FVector2D>::CreateLambda([this]() {
 		const UQuickSDFPaintTool* Tool = GetActivePaintTool();
-		const bool bSymmetry = Tool && Tool->Properties && Tool->Properties->bSymmetryMode;
+		const bool bSymmetry = Tool && Tool->Properties && Tool->Properties->UsesFrontHalfAngles();
 		const float MaxAngle = bSymmetry ? 90.0f : 180.0f;
 		const float Percent = FMath::Clamp(GetCurrentSeekAngle() / MaxAngle, 0.0f, 1.0f);
 		const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
@@ -1242,7 +1244,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 			if (!Tool || !Tool->Properties) return FVector2D::ZeroVector;
 			UQuickSDFToolProperties* P = Tool->Properties;
 
-			bool bSymmetry = P->bSymmetryMode;
+			bool bSymmetry = P->UsesFrontHalfAngles();
 			float MaxAngle = bSymmetry ? 90.0f : 180.0f;
 
 			TArray<int32> Indices;
@@ -1266,7 +1268,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 			if (!Tool || !Tool->Properties) return FVector2D::ZeroVector;
 			UQuickSDFToolProperties* P = Tool->Properties;
 
-			bool bSymmetry = P->bSymmetryMode;
+			bool bSymmetry = P->UsesFrontHalfAngles();
 			float MaxAngle = bSymmetry ? 90.0f : 180.0f;
 
 			TArray<int32> Indices;
@@ -1479,7 +1481,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 	];
 
 	// 2. Add tick marks (Middle layer)
-	bool bSymmetryModeActive = Props->bSymmetryMode;
+	bool bSymmetryModeActive = Props->UsesFrontHalfAngles();
 	int32 NumTicks = bSymmetryModeActive ? 1 : 2;
 	float TickStep = 90.0f;
 	float MaxTimelineAngle = bSymmetryModeActive ? 90.0f : 180.0f;
@@ -1512,7 +1514,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 			if (ActiveTool && ActiveTool->Properties && ActiveTool->Properties->TargetAngles.IsValidIndex(i))
 			{
 				float CurrentAngle = ActiveTool->Properties->TargetAngles[i];
-				bool bSymmetry = ActiveTool->Properties->bSymmetryMode;
+				bool bSymmetry = ActiveTool->Properties->UsesFrontHalfAngles();
 				float MaxAngle = bSymmetry ? 90.0f : 180.0f;
 
 				if (bSymmetry && CurrentAngle > MaxAngle) return FVector2D(-1000.0f, -1000.0f); // Hide
@@ -1539,7 +1541,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 			}))
 			.bSymmetryMode(TAttribute<bool>::CreateLambda([this]() {
 				UQuickSDFPaintTool* ActiveTool = this->GetActivePaintTool();
-				return ActiveTool && ActiveTool->Properties && ActiveTool->Properties->bSymmetryMode;
+				return ActiveTool && ActiveTool->Properties && ActiveTool->Properties->UsesFrontHalfAngles();
 			}))
 			.bAllowSourceTextureOverwrite(TAttribute<bool>::CreateLambda([this, i]() {
 				return BuildTimelineKeyStatus(this->GetActivePaintTool(), i).bAllowSourceTextureOverwrite;
@@ -1591,7 +1593,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 	TimelineTrackCanvas->AddSlot()
 	.Position(TAttribute<FVector2D>::CreateLambda([this]() {
 		UQuickSDFPaintTool* Tool = this->GetActivePaintTool();
-		bool bSymmetry = Tool && Tool->Properties && Tool->Properties->bSymmetryMode;
+		bool bSymmetry = Tool && Tool->Properties && Tool->Properties->UsesFrontHalfAngles();
 		float MaxAngle = bSymmetry ? 90.0f : 180.0f;
 
 		float SeekAngle = GetCurrentSeekAngle();
@@ -1612,7 +1614,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 	TimelineTrackCanvas->AddSlot()
 	.Position(TAttribute<FVector2D>::CreateLambda([this]() {
 		UQuickSDFPaintTool* Tool = this->GetActivePaintTool();
-		bool bSymmetry = Tool && Tool->Properties && Tool->Properties->bSymmetryMode;
+		bool bSymmetry = Tool && Tool->Properties && Tool->Properties->UsesFrontHalfAngles();
 		float MaxAngle = bSymmetry ? 90.0f : 180.0f;
 
 		float SeekAngle = GetCurrentSeekAngle();

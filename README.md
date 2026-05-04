@@ -33,7 +33,7 @@ flowchart LR
 - Timeline status badges and paint-target range highlights for `Current`, `All`, `Before`, and `After`, including mask, `Monotonic Guard`, and warning indicators plus detailed tooltips.
 - Arrow-key previous/next frame navigation that suppresses viewport movement while the mode handles the keys.
 - Paint target modes for Current, All, Before Current, and After Current masks.
-- Symmetry modes for full 0-180 painting, whole-texture 0-90 flip, and UV-island channel flip, plus hold-to-line quick strokes, paint-all-angles style workflows, and 8-mask / 15-mask default completion depending on the sweep range.
+- Symmetry modes for Auto, Texture Flip 0-90, UV Island Channel Flip, and full 0-180 painting, plus hold-to-line quick strokes, paint-all-angles style workflows, and 8-mask / 15-mask default completion depending on the sweep range.
 - Monotonic Guard for silently clipping paint strokes that would introduce repeated light/shadow flips across mask angles, with validation warnings before SDF generation.
 - Stabilized brush input with lazy-radius smoothing, pressure-sensitive radius support, antialiased brush edges, and optimized 1K-4K render target painting.
 - Mask import from file picker or timeline drag-and-drop; mask export; non-destructive `UQuickSDFAsset` storage; UE transaction-based undo/redo.
@@ -150,7 +150,7 @@ QuickSDFTool v1.0 supports UE 5.7.x. The editor tool relies on the Interactive T
 - **Material Slot Workflow:** select a slot by clicking its row, read compact `Baked` / `Empty` state pills, and bake only the active slot from the row action. Multi-slot bulk bake controls are omitted from the standard workflow because most toon-mask edits are slot-specific.
 - **2D UV Canvas Painting:** paint on a HUD-overlaid texture preview for texture-space control.
 - **Paint Target Modes:** send a stroke to the current mask, all masks, or a before/after range on the timeline. The timeline range highlight uses the same midpoint-based key segments as the edit operation.
-- **Symmetry Modes:** choose normal `None180` painting, `WholeTextureFlip90` for whole-texture mirroring, or `UVIslandChannelFlip90` to generate the 90-180 half from island-local mirrored 0-90 data while keeping the final texture readable by the normal 0-180 shader path.
+- **Symmetry Modes:** choose `Auto`, `Texture Flip`, `UV Island Channel Flip`, or `Off` to control whether artists paint 0-90 degrees and how the tool generates the 90-180 half while keeping the final texture readable by the normal 0-180 shader path.
 - **Timeline Status Badges:** each key can show mask availability, active Guard state, and warning state without blocking keyframe interaction. Tooltips expose the texture name or `Missing`, paint-target inclusion, overwrite status, and warning message.
 - **Monotonic Guard / Clipping Mask:** when enabled, normal brush strokes and Quick Stroke are clipped at commit time so the same UV pixel does not flip repeatedly across mask angles. Current-mask strokes are checked against the surrounding processable mask set, but only pixels changed by the stroke are restored. Import, rebake, and SDF generation do not auto-fix masks; they only report validation warnings.
 - **Brush Feel Controls:** lazy-radius stroke stabilization, fine spacing, antialiased brush masks, and pressure-driven brush radius for tablet workflows.
@@ -163,13 +163,14 @@ QuickSDFTool v1.0 supports UE 5.7.x. The editor tool relies on the Interactive T
 
 ## Symmetry Modes
 
-QuickSDFTool supports three SDF generation modes:
+QuickSDFTool supports four SDF generation modes:
 
-- `None180`: paint the full 0-180 degree sweep normally.
-- `WholeTextureFlip90`: paint 0-90 degrees and mirror the whole texture for the 90-180 side. This is useful when the UV layout itself is globally symmetric.
-- `UVIslandChannelFlip90`: paint 0-90 degrees and generate the 90-180 side per UV island. The tool samples the source island through an island-local horizontal mirror and writes the result into the same final RGBA layout used by normal 0-180 maps.
+- `Auto`: default face-painting mode. The tool analyzes the active mesh, UV channel, and material slot, then chooses Texture Flip for globally mirrored UV occupancy or UV Island Channel Flip when the left/right islands are separate, ambiguous, or out of the 0-1 range.
+- `Off`: paint the full 0-180 degree sweep normally.
+- `Texture Flip`: paint 0-90 degrees and mirror the texture for the 90-180 side. This is useful when the UV layout itself is globally symmetric.
+- `UV Island Channel Flip`: paint 0-90 degrees and generate the 90-180 side per UV island. The tool samples the source island through an island-local horizontal mirror and writes the result into the same final RGBA layout used by normal 0-180 maps.
 
-`UVIslandChannelFlip90` is intended for assets where the left and right UV islands are separate but still mirror each other. It tolerates position, scale, and light shape differences through normalized island-local mapping, but it does not perform nonlinear per-island warping. Ambiguous, unpaired, overlapping, or out-of-range islands fall back to copying the source-side values and produce warnings.
+`UV Island Channel Flip` is intended for assets where the left and right UV islands are separate but still mirror each other. It tolerates position, scale, and light shape differences through normalized island-local mapping, but it does not perform nonlinear per-island warping. Ambiguous, unpaired, overlapping, or out-of-range islands fall back to copying the source-side values and produce warnings.
 
 The generated texture remains shader-compatible with the regular 0-180 layout. Internally, the legacy combined field is still processed as `R/G/B/A`, then final export uses the R/A/B/G swizzle (`R <- R`, `G <- A`, `B <- B`, `A <- G`) so existing shader expectations and the historical `B` channel behavior are preserved.
 

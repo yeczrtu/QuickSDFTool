@@ -18,6 +18,48 @@ bool FQuickSDFDefaultAngleCountTest::RunTest(const FString& Parameters)
 {
 	TestEqual(TEXT("Symmetry mode keeps the default 0-90 sequence at eight masks"), QuickSDFPaintToolPrivate::GetQuickSDFDefaultAngleCount(true), 8);
 	TestEqual(TEXT("Asymmetric mode mirrors the sequence around 90 degrees"), QuickSDFPaintToolPrivate::GetQuickSDFDefaultAngleCount(false), 15);
+
+	UQuickSDFToolProperties* DefaultProperties = NewObject<UQuickSDFToolProperties>();
+	TestEqual(TEXT("Default symmetry mode is Auto"), static_cast<uint8>(DefaultProperties->SymmetryMode), static_cast<uint8>(EQuickSDFSymmetryMode::Auto));
+	TestTrue(TEXT("Auto symmetry uses the 0-90 editing range"), DefaultProperties->UsesFrontHalfAngles());
+	DefaultProperties->SetSymmetryEnabled(false);
+	TestEqual(TEXT("Compact toggle off selects full 0-180 painting"), static_cast<uint8>(DefaultProperties->SymmetryMode), static_cast<uint8>(EQuickSDFSymmetryMode::None180));
+	DefaultProperties->SetSymmetryEnabled(true);
+	TestEqual(TEXT("Compact toggle on returns to Auto"), static_cast<uint8>(DefaultProperties->SymmetryMode), static_cast<uint8>(EQuickSDFSymmetryMode::Auto));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FQuickSDFAutoSymmetryAnalysisTest,
+	"QuickSDFTool.Core.AutoSymmetryAnalysis",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FQuickSDFAutoSymmetryAnalysisTest::RunTest(const FString& Parameters)
+{
+	const TArray<int32> TextureSymmetricCharts = { 1, INDEX_NONE, INDEX_NONE, 1 };
+	const float TextureScore = QuickSDFPaintToolPrivate::MeasureTextureMirrorOccupancyScore(TextureSymmetricCharts, 4, 1);
+	TestTrue(TEXT("Texture-level mirrored occupancy scores as symmetric"), FMath::IsNearlyEqual(TextureScore, 1.0f));
+	TestEqual(
+		TEXT("Auto chooses Texture when UV occupancy is mirrored"),
+		static_cast<uint8>(QuickSDFPaintToolPrivate::ResolveAutoSymmetryModeFromAnalysis(true, TextureScore, 0, 0)),
+		static_cast<uint8>(EQuickSDFSymmetryMode::WholeTextureFlip90));
+
+	const TArray<int32> IslandCharts = { 1, 1, INDEX_NONE, 1 };
+	const float IslandScore = QuickSDFPaintToolPrivate::MeasureTextureMirrorOccupancyScore(IslandCharts, 4, 1);
+	TestTrue(TEXT("Non-mirrored occupancy scores below the texture threshold"), IslandScore < 0.97f);
+	TestEqual(
+		TEXT("Auto chooses Island when UV occupancy is not texture-level mirrored"),
+		static_cast<uint8>(QuickSDFPaintToolPrivate::ResolveAutoSymmetryModeFromAnalysis(true, IslandScore, 0, 0)),
+		static_cast<uint8>(EQuickSDFSymmetryMode::UVIslandChannelFlip90));
+
+	TestEqual(
+		TEXT("Ambiguous UV pixels force Island"),
+		static_cast<uint8>(QuickSDFPaintToolPrivate::ResolveAutoSymmetryModeFromAnalysis(true, 1.0f, 1, 0)),
+		static_cast<uint8>(EQuickSDFSymmetryMode::UVIslandChannelFlip90));
+	TestEqual(
+		TEXT("Missing UV analysis falls back to Texture"),
+		static_cast<uint8>(QuickSDFPaintToolPrivate::ResolveAutoSymmetryModeFromAnalysis(false, 0.0f, 0, 0)),
+		static_cast<uint8>(EQuickSDFSymmetryMode::WholeTextureFlip90));
 	return true;
 }
 
@@ -197,6 +239,59 @@ bool FQuickSDFIslandMirrorApplyTest::RunTest(const FString& Parameters)
 	const TArray<FFloat16Color> SelfPixels = FSDFProcessor::DownscaleAndConvert({ SelfField[0] }, 1, 1, 1);
 	TestTrue(TEXT("Final self island G is horizontally flipped at the first pixel"), FMath::IsNearlyEqual(SelfPixels[0].G.GetFloat(), 0.4f, 0.001f));
 	TestEqual(TEXT("Final self island A remains unused for monopolar output"), SelfPixels[0].A.GetFloat(), 1.0f);
+
+	TArray<uint8> FullShapeMask;
+	FullShapeMask.Init(1, 16 * 16);
+
+	QuickSDFPaintToolPrivate::FQuickSDFIslandMirrorChart LeftIsland;
+	LeftIsland.Key = TEXT("LeftIsland");
+	LeftIsland.ChartID = 10;
+	LeftIsland.UVMin = FVector2f(0.0f, 0.0f);
+	LeftIsland.UVMax = FVector2f(0.4f, 1.0f);
+	LeftIsland.Area = 0.4f;
+	LeftIsland.AspectRatio = 0.4f;
+	LeftIsland.ShapeMask = FullShapeMask;
+
+	QuickSDFPaintToolPrivate::FQuickSDFIslandMirrorChart RightIsland;
+	RightIsland.Key = TEXT("RightIsland");
+	RightIsland.ChartID = 11;
+	RightIsland.UVMin = FVector2f(0.6f, 0.0f);
+	RightIsland.UVMax = FVector2f(1.0f, 1.0f);
+	RightIsland.Area = 0.4f;
+	RightIsland.AspectRatio = 0.4f;
+	RightIsland.ShapeMask = FullShapeMask;
+
+	TArray<FQuickSDFIslandMirrorPair> AutoPairs;
+	QuickSDFPaintToolPrivate::AutoBuildIslandMirrorPairs({ LeftIsland, RightIsland }, {}, AutoPairs);
+	const FQuickSDFIslandMirrorPair* RightPair = AutoPairs.FindByPredicate([](const FQuickSDFIslandMirrorPair& Pair)
+	{
+		return Pair.TargetIslandKey == TEXT("RightIsland");
+	});
+	const FQuickSDFIslandMirrorPair* LeftPair = AutoPairs.FindByPredicate([](const FQuickSDFIslandMirrorPair& Pair)
+	{
+		return Pair.TargetIslandKey == TEXT("LeftIsland");
+	});
+	TestTrue(TEXT("Auto island pairing finds the right-side target"), RightPair != nullptr);
+	TestTrue(TEXT("Auto island pairing finds the left-side target"), LeftPair != nullptr);
+	if (RightPair && LeftPair)
+	{
+		TestEqual(TEXT("Right island samples from left island"), RightPair->SourceIslandKey, FString(TEXT("LeftIsland")));
+		TestEqual(TEXT("Left island samples from right island"), LeftPair->SourceIslandKey, FString(TEXT("RightIsland")));
+		TestTrue(TEXT("Auto island pair confidence is accepted"), RightPair->Confidence >= 0.75f && LeftPair->Confidence >= 0.75f);
+	}
+
+	FQuickSDFIslandMirrorPair LockedPair;
+	LockedPair.SourceIslandKey = TEXT("ManualSource");
+	LockedPair.TargetIslandKey = TEXT("RightIsland");
+	LockedPair.Transform = EQuickSDFIslandMirrorTransform::FlipV;
+	LockedPair.bUserLocked = true;
+	TArray<FQuickSDFIslandMirrorPair> LockedPairs;
+	QuickSDFPaintToolPrivate::AutoBuildIslandMirrorPairs({ LeftIsland, RightIsland }, { LockedPair }, LockedPairs);
+	const FQuickSDFIslandMirrorPair* LockedRightPair = LockedPairs.FindByPredicate([](const FQuickSDFIslandMirrorPair& Pair)
+	{
+		return Pair.TargetIslandKey == TEXT("RightIsland");
+	});
+	TestTrue(TEXT("User-locked island pair is preserved"), LockedRightPair && LockedRightPair->SourceIslandKey == TEXT("ManualSource"));
 	return true;
 }
 

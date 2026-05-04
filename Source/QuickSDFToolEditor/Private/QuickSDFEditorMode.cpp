@@ -447,11 +447,12 @@ void UQuickSDFEditorMode::SelectRelativeFrame(int32 Direction)
 		return;
 	}
 
-	const float MaxAngle = Properties->bSymmetryMode ? 90.0f : 180.0f;
+	const bool bFrontHalfAngles = Properties->UsesFrontHalfAngles();
+	const float MaxAngle = bFrontHalfAngles ? 90.0f : 180.0f;
 	TArray<int32> TimelineIndices;
 	for (int32 Index = 0; Index < Properties->TargetAngles.Num(); ++Index)
 	{
-		if (!Properties->bSymmetryMode || Properties->TargetAngles[Index] <= MaxAngle)
+		if (!bFrontHalfAngles || Properties->TargetAngles[Index] <= MaxAngle)
 		{
 			TimelineIndices.Add(Index);
 		}
