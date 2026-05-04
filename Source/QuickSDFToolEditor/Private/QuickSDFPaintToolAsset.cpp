@@ -10,6 +10,7 @@
 #include "EngineUtils.h"
 #include "Engine/DirectionalLight.h"
 #include "CollisionQueryParams.h"
+#include "ContentBrowserModule.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/Texture2D.h"
 #include "BaseBehaviors/ClickDragBehavior.h"
@@ -45,6 +46,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "IDesktopPlatform.h"
+#include "IContentBrowserSingleton.h"
 #include "IImageWrapper.h"
 #include "IImageWrapperModule.h"
 #include "HAL/FileManager.h"
@@ -262,6 +264,32 @@ bool SaveSDFPixelsToPngFile(
 	}
 
 	return true;
+}
+
+void OpenContentBrowserToTextureAsset(UTexture2D* Texture)
+{
+	if (!Texture || !Texture->GetOutermost())
+	{
+		return;
+	}
+
+	const FString PackageName = Texture->GetOutermost()->GetName();
+	const FString FolderPath = FPackageName::GetLongPackagePath(PackageName);
+	if (FolderPath.IsEmpty())
+	{
+		return;
+	}
+
+	FContentBrowserModule& ContentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
+	IContentBrowserSingleton& ContentBrowser = ContentBrowserModule.Get();
+	const TArray<FString> FoldersToSync = { FolderPath };
+	TArray<UObject*> AssetsToSync;
+	AssetsToSync.Add(Texture);
+
+	ContentBrowser.FocusPrimaryContentBrowser(false);
+	ContentBrowser.SetSelectedPaths(FoldersToSync, true, false);
+	ContentBrowser.SyncBrowserToFolders(FoldersToSync, true, true);
+	ContentBrowser.SyncBrowserToAssets(AssetsToSync, true, true);
 }
 
 struct FQuickSDFIslandBuildData
@@ -839,6 +867,7 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 		}
 		Asset->SyncLegacyFromActiveTextureSet();
 		Asset->MarkPackageDirty();
+		OpenContentBrowserToTextureAsset(FinalTexture);
 
 		if (Properties->bAutoPreviewGeneratedSDF && bSupportsGeneratedSDFPreview)
 		{

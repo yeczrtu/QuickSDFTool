@@ -656,24 +656,54 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		.AutoHeight()
 		.Padding(0.0f, 4.0f, 0.0f, 2.0f)
 		[
-			SNew(SBox)
-			.IsEnabled_Lambda([]()
-			{
-				return CanCreateThresholdMap();
-			})
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.Padding(0.0f, 0.0f, 2.0f, 0.0f)
 			[
-				QuickSDFToolUI::MakeIconLabelButton(
-					"QuickSDF.Action.CreateThresholdMap",
-					LOCTEXT("CreateThresholdMapButton", "Generate Selected SDF"),
-					LOCTEXT("CreateThresholdMapTooltip", "Create the SDF threshold map from the active Texture Set masks"),
-					FOnClicked::CreateLambda([WeakProperties]()
-					{
-						if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+				SNew(SBox)
+				.IsEnabled_Lambda([]()
+				{
+					return CanCreateThresholdMap();
+				})
+				[
+					QuickSDFToolUI::MakeIconLabelButton(
+						"QuickSDF.Action.CreateThresholdMap",
+						LOCTEXT("CreateThresholdMapButton", "Generate Selected SDF"),
+						LOCTEXT("CreateThresholdMapTooltip", "Create the SDF threshold map from the active Texture Set masks"),
+						FOnClicked::CreateLambda([WeakProperties]()
 						{
-							Props->CreateQuickThresholdMap();
-						}
-						return FReply::Handled();
-					}))
+							if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+							{
+								Props->CreateQuickThresholdMap();
+							}
+							return FReply::Handled();
+						}))
+				]
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.Padding(2.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SBox)
+				.IsEnabled_Lambda([]()
+				{
+					return CanCreateThresholdMap();
+				})
+				[
+					QuickSDFToolUI::MakeIconLabelButton(
+						"QuickSDF.Action.ExportMasks",
+						LOCTEXT("GenerateSDFFileButton", "Generate SDF File"),
+						LOCTEXT("GenerateSDFFileTooltip", "Generate the active Texture Set SDF and save it as a 16-bit PNG file."),
+						FOnClicked::CreateLambda([WeakProperties]()
+						{
+							if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+							{
+								Props->GenerateSDFThresholdMapToFile();
+							}
+							return FReply::Handled();
+						}))
+				]
 			]
 		]
 		+ SVerticalBox::Slot()
@@ -711,30 +741,6 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 						if (UQuickSDFToolProperties* Props = WeakProperties.Get())
 						{
 							Props->OverwriteSourceTextures();
-						}
-						return FReply::Handled();
-					}))
-			]
-		]
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(0.0f, 2.0f)
-		[
-			SNew(SBox)
-			.IsEnabled_Lambda([]()
-			{
-				return CanCreateThresholdMap();
-			})
-			[
-				QuickSDFToolUI::MakeIconLabelButton(
-					"QuickSDF.Action.ExportMasks",
-					LOCTEXT("GenerateSDFFileButton", "Generate SDF File"),
-					LOCTEXT("GenerateSDFFileTooltip", "Generate the active Texture Set SDF and save it as a 16-bit PNG file."),
-					FOnClicked::CreateLambda([WeakProperties]()
-					{
-						if (UQuickSDFToolProperties* Props = WeakProperties.Get())
-						{
-							Props->GenerateSDFThresholdMapToFile();
 						}
 						return FReply::Handled();
 					}))
