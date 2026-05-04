@@ -134,9 +134,7 @@ FQuickSDFTimelineKeyStatus BuildKeyStatus(const FQuickSDFTimelineKeyStatusInput&
 	Status.bAllowSourceTextureOverwrite = Input.bAllowSourceTextureOverwrite;
 	Status.bGuardEnabled = Input.bGuardEnabled;
 	Status.bHasUnbakedVectorLayer = Input.bHasUnbakedVectorLayer;
-	Status.bHasWarning = Input.bHasWarning;
 	Status.TextureName = Input.TextureName;
-	Status.WarningMessage = Input.WarningMessage;
 	return Status;
 }
 
@@ -154,14 +152,6 @@ FText BuildKeyTooltip(const FQuickSDFTimelineKeyStatus& Status)
 	if (Status.bHasUnbakedVectorLayer)
 	{
 		Lines.Add(TEXT("Vector Layer: Unbaked"));
-	}
-
-	if (Status.bHasWarning)
-	{
-		const FString WarningText = Status.WarningMessage.IsEmpty()
-			? FString(TEXT("Timeline key has a warning"))
-			: Status.WarningMessage.ToString();
-		Lines.Add(FString::Printf(TEXT("Warning: %s"), *WarningText));
 	}
 
 	return FText::FromString(FString::Join(Lines, TEXT("\n")));

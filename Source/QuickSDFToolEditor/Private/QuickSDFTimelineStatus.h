@@ -41,9 +41,7 @@ struct FQuickSDFTimelineKeyStatusInput
 	bool bAllowSourceTextureOverwrite = false;
 	bool bGuardEnabled = false;
 	bool bHasUnbakedVectorLayer = false;
-	bool bHasWarning = false;
 	FString TextureName;
-	FText WarningMessage;
 };
 
 struct FQuickSDFTimelineKeyStatus
@@ -57,9 +55,7 @@ struct FQuickSDFTimelineKeyStatus
 	bool bAllowSourceTextureOverwrite = false;
 	bool bGuardEnabled = false;
 	bool bHasUnbakedVectorLayer = false;
-	bool bHasWarning = false;
 	FString TextureName;
-	FText WarningMessage;
 };
 
 namespace QuickSDFTimelineStatus

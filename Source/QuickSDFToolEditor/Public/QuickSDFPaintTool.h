@@ -184,6 +184,7 @@ protected:
 	void UpdatePreviewMaterialParameters(class UMaterialInstanceDynamic* Material);
 	void UpdateGeneratedSDFMaterialParameters();
 	void ShowGeneratedSDFPreviewNotification(EQuickSDFMaterialPreviewMode PreviousMode, class UTexture2D* FinalTexture);
+	void ShowTextureSetWarningNotification(const FQuickSDFTextureSetData& TextureSet);
 	void ApplyTargetMaterialSlotIsolation();
 	bool IsTriangleInTargetMaterialSlot(int32 TriangleID) const;
 	bool TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample);

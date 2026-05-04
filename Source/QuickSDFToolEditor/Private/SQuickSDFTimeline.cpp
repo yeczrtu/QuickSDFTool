@@ -273,7 +273,6 @@ FQuickSDFTimelineKeyStatus BuildTimelineKeyStatus(const UQuickSDFPaintTool* Tool
 {
 	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
 	UQuickSDFAsset* Asset = GetActiveTimelineAsset();
-	const FQuickSDFTextureSetData* ActiveTextureSet = Asset ? Asset->GetActiveTextureSet() : nullptr;
 	const TArray<FQuickSDFAngleData>* AngleDataList = Asset ? &Asset->GetActiveAngleDataList() : nullptr;
 	const FQuickSDFAngleData* AngleData = AngleDataList && AngleDataList->IsValidIndex(KeyIndex) ? &(*AngleDataList)[KeyIndex] : nullptr;
 	const FQuickSDFTimelineRangeStatus RangeStatus = BuildTimelineRangeStatus(Tool);
@@ -289,8 +288,6 @@ FQuickSDFTimelineKeyStatus BuildTimelineKeyStatus(const UQuickSDFPaintTool* Tool
 	Input.bAllowSourceTextureOverwrite = AngleData && AngleData->bAllowSourceTextureOverwrite;
 	Input.bGuardEnabled = Props && Props->bEnableMonotonicGuard;
 	Input.bHasUnbakedVectorLayer = false;
-	Input.bHasWarning = ActiveTextureSet && ActiveTextureSet->bHasWarning;
-	Input.WarningMessage = ActiveTextureSet ? ActiveTextureSet->WarningMessage : FText::GetEmpty();
 
 	if (AngleData && AngleData->TextureMask)
 	{
@@ -1557,9 +1554,6 @@ void SQuickSDFTimeline::RebuildTimeline()
 			}))
 			.bHasUnbakedVectorLayer(TAttribute<bool>::CreateLambda([this, i]() {
 				return BuildTimelineKeyStatus(this->GetActivePaintTool(), i).bHasUnbakedVectorLayer;
-			}))
-			.bHasWarning(TAttribute<bool>::CreateLambda([this, i]() {
-				return BuildTimelineKeyStatus(this->GetActivePaintTool(), i).bHasWarning;
 			}))
 			.StatusToolTip(TAttribute<FText>::CreateLambda([this, i]() {
 				return QuickSDFTimelineStatus::BuildKeyTooltip(BuildTimelineKeyStatus(this->GetActivePaintTool(), i));

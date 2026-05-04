@@ -63,7 +63,6 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 	bIsInPaintTargetRange = InArgs._bIsInPaintTargetRange;
 	bGuardEnabled = InArgs._bGuardEnabled;
 	bHasUnbakedVectorLayer = InArgs._bHasUnbakedVectorLayer;
-	bHasWarning = InArgs._bHasWarning;
 	StatusToolTip = InArgs._StatusToolTip;
 	TextureBrush = InArgs._TextureBrush;
 	OnAngleChanged = InArgs._OnAngleChanged;
@@ -221,17 +220,6 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 						return bHasUnbakedVectorLayer.Get() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 					}),
 					TAttribute<FSlateColor>(FLinearColor(0.82f, 0.42f, 1.0f, 0.80f)))
-			]
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(1.5f, 0.0f)
-			[
-				MakeStatusBadge(
-					TAttribute<EVisibility>::CreateLambda([this]()
-					{
-						return bHasWarning.Get() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-					}),
-					TAttribute<FSlateColor>(FLinearColor(1.0f, 0.50f, 0.12f, 0.86f)))
 			]
 		]
 	];

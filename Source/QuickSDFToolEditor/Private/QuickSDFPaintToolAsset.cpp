@@ -1181,6 +1181,13 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 
 	if (!bSaveAsset)
 	{
+		if (const FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet())
+		{
+			if (ActiveSet->bHasWarning)
+			{
+				ShowTextureSetWarningNotification(*ActiveSet);
+			}
+		}
 		return;
 	}
 
@@ -1229,6 +1236,13 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 		{
 			ShowGeneratedSDFPreviewNotification(PreviousPreviewMode, FinalTexture);
 		}
+		if (const FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet())
+		{
+			if (ActiveSet->bHasWarning)
+			{
+				ShowTextureSetWarningNotification(*ActiveSet);
+			}
+		}
 		if (GEditor)
 		{
 			GEditor->RedrawAllViewports(false);
@@ -1237,6 +1251,26 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 	else if (!SaveError.IsEmpty())
 	{
 		FMessageDialog::Open(EAppMsgType::Ok, SaveError);
+	}
+}
+
+void UQuickSDFPaintTool::ShowTextureSetWarningNotification(const FQuickSDFTextureSetData& TextureSet)
+{
+	const FString SlotName = TextureSet.SlotName.IsNone()
+		? FString::Printf(TEXT("Slot_%d"), TextureSet.MaterialSlotIndex)
+		: TextureSet.SlotName.ToString();
+	FNotificationInfo Info(FText::Format(
+		LOCTEXT("TextureSetUVMirrorNoteNotification", "UV mirror note for {0}"),
+		FText::FromString(SlotName)));
+	Info.SubText = TextureSet.WarningMessage.IsEmpty()
+		? LOCTEXT("TextureSetUVMirrorNoteNotificationFallback", "The SDF was generated, but some mirrored UV areas may need visual review.")
+		: TextureSet.WarningMessage;
+	Info.ExpireDuration = 8.0f;
+	Info.bUseLargeFont = false;
+
+	if (TSharedPtr<SNotificationItem> Notification = FSlateNotificationManager::Get().AddNotification(Info))
+	{
+		Notification->SetCompletionState(SNotificationItem::CS_None);
 	}
 }
 

@@ -24,7 +24,6 @@ public:
 		SLATE_ATTRIBUTE(bool, bIsInPaintTargetRange)
 		SLATE_ATTRIBUTE(bool, bGuardEnabled)
 		SLATE_ATTRIBUTE(bool, bHasUnbakedVectorLayer)
-		SLATE_ATTRIBUTE(bool, bHasWarning)
 		SLATE_ATTRIBUTE(FText, StatusToolTip)
 		SLATE_ATTRIBUTE(FSlateBrush*, TextureBrush)
 		SLATE_EVENT(FOnKeyframeAngleChanged, OnAngleChanged)
@@ -51,7 +50,6 @@ private:
 	TAttribute<bool> bIsInPaintTargetRange;
 	TAttribute<bool> bGuardEnabled;
 	TAttribute<bool> bHasUnbakedVectorLayer;
-	TAttribute<bool> bHasWarning;
 	TAttribute<FText> StatusToolTip;
 	TAttribute<FSlateBrush*> TextureBrush;
 	bool bIsMouseDown = false;

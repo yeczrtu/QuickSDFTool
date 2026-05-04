@@ -464,22 +464,17 @@ bool FQuickSDFTimelineKeyStatusTest::RunTest(const FString& Parameters)
 	Input.bInPaintTargetRange = true;
 	Input.bHasPaintRenderTarget = true;
 	Input.bGuardEnabled = true;
-	Input.bHasWarning = true;
-	Input.WarningMessage = FText::FromString(TEXT("Needs review"));
 
 	const FQuickSDFTimelineKeyStatus Status = QuickSDFTimelineStatus::BuildKeyStatus(Input);
 	TestTrue(TEXT("Paint render target counts as mask presence"), Status.bHasMask);
 	TestTrue(TEXT("Guard state is preserved"), Status.bGuardEnabled);
-	TestTrue(TEXT("Warning state is preserved"), Status.bHasWarning);
 
 	const FString Tooltip = QuickSDFTimelineStatus::BuildKeyTooltip(Status).ToString();
 	TestTrue(TEXT("Tooltip contains angle"), Tooltip.Contains(TEXT("Angle: 45 deg")));
 	TestTrue(TEXT("Tooltip reports included paint target range"), Tooltip.Contains(TEXT("Paint Target: Included")));
-	TestTrue(TEXT("Tooltip includes warning details"), Tooltip.Contains(TEXT("Warning: Needs review")));
 
 	Input.bHasPaintRenderTarget = false;
 	Input.bHasTextureMask = false;
-	Input.bHasWarning = false;
 	const FQuickSDFTimelineKeyStatus Missing = QuickSDFTimelineStatus::BuildKeyStatus(Input);
 	TestFalse(TEXT("Missing texture and render target reports no mask"), Missing.bHasMask);
 	return true;
