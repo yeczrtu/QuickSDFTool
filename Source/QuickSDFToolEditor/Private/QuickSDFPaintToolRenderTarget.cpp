@@ -1,4 +1,5 @@
 #include "QuickSDFPaintTool.h"
+#include "QuickSDFEditorMode.h"
 #include "QuickSDFMonotonicGuard.h"
 #include "QuickSDFPaintToolPrivate.h"
 #include "QuickSDFMeshComponentAdapter.h"
@@ -40,6 +41,7 @@
 #include "HAL/PlatformApplicationMisc.h"
 #include "HAL/PlatformTime.h"
 #include "InteractiveToolChange.h"
+#include "EditorModeManager.h"
 #include "Misc/ScopedSlowTask.h"
 #include "Misc/MessageDialog.h"
 #include "DesktopPlatformModule.h"
@@ -107,6 +109,25 @@ float GetQuickSDFCurrentPreviewAngle(const UQuickSDFToolProperties* Properties)
 	return Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex)
 		? Asset->GetActiveAngleDataList()[AngleIndex].Angle
 		: 0.0f;
+}
+
+void SyncQuickSDFPreviewLightToCurrentAngle(const UQuickSDFToolProperties* Properties)
+{
+	if (!Properties ||
+		!Properties->bAutoSyncLight ||
+		!Properties->TargetAngles.IsValidIndex(Properties->EditAngleIndex))
+	{
+		return;
+	}
+
+	UQuickSDFEditorMode* Mode = Cast<UQuickSDFEditorMode>(
+		GLevelEditorModeTools().GetActiveScriptableMode(UQuickSDFEditorMode::EM_QuickSDFEditorModeId));
+	if (!Mode)
+	{
+		return;
+	}
+
+	Mode->SetPreviewLightAngle(Properties->TargetAngles[Properties->EditAngleIndex]);
 }
 
 bool CaptureRenderTargetPixelsInRect(UTextureRenderTarget2D* RenderTarget, const FIntRect& Rect, TArray<FColor>& OutPixels)
@@ -344,8 +365,11 @@ void UQuickSDFPaintTool::UpdateGeneratedSDFMaterialParameters()
 
 	const FQuickSDFMeshBakeBasis BakeBasis = FQuickSDFMeshComponentAdapter::GetBakeBasisForComponent(CurrentComponent.Get());
 	const FVector ForwardVector = BakeBasis.Forward.GetSafeNormal();
+	const float Angle = GetQuickSDFCurrentPreviewAngle(Properties);
 
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("UVChannel"), static_cast<float>(Properties->UVChannel));
+	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("Angle"), Angle);
+	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("BakeForwardAngleOffset"), BakeBasis.ForwardAngleOffsetDegrees);
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("SymmetryUV"), bSymmetryUV ? 1.0f : 0.0f);
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("SymmetryMode"), static_cast<float>(static_cast<uint8>(SymmetryResolution.EffectiveMode)));
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("UseGrayscaleTexture"), bUseGrayscaleTexture ? 1.0f : 0.0f);
@@ -359,6 +383,11 @@ void UQuickSDFPaintTool::RefreshPreviewMaterial()
 		!CanUseGeneratedSDFPreview())
 	{
 		Properties->MaterialPreviewMode = EQuickSDFMaterialPreviewMode::OriginalMaterial;
+	}
+
+	if (Properties && Properties->MaterialPreviewMode == EQuickSDFMaterialPreviewMode::GeneratedSDF)
+	{
+		SyncQuickSDFPreviewLightToCurrentAngle(Properties);
 	}
 
 	UpdatePreviewMaterialParameters(PreviewMaterial);
