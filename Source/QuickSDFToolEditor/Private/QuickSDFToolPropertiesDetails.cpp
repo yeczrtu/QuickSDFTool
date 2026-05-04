@@ -200,6 +200,63 @@ FName GetTextureSetStatusBrushName(int32 TextureSetIndex)
 	return EmptyBrushName;
 }
 
+FName GetTextureSetAutoSymmetryBrushName()
+{
+	static const FName AutoSymmetryBrushName(TEXT("QuickSDF.MaterialSlot.Status.AutoSymmetry"));
+	return AutoSymmetryBrushName;
+}
+
+bool ShouldShowTextureSetAutoSymmetryPill(int32 TextureSetIndex)
+{
+	const FQuickSDFTextureSetData* TextureSet = GetTextureSetData(TextureSetIndex);
+	return TextureSet && TextureSet->bHasLastAutoSymmetryResult;
+}
+
+FText GetTextureSetAutoSymmetryResolvedText(EQuickSDFAutoSymmetryResolvedMode Mode)
+{
+	return Mode == EQuickSDFAutoSymmetryResolvedMode::Island
+		? LOCTEXT("AutoSymmetryResolvedIsland", "Island")
+		: LOCTEXT("AutoSymmetryResolvedTexture", "Texture");
+}
+
+FText GetTextureSetAutoSymmetryText(int32 TextureSetIndex)
+{
+	const FQuickSDFTextureSetData* TextureSet = GetTextureSetData(TextureSetIndex);
+	if (!TextureSet || !TextureSet->bHasLastAutoSymmetryResult)
+	{
+		return FText::GetEmpty();
+	}
+
+	return FText::Format(
+		LOCTEXT("TextureSetAutoSymmetryText", "Auto: {0}"),
+		GetTextureSetAutoSymmetryResolvedText(TextureSet->LastAutoSymmetryResolvedMode));
+}
+
+FText GetTextureSetAutoSymmetryTooltip(int32 TextureSetIndex)
+{
+	const FQuickSDFTextureSetData* TextureSet = GetTextureSetData(TextureSetIndex);
+	if (!TextureSet || !TextureSet->bHasLastAutoSymmetryResult)
+	{
+		return FText::GetEmpty();
+	}
+
+	const int32 ConfidencePercent = FMath::RoundToInt(FMath::Clamp(TextureSet->LastAutoSymmetryConfidence, 0.0f, 1.0f) * 100.0f);
+	const FText ResolvedModeText = GetTextureSetAutoSymmetryResolvedText(TextureSet->LastAutoSymmetryResolvedMode);
+	if (TextureSet->LastAutoSymmetryStatus.IsEmpty())
+	{
+		return FText::Format(
+			LOCTEXT("TextureSetAutoSymmetryTooltipNoStatus", "Last Generate SDF result: Auto -> {0}\nConfidence: {1}%"),
+			ResolvedModeText,
+			FText::AsNumber(ConfidencePercent));
+	}
+
+	return FText::Format(
+		LOCTEXT("TextureSetAutoSymmetryTooltip", "Last Generate SDF result: Auto -> {0}\nConfidence: {1}%\n{2}"),
+		ResolvedModeText,
+		FText::AsNumber(ConfidencePercent),
+		TextureSet->LastAutoSymmetryStatus);
+}
+
 FName GetTextureSetIndexBadgeBrushName(int32 TextureSetIndex)
 {
 	return IsTextureSetActive(TextureSetIndex)
@@ -312,6 +369,29 @@ TSharedRef<SWidget> MakeTextureSetStatusPill(int32 TextureSetIndex)
 			})
 			.Font(FAppStyle::GetFontStyle("SmallFont"))
 			.ColorAndOpacity(FLinearColor(0.92f, 0.94f, 0.95f, 1.0f))
+		];
+}
+
+TSharedRef<SWidget> MakeTextureSetAutoSymmetryPill(int32 TextureSetIndex)
+{
+	return SNew(SBorder)
+		.BorderImage_Lambda([]()
+		{
+			return FQuickSDFToolStyle::GetBrush(GetTextureSetAutoSymmetryBrushName());
+		})
+		.ToolTipText_Lambda([TextureSetIndex]()
+		{
+			return GetTextureSetAutoSymmetryTooltip(TextureSetIndex);
+		})
+		.Padding(FMargin(7.0f, 2.0f))
+		[
+			SNew(STextBlock)
+			.Text_Lambda([TextureSetIndex]()
+			{
+				return GetTextureSetAutoSymmetryText(TextureSetIndex);
+			})
+			.Font(FAppStyle::GetFontStyle("SmallFont"))
+			.ColorAndOpacity(FLinearColor(0.92f, 0.96f, 1.0f, 1.0f))
 		];
 }
 
@@ -452,6 +532,23 @@ TSharedRef<SWidget> MakeTextureSetRow(TWeakObjectPtr<UQuickSDFToolProperties> We
 							{
 								return GetTextureSetSecondaryTextColor(TextureSetIndex);
 							})
+						]
+					]
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					[
+						SNew(SBorder)
+						.BorderImage(FAppStyle::GetBrush("NoBorder"))
+						.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+						.Visibility_Lambda([TextureSetIndex]()
+						{
+							return ShouldShowTextureSetAutoSymmetryPill(TextureSetIndex)
+								? EVisibility::Visible
+								: EVisibility::Collapsed;
+						})
+						[
+							MakeTextureSetAutoSymmetryPill(TextureSetIndex)
 						]
 					]
 					+ SHorizontalBox::Slot()

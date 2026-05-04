@@ -151,6 +151,7 @@ void FQuickSDFToolStyle::Initialize()
 	StyleSet->Set("QuickSDF.MaterialSlot.Status.Empty", new FSlateRoundedBoxBrush(FLinearColor(0.155f, 0.155f, 0.155f, 1.0f), 3.0f, FLinearColor(0.24f, 0.24f, 0.24f, 1.0f), 1.0f));
 	StyleSet->Set("QuickSDF.MaterialSlot.Status.Dirty", new FSlateRoundedBoxBrush(FLinearColor(0.42f, 0.32f, 0.12f, 1.0f), 3.0f, FLinearColor(0.62f, 0.48f, 0.20f, 1.0f), 1.0f));
 	StyleSet->Set("QuickSDF.MaterialSlot.Status.Warning", new FSlateRoundedBoxBrush(FLinearColor(0.45f, 0.20f, 0.10f, 1.0f), 3.0f, FLinearColor(0.70f, 0.36f, 0.16f, 1.0f), 1.0f));
+	StyleSet->Set("QuickSDF.MaterialSlot.Status.AutoSymmetry", new FSlateRoundedBoxBrush(FLinearColor(0.08f, 0.22f, 0.32f, 1.0f), 3.0f, FLinearColor(0.22f, 0.52f, 0.70f, 1.0f), 1.0f));
 	StyleSet->Set("QuickSDF.MaterialSlot.Status.Missing", new FSlateRoundedBoxBrush(FLinearColor(0.13f, 0.13f, 0.13f, 1.0f), 3.0f, FLinearColor(0.22f, 0.22f, 0.22f, 1.0f), 1.0f));
 	StyleSet->Set("QuickSDF.MaterialSlot.IndexBadge", new FSlateRoundedBoxBrush(FLinearColor(0.105f, 0.108f, 0.112f, 1.0f), 3.0f, FLinearColor(0.20f, 0.20f, 0.20f, 1.0f), 1.0f));
 	StyleSet->Set("QuickSDF.MaterialSlot.IndexBadge.Active", new FSlateRoundedBoxBrush(FLinearColor(0.12f, 0.32f, 0.42f, 1.0f), 3.0f, FLinearColor(0.24f, 0.57f, 0.72f, 1.0f), 1.0f));

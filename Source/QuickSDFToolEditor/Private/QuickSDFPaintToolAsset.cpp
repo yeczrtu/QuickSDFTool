@@ -685,6 +685,13 @@ FText GetQuickSDFSymmetryModeShortText(EQuickSDFSymmetryMode Mode)
 	}
 }
 
+EQuickSDFAutoSymmetryResolvedMode ToStoredAutoSymmetryResolvedMode(EQuickSDFSymmetryMode Mode)
+{
+	return Mode == EQuickSDFSymmetryMode::UVIslandChannelFlip90
+		? EQuickSDFAutoSymmetryResolvedMode::Island
+		: EQuickSDFAutoSymmetryResolvedMode::Texture;
+}
+
 void UpdateAutoSymmetryProperties(UQuickSDFToolProperties* Properties, const FQuickSDFAutoSymmetryResult& Result)
 {
 	if (!Properties)
@@ -707,6 +714,16 @@ void UQuickSDFPaintTool::InvalidateAutoSymmetryCache()
 	CachedAutoSymmetryUVChannel = INDEX_NONE;
 	CachedAutoSymmetryMaterialSlot = INDEX_NONE;
 	bCachedAutoSymmetryHasTargetMesh = false;
+
+	if (Properties && Properties->SymmetryMode == EQuickSDFSymmetryMode::Auto)
+	{
+		FQuickSDFAutoSymmetryResult PendingResult;
+		PendingResult.RequestedMode = EQuickSDFSymmetryMode::Auto;
+		PendingResult.EffectiveMode = EQuickSDFSymmetryMode::WholeTextureFlip90;
+		PendingResult.bUsedAuto = true;
+		PendingResult.StatusText = LOCTEXT("AutoSymmetryPendingStatus", "Auto: Pending (will resolve on Generate SDF or status hover)");
+		UpdateAutoSymmetryProperties(Properties, PendingResult);
+	}
 }
 
 FQuickSDFAutoSymmetryResult UQuickSDFPaintTool::ResolveEffectiveSymmetryMode(bool bAllowExpensiveAnalysis)
@@ -747,7 +764,7 @@ FQuickSDFAutoSymmetryResult UQuickSDFPaintTool::ResolveEffectiveSymmetryMode(boo
 
 	if (!bAllowExpensiveAnalysis)
 	{
-		Result.StatusText = LOCTEXT("AutoSymmetryDeferredStatus", "Auto (analysis deferred; using Texture until Generate SDF or status hover resolves it)");
+		Result.StatusText = LOCTEXT("AutoSymmetryDeferredStatus", "Auto: Pending (will resolve on Generate SDF or status hover)");
 		UpdateAutoSymmetryProperties(Properties, Result);
 		return Result;
 	}
@@ -1178,6 +1195,20 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 			ActiveSet->FinalSDFTexture = FinalTexture;
 			ActiveSet->bDirty = false;
 			ActiveSet->bInitialBakeComplete = true;
+			if (SymmetryResolution.bUsedAuto)
+			{
+				ActiveSet->bHasLastAutoSymmetryResult = true;
+				ActiveSet->LastAutoSymmetryResolvedMode = ToStoredAutoSymmetryResolvedMode(SymmetryResolution.EffectiveMode);
+				ActiveSet->LastAutoSymmetryConfidence = SymmetryResolution.Confidence;
+				ActiveSet->LastAutoSymmetryStatus = SymmetryResolution.StatusText;
+			}
+			else
+			{
+				ActiveSet->bHasLastAutoSymmetryResult = false;
+				ActiveSet->LastAutoSymmetryResolvedMode = EQuickSDFAutoSymmetryResolvedMode::Texture;
+				ActiveSet->LastAutoSymmetryConfidence = 0.0f;
+				ActiveSet->LastAutoSymmetryStatus = FText::GetEmpty();
+			}
 		}
 		Asset->SyncLegacyFromActiveTextureSet();
 		Asset->MarkPackageDirty();

@@ -16,6 +16,13 @@ enum class EQuickSDFIslandMirrorTransform : uint8
 	SwapUVFlipV UMETA(DisplayName = "Swap UV + Flip V")
 };
 
+UENUM(BlueprintType)
+enum class EQuickSDFAutoSymmetryResolvedMode : uint8
+{
+	Texture UMETA(DisplayName = "Texture"),
+	Island UMETA(DisplayName = "Island")
+};
+
 USTRUCT(BlueprintType)
 struct FQuickSDFIslandMirrorPair
 {
@@ -102,6 +109,18 @@ struct FQuickSDFTextureSetData
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture Set")
 	FText WarningMessage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Auto Symmetry")
+	bool bHasLastAutoSymmetryResult = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Auto Symmetry")
+	EQuickSDFAutoSymmetryResolvedMode LastAutoSymmetryResolvedMode = EQuickSDFAutoSymmetryResolvedMode::Texture;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Auto Symmetry")
+	float LastAutoSymmetryConfidence = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Auto Symmetry", meta = (MultiLine = true))
+	FText LastAutoSymmetryStatus;
 };
 
 /**
