@@ -262,6 +262,7 @@ void UQuickSDFPaintTool::Setup()
 			BrushProperties->BrushSize = FMath::Clamp((QuickSDFInitialBrushRadius - BrushRelativeSizeRange.Min) / RangeSize, 0.0f, 1.0f);
 		}
 		RecalculateBrushRadius();
+		BrushProperties->BrushSize = BrushProperties->BrushRadius;
 	}
 
 	Properties = NewObject<UQuickSDFToolProperties>(this);

@@ -1,0 +1,188 @@
+#include "/Engine/Public/Platform.ush"
+
+float4x4 c_Transform;
+float4x4 c_WorldToBrushMatrix;
+
+// x = radius, y = radial falloff range, z = depth, w = depth falloff range
+float4 c_BrushMetrics;
+float c_BrushStrength;
+float4 c_BrushColor;
+float c_AntialiasWidth;
+// x = line length in brush space, y = 1 for line capsule mode
+float4 c_BrushLineMetrics;
+// x = stroke point count, y = 1 for stroke mode, z = 1 for point-brush stroke mode.
+// Polyline points are stored in world space so long strokes stay stable on curved meshes.
+float4 c_StrokeMetrics;
+#define QUICK_SDF_MAX_STROKE_POINTS 128
+float4 c_StrokePoints[QUICK_SDF_MAX_STROKE_POINTS];
+float4 c_StrokeNormals[QUICK_SDF_MAX_STROKE_POINTS];
+float c_Gamma;
+
+void MainVS(
+	float4 InPosition : ATTRIBUTE0,
+	float2 InTextureCoordinates : ATTRIBUTE2,
+	float3 InWorldSpaceVertexPosition : ATTRIBUTE3,
+	out float4 OutPosition : SV_POSITION,
+	out float2 OutTextureCoordinates : TEXCOORD0,
+	out float3 OutWorldSpaceVertexPosition : TEXCOORD1)
+{
+	OutPosition = mul(InPosition, c_Transform);
+	OutTextureCoordinates = InTextureCoordinates;
+	OutWorldSpaceVertexPosition = InWorldSpaceVertexPosition;
+}
+
+float ComputeFalloff(float Distance, float Radius, float FalloffRange, float AntialiasWidth)
+{
+	float Coverage = Distance <= Radius ? 1.0f : 0.0f;
+
+	if (FalloffRange > 0.0001f)
+	{
+		const float InnerRadius = max(Radius - FalloffRange, 0.0f);
+		Coverage = saturate((Radius - Distance) / max(Radius - InnerRadius, 0.0001f));
+	}
+	else if (AntialiasWidth > 0.0001f)
+	{
+		Coverage = smoothstep(Radius + AntialiasWidth, Radius - AntialiasWidth, Distance);
+	}
+
+	return Coverage;
+}
+
+float ComputeSegmentPaintAmount(
+	float3 WorldPosition,
+	float3 SegmentStart,
+	float3 SegmentEnd,
+	float3 SegmentNormal,
+	float Radius,
+	float FalloffRange,
+	float Depth,
+	float DepthFalloffRange,
+	float AntialiasWidth)
+{
+	const float3 Segment = SegmentEnd - SegmentStart;
+	const float SegmentLength = length(Segment);
+	if (SegmentLength <= 0.0001f)
+	{
+		return ComputeFalloff(length(WorldPosition - SegmentStart), Radius, FalloffRange, AntialiasWidth);
+	}
+
+	const float3 Tangent = Segment / SegmentLength;
+	const float NormalLengthSqr = dot(SegmentNormal, SegmentNormal);
+	float3 Normal = NormalLengthSqr > 0.0001f ? SegmentNormal * rsqrt(NormalLengthSqr) : float3(0.0f, 0.0f, 1.0f);
+	if (dot(Normal, Normal) <= 0.0001f)
+	{
+		Normal = float3(0.0f, 0.0f, 1.0f);
+	}
+
+	float3 Side = normalize(cross(Normal, Tangent));
+	if (dot(Side, Side) <= 0.0001f)
+	{
+		const float3 Delta3D = WorldPosition - SegmentStart;
+		const float ClosestAlong3D = clamp(dot(Delta3D, Tangent), 0.0f, SegmentLength);
+		return ComputeFalloff(length(Delta3D - Tangent * ClosestAlong3D), Radius, FalloffRange, AntialiasWidth);
+	}
+
+	const float3 Delta = WorldPosition - SegmentStart;
+	const float Along = dot(Delta, Tangent);
+	const float ClosestAlong = clamp(Along, 0.0f, SegmentLength);
+	const float Across = dot(Delta, Side);
+	const float RadialDistance = length(float2(Along - ClosestAlong, Across));
+	const float DepthDistance = abs(dot(Delta - Tangent * ClosestAlong, Normal));
+
+	return ComputeFalloff(RadialDistance, Radius, FalloffRange, AntialiasWidth) *
+		ComputeFalloff(DepthDistance, Depth, DepthFalloffRange, 0.0f);
+}
+
+float ComputePointBrushPaintAmount(
+	float3 WorldPosition,
+	float3 BrushCenter,
+	float3 BrushNormal,
+	float Radius,
+	float FalloffRange,
+	float Depth,
+	float DepthFalloffRange,
+	float AntialiasWidth)
+{
+	const float NormalLengthSqr = dot(BrushNormal, BrushNormal);
+	float3 Normal = NormalLengthSqr > 0.0001f ? BrushNormal * rsqrt(NormalLengthSqr) : float3(0.0f, 0.0f, 1.0f);
+	const float3 Delta = WorldPosition - BrushCenter;
+	const float DepthDistance = abs(dot(Delta, Normal));
+	const float RadialDistance = length(Delta - Normal * dot(Delta, Normal));
+	return ComputeFalloff(RadialDistance, Radius, FalloffRange, AntialiasWidth) *
+		ComputeFalloff(DepthDistance, Depth, DepthFalloffRange, 0.0f);
+}
+
+void MainPS(
+	float4 InPosition : SV_POSITION,
+	float2 InTextureCoordinates : TEXCOORD0,
+	float3 InWorldSpaceVertexPosition : TEXCOORD1,
+	out float4 OutColor : SV_Target0)
+{
+	const float BrushRadius = c_BrushMetrics.x;
+	const float BrushRadialFalloffRange = c_BrushMetrics.y;
+	const float BrushDepth = c_BrushMetrics.z;
+	const float BrushDepthFalloffRange = c_BrushMetrics.w;
+
+	const float3 BrushSpacePosition = mul(float4(InWorldSpaceVertexPosition, 1.0f), c_WorldToBrushMatrix).xyz;
+	float RadialDistance = length(BrushSpacePosition);
+	float DepthDistance = abs(BrushSpacePosition.z);
+	float PaintAmount = 0.0f;
+	if (c_StrokeMetrics.y > 0.5f)
+	{
+		const int StrokePointCount = min((int)c_StrokeMetrics.x, QUICK_SDF_MAX_STROKE_POINTS);
+		if (c_StrokeMetrics.z > 0.5f)
+		{
+			for (int StrokePointIndex = 0; StrokePointIndex < StrokePointCount; ++StrokePointIndex)
+			{
+				PaintAmount = max(PaintAmount, ComputePointBrushPaintAmount(
+					InWorldSpaceVertexPosition,
+					c_StrokePoints[StrokePointIndex].xyz,
+					c_StrokeNormals[StrokePointIndex].xyz,
+					BrushRadius,
+					BrushRadialFalloffRange,
+					BrushDepth,
+					BrushDepthFalloffRange,
+					c_AntialiasWidth));
+			}
+		}
+		else
+		{
+			for (int StrokePointIndex = 1; StrokePointIndex < StrokePointCount; ++StrokePointIndex)
+			{
+				const float3 SegmentStart = c_StrokePoints[StrokePointIndex - 1].xyz;
+				const float3 SegmentEnd = c_StrokePoints[StrokePointIndex].xyz;
+				const float3 SegmentNormal = c_StrokeNormals[StrokePointIndex - 1].xyz + c_StrokeNormals[StrokePointIndex].xyz;
+				PaintAmount = max(PaintAmount, ComputeSegmentPaintAmount(
+					InWorldSpaceVertexPosition,
+					SegmentStart,
+					SegmentEnd,
+					SegmentNormal,
+					BrushRadius,
+					BrushRadialFalloffRange,
+					BrushDepth,
+					BrushDepthFalloffRange,
+					c_AntialiasWidth));
+			}
+		}
+	}
+	else
+	{
+		if (c_BrushLineMetrics.y > 0.5f)
+		{
+			const float ClosestX = clamp(BrushSpacePosition.x, 0.0f, c_BrushLineMetrics.x);
+			RadialDistance = length(float3(BrushSpacePosition.x - ClosestX, BrushSpacePosition.y, BrushSpacePosition.z));
+		}
+		PaintAmount = ComputeFalloff(RadialDistance, BrushRadius, BrushRadialFalloffRange, c_AntialiasWidth);
+		PaintAmount *= ComputeFalloff(DepthDistance, BrushDepth, BrushDepthFalloffRange, 0.0f);
+	}
+
+	PaintAmount = saturate(PaintAmount * c_BrushStrength);
+
+	float3 BrushRGB = c_BrushColor.rgb;
+	if (c_Gamma != 1.0f)
+	{
+		BrushRGB = pow(saturate(BrushRGB), c_Gamma);
+	}
+
+	OutColor = float4(BrushRGB, PaintAmount * c_BrushColor.a);
+}

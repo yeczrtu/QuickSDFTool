@@ -2822,6 +2822,11 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 {
 	Super::OnPropertyModified(PropertySet, Property);
 
+	if (PropertySet == BrushProperties && BrushProperties && BrushProperties->bSpecifyRadius)
+	{
+		BrushProperties->BrushSize = BrushProperties->BrushRadius;
+	}
+
 	if (PropertySet == Properties)
 	{
 		if (Property)

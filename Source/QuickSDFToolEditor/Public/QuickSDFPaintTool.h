@@ -81,6 +81,32 @@ struct FOneEuroFilter
 	}
 };
 
+struct FQuickSDFSurfaceBrushParams
+{
+	FVector3d Center = FVector3d::Zero();
+	FVector3d LineStart = FVector3d::Zero();
+	FVector3d LineEnd = FVector3d::Zero();
+	FVector3d Normal = FVector3d(0.0, 0.0, 1.0);
+	FMatrix WorldToBrushMatrix = FMatrix::Identity;
+	float Radius = 1.0f;
+	float RadialFalloffRange = 0.0f;
+	float Depth = 1.0f;
+	float DepthFalloffRange = 0.0f;
+	float Strength = 1.0f;
+	float AntialiasWidth = 0.0f;
+	float LineLength = 0.0f;
+	bool bIsLine = false;
+	FLinearColor Color = FLinearColor::White;
+	int32 PaintChartID = INDEX_NONE;
+};
+
+struct FQuickSDFSurfacePaintTriangle
+{
+	FVector2D UVs[3];
+	FVector2D PixelPositions[3];
+	FVector3d WorldPositions[3];
+};
+
 UCLASS()
 class UQuickSDFPaintTool : public UBaseBrushTool
 {
@@ -191,9 +217,21 @@ protected:
 	bool IsTriangleInTargetMaterialSlot(int32 TriangleID) const;
 	bool TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample);
 	bool TryMakePreviewStrokeSample(const FVector2D& ScreenPosition, FQuickSDFStrokeSample& OutSample) const;
+	bool ShouldUseSurfaceSpacePaint() const;
 	bool CanInterpolateStrokeSamples(const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B) const;
 	void StampSample(const FQuickSDFStrokeSample& Sample);
 	void StampSamples(const TArray<FQuickSDFStrokeSample>& Samples);
+	bool BuildSurfaceBrushParams(const FQuickSDFStrokeSample& Sample, class UTextureRenderTarget2D* RenderTarget, FQuickSDFSurfaceBrushParams& OutParams) const;
+	bool GatherSurfacePaintTriangles(const FQuickSDFSurfaceBrushParams& BrushParams, class UTextureRenderTarget2D* RenderTarget, TArray<FQuickSDFSurfacePaintTriangle>& OutTriangles, FIntRect& OutDirtyRect);
+	bool PaintSurfaceBrushToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const FQuickSDFStrokeSample& Sample, FIntRect* OutDirtyRect);
+	bool BuildSurfaceLineBrushParams(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample, class UTextureRenderTarget2D* RenderTarget, FQuickSDFSurfaceBrushParams& OutParams) const;
+	bool GatherSurfaceLinePaintTriangles(const FQuickSDFSurfaceBrushParams& BrushParams, class UTextureRenderTarget2D* RenderTarget, TArray<FQuickSDFSurfacePaintTriangle>& OutTriangles, FIntRect& OutDirtyRect);
+	bool GatherSurfacePolylinePaintTriangles(const TArray<FQuickSDFStrokeSample>& Samples, const FQuickSDFSurfaceBrushParams& BrushParams, class UTextureRenderTarget2D* RenderTarget, TArray<FQuickSDFSurfacePaintTriangle>& OutTriangles, FIntRect& OutDirtyRect);
+	bool PaintSurfaceLineToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample, FIntRect* OutDirtyRect);
+	bool PaintSurfaceLineSegmentsToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect);
+	bool PaintSurfaceBrushesToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect);
+	bool PaintSurfacePolylineToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect);
+	bool ProjectSurfaceStrokeSample(const FQuickSDFStrokeSample& Sample, double MaxWorldDistance, FQuickSDFStrokeSample& OutSample);
 	void AppendStrokeSample(const FQuickSDFStrokeSample& Sample);
 	void StampLinearSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample);
 	void FlushStrokeTail();
@@ -250,8 +288,8 @@ protected:
 	void UpdateQuickLineHoldState(const FVector2D& ScreenPosition);
 	void TryActivateQuickLine();
 	void RedrawQuickLinePreview(bool bForce = false);
-	void StampQuickLineSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample);
-	void StampQuickLineSurfaceSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample);
+	void StampQuickLineSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample, bool bForce = false);
+	void StampQuickLineSurfaceSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample, bool bForce = false);
 	void StampQuickLineResampledSamples(const TArray<FQuickSDFStrokeSample>& CurveSamples);
 	FQuickSDFStrokeSample TransformQuickLineSample(
 		const FQuickSDFStrokeSample& SourceSample,

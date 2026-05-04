@@ -13,6 +13,9 @@ public class QuickSDFToolShaders : ModuleRules
 			new string[]
 			{
 				"Core",
+				"Engine",
+				"RenderCore",
+				"RHI",
 			}
 		);
 
@@ -20,9 +23,6 @@ public class QuickSDFToolShaders : ModuleRules
 			new string[]
 			{
 				"CoreUObject",
-				"Engine",
-				"RenderCore",
-				"RHI",
 				"Projects"
 			}
 		);

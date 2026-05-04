@@ -14,6 +14,7 @@ public class QuickSDFToolEditor : ModuleRules
 			{
 				"Core",
 				"QuickSDFTool",
+				"QuickSDFToolShaders",
 				"InteractiveToolsFramework",
 				"EditorInteractiveToolsFramework",
 				"GeometryCore",
