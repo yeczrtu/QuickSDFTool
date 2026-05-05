@@ -69,7 +69,7 @@ using namespace QuickSDFPaintToolPrivate;
 
 namespace
 {
-float GetCurrentLevelViewportDPIScale()
+FEditorViewportClient* GetCurrentLevelViewportClient()
 {
 	FEditorViewportClient* ViewportClient = GLevelEditorModeTools().GetHoveredViewportClient();
 	if (!ViewportClient)
@@ -77,7 +77,36 @@ float GetCurrentLevelViewportDPIScale()
 		ViewportClient = GLevelEditorModeTools().GetFocusedViewportClient();
 	}
 
+	return ViewportClient;
+}
+
+float GetCurrentLevelViewportDPIScale()
+{
+	const FEditorViewportClient* ViewportClient = GetCurrentLevelViewportClient();
 	return ViewportClient ? FMath::Max(ViewportClient->GetDPIScale(), 1.0f) : 1.0f;
+}
+
+float EstimateScreenProjectionBrushFocusRadius(const FVector& WorldPosition, float BrushRadiusPixels)
+{
+	constexpr float MinFocusRadius = 2.0f;
+	FEditorViewportClient* ViewportClient = GetCurrentLevelViewportClient();
+	if (!ViewportClient || !ViewportClient->Viewport)
+	{
+		return FMath::Max(MinFocusRadius, BrushRadiusPixels * 0.05f);
+	}
+
+	if (ViewportClient->IsPerspective())
+	{
+		const FIntPoint ViewportSize = ViewportClient->Viewport->GetSizeXY();
+		const double ViewportWidth = FMath::Max(static_cast<double>(ViewportSize.X), 1.0);
+		const double Distance = FMath::Max(FVector::Distance(ViewportClient->GetViewLocation(), WorldPosition), 1.0);
+		const double FovRadians = FMath::DegreesToRadians(FMath::Max(static_cast<double>(ViewportClient->ViewFOV), 1.0));
+		const double UnitsPerPixel = 2.0 * Distance * FMath::Tan(FovRadians * 0.5) / ViewportWidth;
+		return FMath::Max(MinFocusRadius, static_cast<float>(static_cast<double>(BrushRadiusPixels) * UnitsPerPixel));
+	}
+
+	const float OrthoUnitsPerPixel = FMath::Max(ViewportClient->GetOrthoUnitsPerPixel(ViewportClient->Viewport), KINDA_SMALL_NUMBER);
+	return FMath::Max(MinFocusRadius, BrushRadiusPixels * OrthoUnitsPerPixel);
 }
 
 bool GetHoveredLevelViewportCursorPosition(FVector2D& OutAbsolutePosition, FVector2D& OutCanvasPosition)
@@ -486,13 +515,18 @@ bool UQuickSDFPaintTool::IsPaintingShadow() const { return GetShiftToggle(); }
 
 bool UQuickSDFPaintTool::TryGetBrushFocusTarget(FVector& OutWorldPosition, float& OutWorldRadius) const
 {
+	const bool bScreenProjectionMode =
+		Properties &&
+		GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection;
+	const bool bHasVisibleSurfaceBrush =
+		BrushStampIndicator &&
+		BrushStampIndicator->bVisible;
+
 	if (!CurrentComponent.IsValid() ||
 		!CurrentComponent->IsRegistered() ||
-		!BrushStampIndicator ||
-		!BrushStampIndicator->bVisible ||
+		(!bScreenProjectionMode && !bHasVisibleSurfaceBrush) ||
 		!LastBrushStamp.HitResult.bBlockingHit ||
 		LastBrushStamp.HitResult.Component.Get() != CurrentComponent.Get() ||
-		ShouldUseScreenProjectionPaint() ||
 		ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ||
 		PendingStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview)
 	{
@@ -500,7 +534,9 @@ bool UQuickSDFPaintTool::TryGetBrushFocusTarget(FVector& OutWorldPosition, float
 	}
 
 	OutWorldPosition = LastBrushStamp.WorldPosition;
-	OutWorldRadius = static_cast<float>(GetEffectiveBrushRadius());
+	OutWorldRadius = bScreenProjectionMode
+		? EstimateScreenProjectionBrushFocusRadius(LastBrushStamp.WorldPosition, GetScreenProjectionBrushRadiusPixels())
+		: static_cast<float>(GetEffectiveBrushRadius());
 	return true;
 }
 
@@ -1437,6 +1473,7 @@ FInputRayHit UQuickSDFPaintTool::BeginHoverSequenceHitTest(const FInputDeviceRay
 	{
 		BrushStampIndicator->bVisible = false;
 	}
+	LastBrushStamp.HitResult = FHitResult();
 	return FInputRayHit();
 }
 
@@ -1468,6 +1505,7 @@ bool UQuickSDFPaintTool::OnUpdateHover(const FInputDeviceRay& DevicePos)
 	{
 		BrushStampIndicator->bVisible = false;
 	}
+	LastBrushStamp.HitResult = FHitResult();
 	return true;
 }
 
@@ -1481,6 +1519,7 @@ void UQuickSDFPaintTool::OnEndHover()
 	{
 		BrushStampIndicator->bVisible = false;
 	}
+	LastBrushStamp.HitResult = FHitResult();
 }
 
 void UQuickSDFPaintTool::OnBeginDrag(const FRay& Ray)
