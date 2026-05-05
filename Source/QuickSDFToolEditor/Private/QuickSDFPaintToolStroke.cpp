@@ -1328,10 +1328,10 @@ bool UQuickSDFPaintTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 		{
 			const FTransform Transform = CurrentComponent->GetComponentTransform();
 			const FRay LocalRay(Transform.InverseTransformPosition(Ray.Origin), Transform.InverseTransformVector(Ray.Direction));
-			const bool bPaintThroughContext = Properties && Properties->bPaintThroughNonTargetGeometry && Properties->TargetMaterialSlot >= 0;
-			UE::Geometry::IMeshSpatial::FQueryOptions QueryOptions(100000.0, [this, bPaintThroughContext](int32 TriangleID)
+			const bool bUseTargetMaterialSlotFilter = Properties && Properties->TargetMaterialSlot >= 0;
+			UE::Geometry::IMeshSpatial::FQueryOptions QueryOptions(100000.0, [this, bUseTargetMaterialSlotFilter](int32 TriangleID)
 			{
-				return bPaintThroughContext ? IsTriangleInTargetMaterialSlot(TriangleID) : true;
+				return !bUseTargetMaterialSlotFilter || IsTriangleInTargetMaterialSlot(TriangleID);
 			});
 
 			double HitDistance = 100000.0;
@@ -1340,7 +1340,7 @@ bool UQuickSDFPaintTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 			if (TargetMeshSpatial->FindNearestHitTriangle(LocalRay, HitDistance, HitTID, BaryCoords, QueryOptions) &&
 				HitTID != INDEX_NONE)
 			{
-				if (!bPaintThroughContext && !IsTriangleInTargetMaterialSlot(HitTID))
+				if (!IsTriangleInTargetMaterialSlot(HitTID))
 				{
 					return false;
 				}
@@ -1591,10 +1591,10 @@ bool UQuickSDFPaintTool::TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSam
 	
 	const FTransform Transform = CurrentComponent->GetComponentTransform();
 	const FRay LocalRay(Transform.InverseTransformPosition(Ray.Origin), Transform.InverseTransformVector(Ray.Direction));
-	const bool bPaintThroughContext = Properties->bPaintThroughNonTargetGeometry && Properties->TargetMaterialSlot >= 0;
-	UE::Geometry::IMeshSpatial::FQueryOptions QueryOptions(100000.0, [this, bPaintThroughContext](int32 TriangleID)
+	const bool bUseTargetMaterialSlotFilter = Properties->TargetMaterialSlot >= 0;
+	UE::Geometry::IMeshSpatial::FQueryOptions QueryOptions(100000.0, [this, bUseTargetMaterialSlotFilter](int32 TriangleID)
 	{
-		return bPaintThroughContext ? IsTriangleInTargetMaterialSlot(TriangleID) : true;
+		return !bUseTargetMaterialSlotFilter || IsTriangleInTargetMaterialSlot(TriangleID);
 	});
 
 	double HitDistance = 100000.0;
@@ -1603,7 +1603,7 @@ bool UQuickSDFPaintTool::TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSam
 	const bool bHit = TargetMeshSpatial->FindNearestHitTriangle(LocalRay, HitDistance, HitTID, BaryCoords, QueryOptions);
 
 	if (!bHit || HitTID < 0) return false;
-	if (!bPaintThroughContext && !IsTriangleInTargetMaterialSlot(HitTID)) return false;
+	if (!IsTriangleInTargetMaterialSlot(HitTID)) return false;
 
 	UE::Geometry::FIndex3i TriV = TargetMesh->GetTriangle(HitTID);
 

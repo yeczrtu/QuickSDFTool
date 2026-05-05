@@ -122,7 +122,7 @@ public:
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings")
 	bool bOverlayUV = true;
 
-	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint Through Context"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint Through Context", HideInDetailPanel))
 	bool bPaintThroughNonTargetGeometry = true;
 
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Mesh Paint Mode"))
