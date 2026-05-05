@@ -13,7 +13,8 @@
 
 QuickSDFTool は、複数のライト角度ごとにメッシュ上へ二値の明暗マスクをペイントし、それらをトゥーン / セルシェーディング向けの高精度 SDF スレッショルドテクスチャへ合成します。
 
-https://github.com/user-attachments/assets/1eb770b6-b65d-44bb-b5a0-fbb78d998202
+https://github.com/user-attachments/assets/7eec2890-be31-4cbc-9662-756b6e84c620
+
 
 基本ワークフローは次の通りです。
 
