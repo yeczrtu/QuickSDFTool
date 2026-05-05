@@ -26,10 +26,11 @@ flowchart LR
 ## Supported Features
 
 - Dedicated UE5 Editor Mode named `Quick SDF`.
-- Direct painting on Static Mesh and Skeletal Mesh components, including material-slot viewport isolation and slot-aware hit testing.
-- Compact `Material Slots` list with row-click selection, `Baked` / `Empty` status pills, and per-slot Bake actions that bake only the selected slot. Bulk multi-slot bake buttons are intentionally not part of the main workflow.
+- Select/prep entry workflow that keeps the mesh fully visible, syncs the UE editor selection to the Quick SDF target, and supports direct viewport picking for Static Mesh and Skeletal Mesh components.
+- Direct painting on Static Mesh and Skeletal Mesh components, including paint-time material-slot viewport isolation, slot-aware hit testing, and brush-position focus.
+- Compact `Material Slots` list with viewport or row-click selection, cyan active-slot overlay in Select mode, `Selected` / `Baked` / `Empty` status pills, and per-slot Bake actions that bake only the selected slot. Bulk multi-slot bake buttons are intentionally not part of the main workflow.
 - 2D UV preview painting with optional UV guides and onion skinning.
-- Angular timeline with a separated upper seek lane and lower keyframe lane, thumbnail previews, fixed-width high-contrast angle labels, 5-degree snapping, add/duplicate/delete controls, symmetry-aware mask completion, even redistribution, and `DirectionalLight` sync.
+- Angular timeline with a separated upper seek lane and lower keyframe lane, thumbnail previews, fixed-width high-contrast angle labels, 5-degree snapping, keyframe drag/seek synchronization, add/duplicate/delete controls, symmetry-aware mask completion, even redistribution, and `DirectionalLight` sync.
 - Timeline status badges and paint-target range highlights for `Current`, `All`, `Before`, and `After`, including mask, `Monotonic Guard`, and warning indicators plus detailed tooltips.
 - Arrow-key previous/next frame navigation that suppresses viewport movement while the mode handles the keys.
 - Paint target modes for Current, All, Before Current, and After Current masks.
@@ -66,13 +67,14 @@ Use this path when you only want to see a result quickly.
 1. Copy this repository into your C++ Unreal project as `Plugins/QuickSDFTool/`.
 2. Regenerate project files, build the project, enable **QuickSDFTool**, then restart the editor.
 3. Open the Editor Mode selector and choose **Quick SDF**.
-4. Select a mesh in the level.
-5. In **Material Slots**, click the row you want to edit. Use the small Bake icon on that row if the slot still needs a baked source mask.
-6. Paint white with `LMB`; paint black/shadow with `Shift + LMB`.
-7. Use the upper timeline lane to seek the light angle. Use the lower keyframe lane to select, add, duplicate, delete, or drag keyframes.
-8. Choose the paint target mode if you want a stroke to affect only the current mask, all masks, or a range before/after the current key. The highlighted timeline range shows what will be edited.
-9. Click **Generate Selected SDF** or **Generate SDF Threshold Map** in the tool details.
-10. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
+4. In Select mode, click the mesh/material surface you want to edit in the viewport. You can also enter the mode with a mesh already selected.
+5. Confirm the active slot in **Material Slots**. The selected row and cyan viewport overlay show the active material slot; row clicks can correct the viewport pick.
+6. Click **Start Paint**. Paint mode isolates the active slot by default; turn off **Isolate Slot** if you need the full mesh visible while painting.
+7. Paint white with `LMB`; paint black/shadow with `Shift + LMB`.
+8. Use the upper timeline lane to seek the light angle. Use the lower keyframe lane to select, add, duplicate, delete, or drag keyframes.
+9. Choose the paint target mode if you want a stroke to affect only the current mask, all masks, or a range before/after the current key. The highlighted timeline range shows what will be edited.
+10. Click **Generate Selected SDF** or **Generate SDF Threshold Map** in the tool details.
+11. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
 
 See [Examples](./Examples/README.md), [Material Setup](./Docs/MaterialSetup.md), and [Troubleshooting](./Docs/Troubleshooting.md) for a fuller walkthrough.
 
@@ -127,16 +129,19 @@ QuickSDFTool v1.0 supports UE 5.7.x. The editor tool relies on the Interactive T
 | --- | --- |
 | `LMB Drag` | Paint light/white |
 | `Shift + LMB Drag` | Paint shadow/black |
+| `Viewport Mesh / Material Click` in Select mode | Select the target mesh component and the clicked material slot |
+| `Start Paint` | Enter Paint mode using the selected target mesh and material slot |
+| `F` in Paint mode | Focus the viewport on the current brush position; falls back to UE selection focus when no brush hit is active |
 | `Ctrl + F`, move mouse, click | Resize brush while the mouse is over the viewport |
 | `Alt + T` | Open the quick toggle menu |
 | `Alt + 1` | Cycle paint target mode |
 | `Alt + 2` - `Alt + 8` | Toggle Auto Light, Preview, UV overlay, Onion Skin, Quick Stroke, Symmetry, and Monotonic Guard |
 | `Left / Right Arrow` | Select previous / next timeline frame |
-| `Material Slot Row Click` | Select the material slot / texture set to edit |
+| `Material Slot Row Click` | Select or correct the material slot / texture set to edit |
 | `Material Slot Bake Icon` | Bake that slot only |
 | `Timeline Seek Lane Click / Drag` | Seek the preview light angle without dragging keyframes |
 | `Timeline Key Click` | Select angle |
-| `Timeline Key Drag` | Adjust angle after the drag threshold is crossed |
+| `Timeline Key Drag` | Adjust angle after the drag threshold is crossed; the seek cursor and preview light follow the drag |
 | `Timeline Status Badge Hover` | Inspect angle, texture, edit state, paint target inclusion, Guard state, overwrite state, and warning details |
 | `Timeline Add / Duplicate / Delete` | Create, copy, or remove keyframes |
 | `Timeline 8 or 15 / Even` | Complete the default mask set or redistribute angles evenly. Symmetry mode completes to 8 masks; non-symmetry mode completes to 15 masks |
@@ -146,15 +151,16 @@ QuickSDFTool v1.0 supports UE 5.7.x. The editor tool relies on the Interactive T
 ## Features
 
 - **Custom Editor Mode:** registers a dedicated UE5 mode accessible from the mode selector toolbar.
-- **Direct Mesh Painting:** paint masks directly on target mesh surfaces with realtime preview and material-slot filtering.
-- **Material Slot Workflow:** select a slot by clicking its row, read compact `Baked` / `Empty` state pills, and bake only the active slot from the row action. Multi-slot bulk bake controls are omitted from the standard workflow because most toon-mask edits are slot-specific.
+- **Select Prep Workflow:** enters a non-destructive Select state first, keeps the whole mesh visible, clears stale targets when nothing is selected, and lets viewport clicks choose both the mesh component and material slot.
+- **Direct Mesh Painting:** paint masks directly on target mesh surfaces with realtime preview, material-slot filtering, default paint-time slot isolation, and `F` focus on the active brush position.
+- **Material Slot Workflow:** select a slot by viewport click or row click, read compact `Selected` / `Baked` / `Empty` state pills, see the active slot as a cyan overlay in Select mode, and bake only the active slot from the row action. Multi-slot bulk bake controls are omitted from the standard workflow because most toon-mask edits are slot-specific.
 - **2D UV Canvas Painting:** paint on a HUD-overlaid texture preview for texture-space control.
 - **Paint Target Modes:** send a stroke to the current mask, all masks, or a before/after range on the timeline. The timeline range highlight uses the same midpoint-based key segments as the edit operation.
 - **Symmetry Modes:** choose `Auto`, `Texture Flip`, `UV Island Channel Flip`, or `Off` to control whether artists paint 0-90 degrees and how the tool generates the 90-180 half while keeping the final texture readable by the normal 0-180 shader path.
 - **Timeline Status Badges:** each key can show mask availability, active Guard state, and warning state without blocking keyframe interaction. Tooltips expose the texture name or `Missing`, paint-target inclusion, overwrite status, and warning message.
 - **Monotonic Guard / Clipping Mask:** when enabled, normal brush strokes and Quick Stroke are clipped at commit time so the same UV pixel does not flip repeatedly across mask angles. Current-mask strokes are checked against the surrounding processable mask set, but only pixels changed by the stroke are restored. Import, rebake, and SDF generation do not auto-fix masks; they only report validation warnings.
 - **Brush Feel Controls:** lazy-radius stroke stabilization, fine spacing, antialiased brush masks, and pressure-driven brush radius for tablet workflows.
-- **Spatial Timeline UI:** manage mask keyframes by light angle with separate seek/keyframe lanes, clearer thumbnail segmentation, fixed-width angle/status numbers, status badges, add/duplicate/delete actions, snapping, symmetry-aware mask completion, and quick redistribution tools.
+- **Spatial Timeline UI:** manage mask keyframes by light angle with separate seek/keyframe lanes, keyframe drag/seek synchronization, clearer thumbnail segmentation, fixed-width angle/status numbers, status badges, add/duplicate/delete actions, snapping, symmetry-aware mask completion, and quick redistribution tools.
 - **Preview Light Workflow:** temporarily mutes scene `DirectionalLight` actors, spawns a preview light, and restores original light intensity on exit/save.
 - **Auto Fill from Original Shading:** bake current viewport/material lighting into masks as a starting point.
 - **Mask I/O:** import edited masks from image files or timeline drops, and export mask textures for external editing.
@@ -179,11 +185,14 @@ The generated texture remains shader-compatible with the regular 0-180 layout. I
 The `Quick SDF > Material Slots` section is designed for the common case where artists edit one material slot at a time.
 
 - Clicking a row selects the corresponding texture set and updates the active paint/bake target.
-- Selecting a material slot isolates that slot in the viewport by default.
-- Paint picking and stroke sampling use the selected slot as an edit filter, so hidden non-target slots do not steal hits from the active slot.
-- Each row shows the slot number, slot name, material name, and a compact status pill such as `Baked` or `Empty`.
+- In Select mode, clicking a mesh surface in the viewport selects both the target mesh component and the hit material slot.
+- Select/prep mode keeps the full mesh visible and uses a cyan viewport overlay to show the active slot instead of hiding the rest of the mesh.
+- Paint mode starts with **Isolate Slot** enabled by default. Turning it off restores full-mesh visibility while the selected slot remains the paint target.
+- Paint picking and stroke sampling use the selected slot as an edit filter, so non-target slots do not steal hits from the active slot.
+- Each row shows the slot number, slot name, material name, and a compact status pill such as `Selected`, `Baked`, or `Empty`.
 - The row action button bakes only that slot, using the active slot as the material bake scope for original-shading masks.
 - Active rows use a subtle accent, brighter background, and border so the editable slot remains visible in dense Details Panel layouts.
+- Visible rows are rebuilt from the current mesh component, so switching targets does not leave stale `Missing` rows in the active UI.
 - Long slot lists are contained in a scrollable area to avoid pushing the rest of the tool UI off screen.
 
 ## Timeline
@@ -192,6 +201,7 @@ The timeline is split into two interaction lanes to reduce accidental edits.
 
 - The upper seek lane is the only area that seeks the preview angle by click or drag. It shows the current light/seek cursor and degree ticks.
 - The lower keyframe lane contains thumbnails and key handles. Keyframes select on click and move only after the drag threshold is crossed.
+- Dragging a keyframe updates the seek cursor and preview light immediately, so the moved thumbnail and current angle stay synchronized.
 - Thumbnail backgrounds do not handle input; keyframe widgets own selection and drag behavior.
 - Paint-target range highlights are always shown for `Current`, `All`, `Before`, and `After`. The visible range is calculated from neighboring-angle midpoints so the highlight matches the masks that will be edited.
 - Key status badges are hit-test invisible and do not interfere with selecting, dragging, importing, or seeking.
