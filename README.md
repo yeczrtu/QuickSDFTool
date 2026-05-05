@@ -376,6 +376,7 @@ For maintainers preparing the GitHub page:
 ## Known Limitations
 
 - UV layout can affect the relationship between brush size and painted area.
+- On pen displays and tablets, hover movement while the pen is lifted may not update the brush position; the next painted stroke can start from the previous brush hit and create an unintended connecting segment.
 - GPU JFA shader files exist, but the v1.0 generation path uses the CPU `FSDFProcessor` path.
 
 ## Contributing
