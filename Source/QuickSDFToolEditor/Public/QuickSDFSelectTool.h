@@ -32,7 +32,8 @@ public:
 	TObjectPtr<UQuickSDFToolProperties> Properties;
 
 private:
-	void SelectTargetComponent(UMeshComponent* TargetComponent);
+	void SelectTargetComponent(UMeshComponent* TargetComponent, int32 MaterialSlotIndex = INDEX_NONE);
+	bool SelectActiveMaterialSlot(UMeshComponent* TargetComponent, int32 MaterialSlotIndex);
 	void SyncFromSubsystemTarget(bool bBroadcastPropertyRefresh);
 	UMaterialInterface* GetOrCreateActiveSlotHighlightMaterial();
 

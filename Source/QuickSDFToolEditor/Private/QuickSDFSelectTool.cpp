@@ -12,6 +12,7 @@
 #include "Materials/MaterialExpressionConstant3Vector.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "QuickSDFAsset.h"
+#include "QuickSDFMaterialSlotHitTest.h"
 #include "QuickSDFTextureSetSync.h"
 #include "QuickSDFToolProperties.h"
 #include "QuickSDFToolSubsystem.h"
@@ -203,7 +204,11 @@ void UQuickSDFSelectTool::OnClicked(const FInputDeviceRay& ClickPos)
 	IToolsContextQueriesAPI* ContextAPI = GetToolManager()->GetContextQueriesAPI();
 	if (UMeshComponent* HitProxyTargetComponent = ResolveMeshComponentFromHitProxy(ClickPos, ContextAPI))
 	{
-		SelectTargetComponent(HitProxyTargetComponent);
+		QuickSDFMaterialSlotHitTest::FResult SlotHit;
+		const int32 HitMaterialSlot = QuickSDFMaterialSlotHitTest::HitTestMaterialSlot(HitProxyTargetComponent, ClickPos.WorldRay, SlotHit)
+			? SlotHit.MaterialSlotIndex
+			: INDEX_NONE;
+		SelectTargetComponent(HitProxyTargetComponent, HitMaterialSlot);
 		return;
 	}
 
@@ -234,10 +239,15 @@ void UQuickSDFSelectTool::OnClicked(const FInputDeviceRay& ClickPos)
 		return;
 	}
 
-	SelectTargetComponent(ResolveMeshComponentFromPrimitive(OutHit.GetComponent()));
+	UMeshComponent* TargetComponent = ResolveMeshComponentFromPrimitive(OutHit.GetComponent());
+	QuickSDFMaterialSlotHitTest::FResult SlotHit;
+	const int32 HitMaterialSlot = QuickSDFMaterialSlotHitTest::HitTestMaterialSlot(TargetComponent, ClickPos.WorldRay, SlotHit)
+		? SlotHit.MaterialSlotIndex
+		: INDEX_NONE;
+	SelectTargetComponent(TargetComponent, HitMaterialSlot);
 }
 
-void UQuickSDFSelectTool::SelectTargetComponent(UMeshComponent* TargetComponent)
+void UQuickSDFSelectTool::SelectTargetComponent(UMeshComponent* TargetComponent, int32 MaterialSlotIndex)
 {
 	if (!TargetComponent || !GEditor)
 	{
@@ -249,8 +259,47 @@ void UQuickSDFSelectTool::SelectTargetComponent(UMeshComponent* TargetComponent)
 		QuickSDFToolSubsystem->SetTargetComponent(TargetComponent);
 		SyncEditorSelectionToTarget(TargetComponent);
 		SyncFromSubsystemTarget(true);
+		if (MaterialSlotIndex != INDEX_NONE)
+		{
+			SelectActiveMaterialSlot(TargetComponent, MaterialSlotIndex);
+		}
 		GEditor->RedrawAllViewports(false);
 	}
+}
+
+bool UQuickSDFSelectTool::SelectActiveMaterialSlot(UMeshComponent* TargetComponent, int32 MaterialSlotIndex)
+{
+	if (!Properties || !TargetComponent || MaterialSlotIndex < 0 || MaterialSlotIndex >= TargetComponent->GetNumMaterials() || !GEditor)
+	{
+		return false;
+	}
+
+	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
+	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	if (!Asset)
+	{
+		return false;
+	}
+
+	const TArray<int32> VisibleTextureSetIndices = QuickSDFTextureSetSync::GetVisibleTextureSetIndices(Asset, TargetComponent);
+	for (const int32 TextureSetIndex : VisibleTextureSetIndices)
+	{
+		if (Asset->TextureSets.IsValidIndex(TextureSetIndex) &&
+			Asset->TextureSets[TextureSetIndex].MaterialSlotIndex == MaterialSlotIndex)
+		{
+			if (!Asset->SetActiveTextureSetIndex(TextureSetIndex))
+			{
+				return false;
+			}
+
+			QuickSDFTextureSetSync::SyncPropertiesFromActiveAsset(Properties, Asset);
+			RefreshActiveMaterialSlotHighlight();
+			NotifyOfPropertyChangeByTool(Properties);
+			return true;
+		}
+	}
+
+	return false;
 }
 
 UMaterialInterface* UQuickSDFSelectTool::GetOrCreateActiveSlotHighlightMaterial()
