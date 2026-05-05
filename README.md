@@ -17,6 +17,18 @@ QuickSDFTool lets artists paint binary light/shadow masks on a mesh at multiple 
 
 https://github.com/user-attachments/assets/7eec2890-be31-4cbc-9662-756b6e84c620
 
+Current workflow screenshots:
+
+| Select active slot | Paint in Screen mode |
+| --- | --- |
+| ![Select mode active material slot overlay](docs/images/quick-sdf-select-active-slot.png) | ![Paint mode with Screen projection brush preview](docs/images/quick-sdf-paint-screen-mode.png) |
+| Select mode keeps the full mesh visible and shows the active slot with the selected row plus cyan viewport overlay. | Paint mode uses Screen projection, the viewport brush preview, UV texture preview, and the selected material slot context. |
+
+| Timeline | SDF output |
+| --- | --- |
+| ![Quick SDF timeline controls and keyframes](docs/images/quick-sdf-timeline.png) | ![Generated SDF threshold texture preview](docs/images/quick-sdf-sdf-preview.png) |
+| The timeline separates seek and keyframe interaction while keeping thumbnails, angle labels, and edit controls visible. | Generated SDF threshold textures drive toon-material shadow placement. |
+
 
 
 The intended workflow is:

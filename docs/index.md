@@ -18,6 +18,20 @@ QuickSDFTool is an Unreal Engine 5.7.x editor-mode plugin for painting toon-shad
   <a class="button secondary" href="https://github.com/user-attachments/assets/1eb770b6-b65d-44bb-b5a0-fbb78d998202">Watch Demo</a>
 </div>
 
+## Workflow Screenshots
+
+The current documentation captures show the main v1.0 workflow from slot selection to SDF output.
+
+| Select active slot | Paint in Screen mode |
+| --- | --- |
+| ![Select mode active material slot overlay]({{ '/images/quick-sdf-select-active-slot.png' | relative_url }}) | ![Paint mode with Screen projection brush preview]({{ '/images/quick-sdf-paint-screen-mode.png' | relative_url }}) |
+| Select mode keeps the full mesh visible and marks the active material slot with the selected row and cyan viewport overlay. | Paint mode shows Screen projection, the brush preview, UV texture preview, and active slot context. |
+
+| Timeline | SDF output |
+| --- | --- |
+| ![Quick SDF timeline controls and keyframes]({{ '/images/quick-sdf-timeline.png' | relative_url }}) | ![Generated SDF threshold texture preview]({{ '/images/quick-sdf-sdf-preview.png' | relative_url }}) |
+| Timeline thumbnails, angle labels, and keyframe controls stay visible while seeking or dragging keys. | The generated SDF threshold texture is the map consumed by toon materials. |
+
 ## Start Here
 
 <div class="doc-grid">
@@ -40,12 +54,13 @@ QuickSDFTool is an Unreal Engine 5.7.x editor-mode plugin for painting toon-shad
 1. Copy this repository into your C++ Unreal project as `Plugins/QuickSDFTool/`.
 2. Regenerate project files, build the project, enable **QuickSDFTool**, then restart the editor.
 3. Open the Editor Mode selector and choose **Quick SDF**.
-4. Select a mesh in the level.
-5. In **Material Slots**, click the row you want to edit. Use the row Bake action if the slot still needs a baked source mask.
-6. Paint white with `LMB`; paint black/shadow with `Shift + LMB`.
-7. Use the timeline to seek light angle, add or duplicate keyframes, and choose a paint target mode.
-8. Click **Generate Selected SDF** or **Generate SDF Threshold Map**.
-9. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
+4. In Select mode, click the mesh/material surface you want to edit in the viewport.
+5. Confirm the active slot in **Material Slots**. The selected row and cyan viewport overlay show the active material slot; row clicks can correct the viewport pick.
+6. Click **Start Paint**. Paint mode isolates the active slot by default; turn off **Isolate Slot** if you need full-mesh visibility.
+7. Paint white with `LMB`; paint black/shadow with `Shift + LMB`.
+8. Use the timeline to seek light angle, add or duplicate keyframes, and choose a paint target mode.
+9. Click **Generate Selected SDF** or **Generate SDF Threshold Map**.
+10. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
 
 ## Compatibility
 
