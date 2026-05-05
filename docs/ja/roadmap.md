@@ -53,13 +53,6 @@ alternate_label: English
 - 有効な境界線は active UV island を分割するか閉じた領域を作る必要があります。曖昧な部分線は Bake 前に警告し、塗りは active UV island 内に制限します。
 - `Quick Reshape` は `Stroke Auto Fill` と分けて扱います。`Stroke Auto Fill` は単一線の fill helper、`Quick Reshape` は複数角度の boundary plan から mask を作る機能です。
 
-### Actor Mesh Component Selection
-
-- 1 つの actor が複数の mesh component を持つ場合に、QuickSDFTool の編集対象 mesh を明確に選べない現在の制限を解消します。
-- 選択中 actor 内の対象候補として、`StaticMeshComponent` と `SkeletalMeshComponent` を component 単位で選べる target picker を追加します。
-- Painting、mask import/export、Bake、SDF generation、material-slot isolation は、actor 内の全 mesh ではなく選択された mesh component だけに適用します。
-- Mesh component を切り替えても、それぞれの QuickSDF asset / mask state を保持し、顔、髪、服、accessory を 1 つの actor 内で個別に編集できるようにします。
-
 ### Threshold Map Reverse Conversion
 
 - 完成済み threshold map に対して light angle を指定し、その角度の mask を復元または preview する reverse conversion workflow を追加します。

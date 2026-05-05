@@ -53,13 +53,6 @@ alternate_label: 日本語
 - Keep `Quick Reshape` separate from `Stroke Auto Fill`: `Stroke Auto Fill` is a single-line fill helper, while `Quick Reshape` creates masks from a multi-angle boundary plan.
 - Allow `Monotonic Guard` to validate Quick Reshape output during or after baking so repeated transitions can be caught.
 
-### Actor Mesh Component Selection
-
-- Address the current limitation where a single actor that owns multiple mesh components does not provide a clear way to choose which mesh should be edited by QuickSDFTool.
-- Add a component-level target picker for eligible `StaticMeshComponent` and `SkeletalMeshComponent` instances inside the selected actor.
-- Painting, mask import/export, baking, SDF generation, and material-slot isolation should apply only to the selected mesh component, not every mesh on the actor.
-- Switching between mesh components should preserve each component's QuickSDF asset/mask state so artists can work on face, hair, clothing, or accessory meshes separately inside one actor.
-
 ### Threshold Map Reverse Conversion
 
 - Add a reverse-conversion workflow that can reconstruct or preview an angle-specific mask from a completed threshold map by entering a target light angle.
