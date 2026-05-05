@@ -1738,20 +1738,31 @@ void SQuickSDFTimeline::OnKeyframeAngleChanged(float NewAngle, int32 Index)
 		{
 			if (Props->TargetAngles.IsValidIndex(Index))
 			{
-				Props->TargetAngles[Index] = NewAngle;
+				const float MaxAngle = GetQuickSDFTimelineMaxAngle(Props);
+				const float ClampedAngle = FMath::Clamp(NewAngle, 0.0f, MaxAngle);
+				Props->TargetAngles[Index] = ClampedAngle;
+				LastSeekAngle = ClampedAngle;
+				bHasSeekAngle = true;
 
 				UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
 				if (Subsystem && Subsystem->GetActiveSDFAsset())
 				{
 					if (Subsystem->GetActiveSDFAsset()->GetActiveAngleDataList().IsValidIndex(Index))
 					{
-						Subsystem->GetActiveSDFAsset()->GetActiveAngleDataList()[Index].Angle = NewAngle;
+						Subsystem->GetActiveSDFAsset()->GetActiveAngleDataList()[Index].Angle = ClampedAngle;
 					}
 				}
 
 				// Fire property modified to update the preview light
 				FProperty* Prop = Props->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngles));
 				Tool->OnPropertyModified(Props, Prop);
+				if (Props->bAutoSyncLight)
+				{
+					if (UQuickSDFEditorMode* Mode = Cast<UQuickSDFEditorMode>(GLevelEditorModeTools().GetActiveScriptableMode("EM_QuickSDFEditorMode")))
+					{
+						Mode->SetPreviewLightAngle(ClampedAngle);
+					}
+				}
 				Invalidate(EInvalidateWidgetReason::PaintAndVolatility);
 				if (GEditor)
 				{
