@@ -12,12 +12,15 @@
 #include "PropertyHandle.h"
 #include "QuickSDFAsset.h"
 #include "QuickSDFPaintTool.h"
+#include "QuickSDFSelectTool.h"
+#include "QuickSDFTextureSetSync.h"
 #include "QuickSDFToolProperties.h"
 #include "QuickSDFToolSubsystem.h"
 #include "QuickSDFToolStyle.h"
 #include "QuickSDFToolUI.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Images/SImage.h"
+#include "Widgets/SCompoundWidget.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
@@ -105,6 +108,14 @@ bool HasActiveSourceMasks()
 bool CanCreateThresholdMap()
 {
 	return GetCurrentQuickSDFTarget() != nullptr || HasActiveSourceMasks();
+}
+
+bool CanStartPaint()
+{
+	const UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	const UMeshComponent* TargetComponent = Subsystem ? Subsystem->GetTargetMeshComponent() : nullptr;
+	const UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	return TargetComponent && QuickSDFTextureSetSync::HasVisibleTextureSet(Asset, TargetComponent);
 }
 
 bool HasActiveIntermediateSDF()
@@ -406,6 +417,10 @@ FReply SelectTextureSet(TWeakObjectPtr<UQuickSDFToolProperties> WeakProperties, 
 		if (Asset->SetActiveTextureSetIndex(TextureSetIndex))
 		{
 			SyncPropertiesFromTextureSet(WeakProperties.Get(), Asset, TextureSetIndex);
+			if (UQuickSDFSelectTool* SelectTool = QuickSDFToolUI::GetActiveSelectTool())
+			{
+				SelectTool->RefreshActiveMaterialSlotHighlight();
+			}
 			if (GEditor)
 			{
 				GEditor->RedrawAllViewports(false);
@@ -447,6 +462,25 @@ TSharedRef<SWidget> MakeTextureSetStatusPill(int32 TextureSetIndex)
 			})
 			.Font(FAppStyle::GetFontStyle("SmallFont"))
 			.ColorAndOpacity(FLinearColor(0.92f, 0.94f, 0.95f, 1.0f))
+		];
+}
+
+TSharedRef<SWidget> MakeTextureSetSelectedPill(int32 TextureSetIndex)
+{
+	return SNew(SBorder)
+		.Visibility_Lambda([TextureSetIndex]()
+		{
+			return IsTextureSetActive(TextureSetIndex) ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+		.BorderBackgroundColor(FLinearColor(0.08f, 0.34f, 0.48f, 1.0f))
+		.Padding(FMargin(7.0f, 2.0f))
+		.ToolTipText(LOCTEXT("TextureSetSelectedTooltip", "This material slot is selected."))
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("TextureSetSelected", "Selected"))
+			.Font(FAppStyle::GetFontStyle("SmallFont"))
+			.ColorAndOpacity(FLinearColor(0.92f, 0.98f, 1.0f, 1.0f))
 		];
 }
 
@@ -502,11 +536,15 @@ TSharedRef<SWidget> MakeTextureSetBakeButton(int32 TextureSetIndex)
 		];
 }
 
-TSharedRef<SWidget> MakeTextureSetRow(TWeakObjectPtr<UQuickSDFToolProperties> WeakProperties, int32 TextureSetIndex)
+TSharedRef<SWidget> MakeTextureSetRow(TWeakObjectPtr<UQuickSDFToolProperties> WeakProperties, int32 TextureSetIndex, bool bShowPaintActions)
 {
 	return SNew(SCheckBox)
 		.Style(FQuickSDFToolStyle::Get().Get(), "QuickSDF.MaterialSlot.Row")
 		.ToolTipText(LOCTEXT("SelectTextureSetTooltip", "Make this material slot active for painting, baking, preview, and SDF generation."))
+		.Visibility_Lambda([TextureSetIndex]()
+		{
+			return GetTextureSetData(TextureSetIndex) ? EVisibility::Visible : EVisibility::Collapsed;
+		})
 		.IsChecked_Lambda([TextureSetIndex]()
 		{
 			return IsTextureSetActive(TextureSetIndex) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
@@ -634,60 +672,165 @@ TSharedRef<SWidget> MakeTextureSetRow(TWeakObjectPtr<UQuickSDFToolProperties> We
 					.VAlign(VAlign_Center)
 					.Padding(0.0f, 0.0f, 6.0f, 0.0f)
 					[
-						MakeTextureSetStatusPill(TextureSetIndex)
+						bShowPaintActions
+							? MakeTextureSetStatusPill(TextureSetIndex)
+							: MakeTextureSetSelectedPill(TextureSetIndex)
 					]
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)
-					.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+					.Padding(0.0f, 0.0f, bShowPaintActions ? 6.0f : 0.0f, 0.0f)
 					[
-						MakeTextureSetBakeButton(TextureSetIndex)
+						SNew(SBox)
+						.Visibility(bShowPaintActions ? EVisibility::Visible : EVisibility::Collapsed)
+						[
+							MakeTextureSetBakeButton(TextureSetIndex)
+						]
 					]
 				]
 			]
 		];
 }
 
-TSharedRef<SWidget> MakeTextureSetList(TWeakObjectPtr<UQuickSDFToolProperties> WeakProperties)
+struct FTextureSetListSignature
 {
-	TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
-	const UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
-	const UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
-	const int32 TextureSetCount = Asset ? Asset->TextureSets.Num() : 0;
+	const UMeshComponent* TargetComponent = nullptr;
+	const UQuickSDFAsset* Asset = nullptr;
+	TArray<int32> TextureSetIndices;
+	bool bShowPaintActions = false;
 
-	if (TextureSetCount == 0)
+	bool operator==(const FTextureSetListSignature& Other) const
+	{
+		return TargetComponent == Other.TargetComponent &&
+			Asset == Other.Asset &&
+			bShowPaintActions == Other.bShowPaintActions &&
+			TextureSetIndices == Other.TextureSetIndices;
+	}
+
+	bool operator!=(const FTextureSetListSignature& Other) const
+	{
+		return !(*this == Other);
+	}
+};
+
+FTextureSetListSignature GetTextureSetListSignature(bool bShowPaintActions)
+{
+	const UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	const UMeshComponent* TargetComponent = Subsystem ? Subsystem->GetTargetMeshComponent() : nullptr;
+	const UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+
+	FTextureSetListSignature Signature;
+	Signature.TargetComponent = TargetComponent;
+	Signature.Asset = Asset;
+	Signature.TextureSetIndices = TargetComponent
+		? QuickSDFTextureSetSync::GetVisibleTextureSetIndices(Asset, TargetComponent)
+		: TArray<int32>();
+	Signature.bShowPaintActions = bShowPaintActions;
+	return Signature;
+}
+
+class SQuickSDFMaterialSlotList : public SCompoundWidget
+{
+public:
+	SLATE_BEGIN_ARGS(SQuickSDFMaterialSlotList)
+		{
+		}
+		SLATE_ARGUMENT(TWeakObjectPtr<UQuickSDFToolProperties>, Properties)
+		SLATE_ARGUMENT(bool, ShowPaintActions)
+	SLATE_END_ARGS()
+
+	void Construct(const FArguments& InArgs)
+	{
+		WeakProperties = InArgs._Properties;
+		bShowPaintActions = InArgs._ShowPaintActions;
+
+		ChildSlot
+		[
+			SNew(SBox)
+			.MaxDesiredHeight(244.0f)
+			[
+				SNew(SScrollBox)
+				+ SScrollBox::Slot()
+				[
+					SAssignNew(Rows, SVerticalBox)
+				]
+			]
+		];
+
+		RebuildRows();
+		RegisterActiveTimer(
+			0.1f,
+			FWidgetActiveTimerDelegate::CreateSP(this, &SQuickSDFMaterialSlotList::RefreshRows));
+	}
+
+private:
+	EActiveTimerReturnType RefreshRows(double CurrentTime, float DeltaTime)
+	{
+		const FTextureSetListSignature CurrentSignature = GetTextureSetListSignature(bShowPaintActions);
+		if (CurrentSignature != CachedSignature)
+		{
+			RebuildRows();
+		}
+		return EActiveTimerReturnType::Continue;
+	}
+
+	void RebuildRows()
+	{
+		if (!Rows.IsValid())
+		{
+			return;
+		}
+
+		CachedSignature = GetTextureSetListSignature(bShowPaintActions);
+		Rows->ClearChildren();
+
+		if (!CachedSignature.TargetComponent)
+		{
+			AddMessageRow(LOCTEXT("SelectMeshPrompt", "Click a mesh in the viewport"));
+			return;
+		}
+
+		if (CachedSignature.TextureSetIndices.Num() == 0)
+		{
+			AddMessageRow(LOCTEXT("NoMaterialSlots", "No material slots found"));
+			return;
+		}
+
+		for (const int32 TextureSetIndex : CachedSignature.TextureSetIndices)
+		{
+			Rows->AddSlot()
+			.AutoHeight()
+			.Padding(0.0f, 1.0f)
+			[
+				MakeTextureSetRow(WeakProperties, TextureSetIndex, bShowPaintActions)
+			];
+		}
+	}
+
+	void AddMessageRow(const FText& Message)
 	{
 		Rows->AddSlot()
 		.AutoHeight()
 		.Padding(0.0f, 2.0f)
 		[
 			SNew(STextBlock)
-			.Text(LOCTEXT("NoTextureSets", "No Texture Sets"))
+			.Text(Message)
+			.ColorAndOpacity(FLinearColor(0.68f, 0.70f, 0.72f, 1.0f))
 			.Font(FAppStyle::GetFontStyle("SmallFont"))
 		];
 	}
-	else
-	{
-		for (int32 TextureSetIndex = 0; TextureSetIndex < TextureSetCount; ++TextureSetIndex)
-		{
-			Rows->AddSlot()
-			.AutoHeight()
-			.Padding(0.0f, 1.0f)
-			[
-				MakeTextureSetRow(WeakProperties, TextureSetIndex)
-			];
-		}
-	}
 
-	return SNew(SBox)
-		.MaxDesiredHeight(244.0f)
-		[
-			SNew(SScrollBox)
-			+ SScrollBox::Slot()
-			[
-				Rows
-			]
-		];
+	TWeakObjectPtr<UQuickSDFToolProperties> WeakProperties;
+	TSharedPtr<SVerticalBox> Rows;
+	FTextureSetListSignature CachedSignature;
+	bool bShowPaintActions = false;
+};
+
+TSharedRef<SWidget> MakeTextureSetList(TWeakObjectPtr<UQuickSDFToolProperties> WeakProperties, bool bShowPaintActions)
+{
+	return SNew(SQuickSDFMaterialSlotList)
+		.Properties(WeakProperties)
+		.ShowPaintActions(bShowPaintActions);
 }
 }
 
@@ -721,10 +864,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 	DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, ActiveTextureSetIndex)));
 
 	IDetailCategoryBuilder& QuickCategory = DetailBuilder.EditCategory(FName(TEXT("Quick SDF")), LOCTEXT("QuickSDFCategory", "Quick SDF"), ECategoryPriority::Important);
-	IDetailCategoryBuilder& MasksCategory = DetailBuilder.EditCategory(FName(TEXT("Masks")), LOCTEXT("MasksCategory", "Masks"), ECategoryPriority::Important);
-	IDetailCategoryBuilder& OutputCategory = DetailBuilder.EditCategory(FName(TEXT("Output")), LOCTEXT("OutputCategory", "Output"), ECategoryPriority::Important);
-	IDetailCategoryBuilder& AdvancedCategory = DetailBuilder.EditCategory(FName(TEXT("Advanced")), LOCTEXT("AdvancedCategory", "Advanced"), ECategoryPriority::Uncommon);
-	AdvancedCategory.InitiallyCollapsed(true);
+	const bool bPaintToolActive = GetActiveQuickSDFPaintTool() != nullptr;
 
 	QuickCategory.AddCustomRow(LOCTEXT("TargetMeshFilter", "Target Mesh"))
 	.NameContent()
@@ -763,9 +903,39 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		[
-			MakeTextureSetList(WeakProperties)
+			MakeTextureSetList(WeakProperties, bPaintToolActive)
 		]
 	];
+
+	if (!bPaintToolActive)
+	{
+		QuickCategory.AddCustomRow(LOCTEXT("StartPaintFilter", "Start Paint"))
+		.WholeRowContent()
+		[
+			SNew(SBox)
+			.IsEnabled_Lambda([]()
+			{
+				return CanStartPaint();
+			})
+			[
+				QuickSDFToolUI::MakeIconLabelButton(
+					"QuickSDF.PaintTextureColor",
+					LOCTEXT("StartPaintButton", "Start Paint"),
+					LOCTEXT("StartPaintTooltip", "Start painting the active Quick SDF material slot without hiding the rest of the mesh."),
+					FOnClicked::CreateLambda([]()
+					{
+						QuickSDFToolUI::StartPaintTool();
+						return FReply::Handled();
+					}))
+			]
+		];
+		return;
+	}
+
+	IDetailCategoryBuilder& MasksCategory = DetailBuilder.EditCategory(FName(TEXT("Masks")), LOCTEXT("MasksCategory", "Masks"), ECategoryPriority::Important);
+	IDetailCategoryBuilder& OutputCategory = DetailBuilder.EditCategory(FName(TEXT("Output")), LOCTEXT("OutputCategory", "Output"), ECategoryPriority::Important);
+	IDetailCategoryBuilder& AdvancedCategory = DetailBuilder.EditCategory(FName(TEXT("Advanced")), LOCTEXT("AdvancedCategory", "Advanced"), ECategoryPriority::Uncommon);
+	AdvancedCategory.InitiallyCollapsed(true);
 
 	QuickCategory.AddCustomRow(LOCTEXT("MaterialPreviewFilter", "Material Preview"))
 	.WholeRowContent()

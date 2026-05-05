@@ -6,6 +6,7 @@
 #include "Materials/MaterialInterface.h"
 #include "QuickSDFAsset.h"
 #include "QuickSDFPaintToolPrivate.h"
+#include "QuickSDFTextureSetSync.h"
 #include "QuickSDFToolSubsystem.h"
 
 #if WITH_EDITOR
@@ -16,125 +17,9 @@
 
 using namespace QuickSDFPaintToolPrivate;
 
-namespace
-{
-int32 FindTextureSetForMaterialSlot(const UQuickSDFAsset* Asset, int32 MaterialSlotIndex)
-{
-	if (!Asset)
-	{
-		return INDEX_NONE;
-	}
-
-	for (int32 Index = 0; Index < Asset->TextureSets.Num(); ++Index)
-	{
-		if (Asset->TextureSets[Index].MaterialSlotIndex == MaterialSlotIndex)
-		{
-			return Index;
-		}
-	}
-	return INDEX_NONE;
-}
-
-FName GetMaterialSlotName(const UMeshComponent* Component, int32 MaterialSlotIndex)
-{
-	if (!Component)
-	{
-		return NAME_None;
-	}
-
-	const TArray<FName> SlotNames = Component->GetMaterialSlotNames();
-	if (SlotNames.IsValidIndex(MaterialSlotIndex) && !SlotNames[MaterialSlotIndex].IsNone())
-	{
-		return SlotNames[MaterialSlotIndex];
-	}
-
-	return FName(*FString::Printf(TEXT("Slot_%d"), MaterialSlotIndex));
-}
-
-FString GetMaterialDisplayName(const UMeshComponent* Component, int32 MaterialSlotIndex)
-{
-	UMaterialInterface* Material = Component ? Component->GetMaterial(MaterialSlotIndex) : nullptr;
-	return Material ? Material->GetName() : FString(TEXT("None"));
-}
-
-bool TextureSetHasStoredBakeData(const FQuickSDFTextureSetData& TextureSet)
-{
-	if (TextureSet.FinalSDFTexture)
-	{
-		return true;
-	}
-
-	for (const FQuickSDFAngleData& AngleData : TextureSet.AngleDataList)
-	{
-		if (AngleData.TextureMask)
-		{
-			return true;
-		}
-	}
-
-	return false;
-}
-
-bool TextureSetHasNonWhitePaintData(const UQuickSDFPaintTool& Tool, const FQuickSDFTextureSetData& TextureSet)
-{
-	TArray<FColor> Pixels;
-	for (const FQuickSDFAngleData& AngleData : TextureSet.AngleDataList)
-	{
-		if (!AngleData.PaintRenderTarget || !Tool.CaptureRenderTargetPixels(AngleData.PaintRenderTarget, Pixels))
-		{
-			continue;
-		}
-
-		for (const FColor& Pixel : Pixels)
-		{
-			if (Pixel.R < 250 || Pixel.G < 250 || Pixel.B < 250)
-			{
-				return true;
-			}
-		}
-	}
-
-	return false;
-}
-
-void NormalizeTextureSetBakeState(const UQuickSDFPaintTool& Tool, FQuickSDFTextureSetData& TextureSet)
-{
-	if (!TextureSet.bInitialBakeComplete || TextureSetHasStoredBakeData(TextureSet))
-	{
-		return;
-	}
-
-	if (!TextureSetHasNonWhitePaintData(Tool, TextureSet))
-	{
-		TextureSet.bInitialBakeComplete = false;
-		TextureSet.bDirty = false;
-	}
-}
-
-}
-
 void UQuickSDFPaintTool::InitializeDefaultAngleData(TArray<FQuickSDFAngleData>& AngleData, bool bResetExisting) const
 {
-	if (!bResetExisting && AngleData.Num() > 0)
-	{
-		return;
-	}
-
-	const bool bSymmetry = !Properties || Properties->UsesFrontHalfAngles();
-	const float MaxAngle = bSymmetry ? 90.0f : 180.0f;
-	const int32 AngleCount = GetQuickSDFDefaultAngleCount(bSymmetry);
-	AngleData.Reset();
-	AngleData.Reserve(AngleCount);
-
-	for (int32 Index = 0; Index < AngleCount; ++Index)
-	{
-		FQuickSDFAngleData Data;
-		Data.Angle = AngleCount > 1
-			? (static_cast<float>(Index) / static_cast<float>(AngleCount - 1)) * MaxAngle
-			: 0.0f;
-		Data.MaskGuid = FGuid::NewGuid();
-		AngleData.Add(Data);
-	}
+	QuickSDFTextureSetSync::InitializeDefaultAngleData(AngleData, Properties, bResetExisting);
 }
 
 void UQuickSDFPaintTool::RefreshTextureSetsForCurrentComponent()
@@ -151,66 +36,13 @@ void UQuickSDFPaintTool::RefreshTextureSetsForCurrentComponent()
 		return;
 	}
 
-	Asset->MigrateLegacyDataToTextureSetsIfNeeded();
-
-	if (CurrentComponent.IsValid())
-	{
-		const int32 NumMaterialSlots = FMath::Max(CurrentComponent->GetNumMaterials(), 1);
-		for (int32 MaterialSlotIndex = 0; MaterialSlotIndex < NumMaterialSlots; ++MaterialSlotIndex)
-		{
-			int32 TextureSetIndex = FindTextureSetForMaterialSlot(Asset, MaterialSlotIndex);
-			if (TextureSetIndex == INDEX_NONE && MaterialSlotIndex == 0 && Asset->TextureSets.Num() == 1 && Asset->TextureSets[0].MaterialSlotIndex == INDEX_NONE)
-			{
-				TextureSetIndex = 0;
-				Asset->TextureSets[0].MaterialSlotIndex = MaterialSlotIndex;
-			}
-
-			if (TextureSetIndex == INDEX_NONE)
-			{
-				TextureSetIndex = Asset->TextureSets.AddDefaulted();
-				FQuickSDFTextureSetData& NewSet = Asset->TextureSets[TextureSetIndex];
-				NewSet.MaterialSlotIndex = MaterialSlotIndex;
-				NewSet.UVChannel = Properties->UVChannel;
-				NewSet.Resolution = Properties->Resolution;
-				InitializeDefaultAngleData(NewSet.AngleDataList, true);
-			}
-
-			FQuickSDFTextureSetData& TextureSet = Asset->TextureSets[TextureSetIndex];
-			TextureSet.SlotName = GetMaterialSlotName(CurrentComponent.Get(), MaterialSlotIndex);
-			TextureSet.MaterialName = GetMaterialDisplayName(CurrentComponent.Get(), MaterialSlotIndex);
-			if (TextureSet.Resolution.X <= 0 || TextureSet.Resolution.Y <= 0)
-			{
-				TextureSet.Resolution = Properties->Resolution;
-			}
-			if (TextureSet.AngleDataList.Num() == 0)
-			{
-				InitializeDefaultAngleData(TextureSet.AngleDataList, true);
-			}
-			NormalizeTextureSetBakeState(*this, TextureSet);
-		}
-	}
-	else if (Asset->TextureSets.Num() == 0)
-	{
-		FQuickSDFTextureSetData& TextureSet = Asset->TextureSets.AddDefaulted_GetRef();
-		TextureSet.MaterialSlotIndex = INDEX_NONE;
-		TextureSet.SlotName = TEXT("Default");
-		TextureSet.MaterialName = TEXT("No Mesh");
-		TextureSet.UVChannel = Properties->UVChannel;
-		TextureSet.Resolution = Properties->Resolution;
-		InitializeDefaultAngleData(TextureSet.AngleDataList, true);
-	}
-
-	if (!Asset->TextureSets.IsValidIndex(Asset->ActiveTextureSetIndex))
-	{
-		Asset->ActiveTextureSetIndex = 0;
-	}
-
-	Asset->SetActiveTextureSetIndex(Asset->ActiveTextureSetIndex);
-	FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet();
-	Properties->ActiveTextureSetIndex = Asset->ActiveTextureSetIndex;
-	Properties->TargetMaterialSlot = ActiveSet ? ActiveSet->MaterialSlotIndex : INDEX_NONE;
-	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
-	SyncPropertiesFromActiveAsset();
+	QuickSDFTextureSetSync::RefreshTextureSetsForComponent(
+		Asset,
+		CurrentComponent.Get(),
+		Properties,
+		GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld(),
+		true,
+		this);
 	InvalidateUVOverlayCache();
 	ApplyTargetMaterialSlotIsolation();
 	RefreshPreviewMaterial();

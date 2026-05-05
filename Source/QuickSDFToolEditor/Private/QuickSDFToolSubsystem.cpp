@@ -171,6 +171,12 @@ UQuickSDFAsset* CreateDefaultQuickSDFAsset(UObject* Outer)
 void UQuickSDFToolSubsystem::SetTargetComponent(UMeshComponent* NewComponent)
 {
 	CurrentTargetComponent = NewComponent;
+	if (!NewComponent)
+	{
+		ActiveSDFAsset = nullptr;
+		return;
+	}
+
 	if (NewComponent)
 	{
 		ActiveSDFAsset = GetOrCreateSDFAssetForComponent(NewComponent);

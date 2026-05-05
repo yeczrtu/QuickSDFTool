@@ -219,7 +219,7 @@ public:
 	int32 TargetMaterialSlot = -1;
 
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Target Settings", meta = (DisplayName = "Isolate Target Material Slot", EditCondition = "TargetMaterialSlot >= 0"))
-	bool bIsolateTargetMaterialSlot = true;
+	bool bIsolateTargetMaterialSlot = false;
 
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Export Settings", meta = (ClampMin = "1", UIMin = "1", ClampMax = "8", UIMax = "8"))
 	int32 UpscaleFactor = 1;

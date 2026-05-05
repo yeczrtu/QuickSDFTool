@@ -141,25 +141,20 @@ void UQuickSDFEditorMode::Enter()
 	RegisterTool(ToolManagerCommands.SelectTextureAsset, TEXT("QuickSDFSelectTool"), NewObject<UQuickSDFSelectToolBuilder>(this));
 	RegisterTool(ToolManagerCommands.PaintTextureColor, TEXT("QuickSDFPaintTool"), NewObject<UQuickSDFPaintToolBuilder>(this));
 	
-	GetInteractiveToolsContext()->StartTool(TEXT("QuickSDFPaintTool"));
+	ActorSelectionChangeNotify();
+	StartQuickSDFSelectTool();
 	GetToolManager()->ConfigureChangeTrackingMode(EToolChangeTrackingMode::NoChangeTracking);
 	Toolkit->SetCurrentPalette(FName(TEXT("Default")));
 
-	AttachTimelineToActiveViewport();
 	if (!BrushResizeInputPreProcessor.IsValid())
 	{
 		BrushResizeInputPreProcessor = MakeShared<FQuickSDFBrushResizeInputPreProcessor>(this);
 		FSlateApplication::Get().RegisterInputPreProcessor(BrushResizeInputPreProcessor);
 	}
 
-	MuteLights();
-
 	// Register save delegates to prevent permanent lighting changes
 	FEditorDelegates::PreSaveWorldWithContext.AddUObject(this, &UQuickSDFEditorMode::OnPreSaveWorld);
 	FEditorDelegates::PostSaveWorldWithContext.AddUObject(this, &UQuickSDFEditorMode::OnPostSaveWorld);
-
-	// Auto-select target if something is already selected
-	ActorSelectionChangeNotify();
 }
 
 void UQuickSDFEditorMode::Exit()
@@ -261,13 +256,25 @@ bool UQuickSDFEditorMode::RequestBrushResizeFromHoveredViewport()
 	}
 
 	UInteractiveToolManager* ToolManager = GetToolManager();
-	if (UQuickSDFPaintTool* PaintTool = ToolManager ? Cast<UQuickSDFPaintTool>(ToolManager->GetActiveTool(EToolSide::Mouse)) : nullptr)
+	if (UQuickSDFPaintTool* PaintTool = ToolManager ? Cast<UQuickSDFPaintTool>(ToolManager->GetActiveTool(EToolSide::Left)) : nullptr)
 	{
 		PaintTool->RequestBrushResizeMode();
 		return true;
 	}
 
 	return false;
+}
+
+void UQuickSDFEditorMode::StartQuickSDFPaintTool()
+{
+	GetInteractiveToolsContext()->StartTool(TEXT("QuickSDFPaintTool"));
+	UpdatePaintToolEnvironment();
+}
+
+void UQuickSDFEditorMode::StartQuickSDFSelectTool()
+{
+	GetInteractiveToolsContext()->StartTool(TEXT("QuickSDFSelectTool"));
+	UpdatePaintToolEnvironment();
 }
 
 void UQuickSDFEditorMode::MuteLights()
@@ -319,6 +326,12 @@ void UQuickSDFEditorMode::RestoreLights()
 		}
 	}
 	OriginalLightStates.Empty();
+
+	if (PreviewLight)
+	{
+		PreviewLight->Destroy();
+		PreviewLight = nullptr;
+	}
 }
 
 void UQuickSDFEditorMode::OnPreSaveWorld(UWorld* InWorld, FObjectPreSaveContext InContext)
@@ -333,9 +346,7 @@ void UQuickSDFEditorMode::OnPostSaveWorld(UWorld* InWorld, FObjectPostSaveContex
 {
 	if (InWorld == GetWorld())
 	{
-		MuteLights();
-		DetachTimelineFromViewport();
-		AttachTimelineToActiveViewport();
+		UpdatePaintToolEnvironment();
 	}
 }
 
@@ -357,10 +368,7 @@ void UQuickSDFEditorMode::Tick(FEditorViewportClient* ViewportClient, float Delt
 		}
 	}
 
-	if (!TimelineViewport.IsValid())
-	{
-		AttachTimelineToActiveViewport();
-	}
+	UpdatePaintToolEnvironment();
 }
 
 TMap<FName, TArray<TSharedPtr<FUICommandInfo>>> UQuickSDFEditorMode::GetModeCommands() const
@@ -529,10 +537,33 @@ void UQuickSDFEditorMode::EndViewportNavigationSuppression()
 	SuppressedViewport = nullptr;
 }
 
+bool UQuickSDFEditorMode::IsPaintToolActive() const
+{
+	UInteractiveToolManager* ToolManager = GetToolManager();
+	return ToolManager && Cast<UQuickSDFPaintTool>(ToolManager->GetActiveTool(EToolSide::Left)) != nullptr;
+}
+
+void UQuickSDFEditorMode::UpdatePaintToolEnvironment()
+{
+	if (IsPaintToolActive())
+	{
+		MuteLights();
+		if (!TimelineViewport.IsValid())
+		{
+			AttachTimelineToActiveViewport();
+		}
+		return;
+	}
+
+	DetachTimelineFromViewport();
+	EndViewportNavigationSuppression();
+	RestoreLights();
+}
+
 bool UQuickSDFEditorMode::CanSelectRelativeFrame() const
 {
 	UInteractiveToolManager* ToolManager = GetToolManager();
-	const UQuickSDFPaintTool* PaintTool = ToolManager ? Cast<UQuickSDFPaintTool>(ToolManager->GetActiveTool(EToolSide::Mouse)) : nullptr;
+	const UQuickSDFPaintTool* PaintTool = ToolManager ? Cast<UQuickSDFPaintTool>(ToolManager->GetActiveTool(EToolSide::Left)) : nullptr;
 	return PaintTool && PaintTool->Properties && PaintTool->Properties->TargetAngles.Num() > 1;
 }
 
@@ -544,7 +575,7 @@ void UQuickSDFEditorMode::SelectRelativeFrame(int32 Direction)
 	}
 
 	UInteractiveToolManager* ToolManager = GetToolManager();
-	UQuickSDFPaintTool* PaintTool = ToolManager ? Cast<UQuickSDFPaintTool>(ToolManager->GetActiveTool(EToolSide::Mouse)) : nullptr;
+	UQuickSDFPaintTool* PaintTool = ToolManager ? Cast<UQuickSDFPaintTool>(ToolManager->GetActiveTool(EToolSide::Left)) : nullptr;
 	UQuickSDFToolProperties* Properties = PaintTool ? PaintTool->Properties : nullptr;
 	if (!Properties || Properties->TargetAngles.Num() == 0)
 	{
@@ -661,12 +692,16 @@ void UQuickSDFEditorMode::ActorSelectionChangeNotify()
 		{
 			QuickSDFToolSubsystem->SetTargetComponent(TargetComp);
 		}
+		else
+		{
+			QuickSDFToolSubsystem->SetTargetComponent(nullptr);
+		}
 	}
 }
 
 bool UQuickSDFEditorMode::IsSelectionAllowed(AActor* InActor, bool bInSelection) const
 {
-	if (UInteractiveTool* ActiveTool = GetToolManager()->GetActiveTool(EToolSide::Mouse))
+	if (UInteractiveTool* ActiveTool = GetToolManager()->GetActiveTool(EToolSide::Left))
 	{
 		if (ActiveTool->IsA<UQuickSDFSelectTool>())
 		{

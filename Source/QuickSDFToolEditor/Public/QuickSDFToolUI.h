@@ -4,6 +4,7 @@
 #include "Widgets/SWidget.h"
 
 class UQuickSDFPaintTool;
+class UQuickSDFSelectTool;
 class UQuickSDFToolProperties;
 enum class EQuickSDFMaterialPreviewMode : uint8;
 enum class EQuickSDFMeshPaintMode : uint8;
@@ -32,6 +33,8 @@ const TArray<EQuickSDFMeshPaintMode>& GetMeshPaintModes();
 const TArray<EQuickSDFPaintTargetMode>& GetPaintTargetModes();
 const TArray<EQuickSDFSymmetryMode>& GetSymmetryModes();
 UQuickSDFPaintTool* GetActivePaintTool();
+UQuickSDFSelectTool* GetActiveSelectTool();
+bool StartPaintTool();
 EQuickSDFMaterialPreviewMode GetMaterialPreviewMode(const UQuickSDFToolProperties* Properties);
 FText GetMaterialPreviewModeLabel(EQuickSDFMaterialPreviewMode Mode);
 FText GetMaterialPreviewModeDescription(EQuickSDFMaterialPreviewMode Mode);

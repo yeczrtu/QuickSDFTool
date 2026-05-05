@@ -6,6 +6,7 @@
 #include "InteractiveToolManager.h"
 #include "QuickSDFEditorMode.h"
 #include "QuickSDFPaintTool.h"
+#include "QuickSDFSelectTool.h"
 #include "QuickSDFToolProperties.h"
 #include "QuickSDFToolStyle.h"
 #include "Styling/AppStyle.h"
@@ -162,6 +163,28 @@ UQuickSDFPaintTool* QuickSDFToolUI::GetActivePaintTool()
 {
 	UQuickSDFEditorMode* Mode = Cast<UQuickSDFEditorMode>(GLevelEditorModeTools().GetActiveScriptableMode("EM_QuickSDFEditorMode"));
 	return Mode && Mode->GetToolManager() ? Cast<UQuickSDFPaintTool>(Mode->GetToolManager()->GetActiveTool(EToolSide::Left)) : nullptr;
+}
+
+UQuickSDFSelectTool* QuickSDFToolUI::GetActiveSelectTool()
+{
+	UQuickSDFEditorMode* Mode = Cast<UQuickSDFEditorMode>(GLevelEditorModeTools().GetActiveScriptableMode(UQuickSDFEditorMode::EM_QuickSDFEditorModeId));
+	return Mode && Mode->GetToolManager() ? Cast<UQuickSDFSelectTool>(Mode->GetToolManager()->GetActiveTool(EToolSide::Left)) : nullptr;
+}
+
+bool QuickSDFToolUI::StartPaintTool()
+{
+	UQuickSDFEditorMode* Mode = Cast<UQuickSDFEditorMode>(GLevelEditorModeTools().GetActiveScriptableMode(UQuickSDFEditorMode::EM_QuickSDFEditorModeId));
+	if (!Mode)
+	{
+		return false;
+	}
+
+	if (UQuickSDFSelectTool* SelectTool = QuickSDFToolUI::GetActiveSelectTool())
+	{
+		SelectTool->RestoreActiveMaterialSlotHighlight();
+	}
+	Mode->StartQuickSDFPaintTool();
+	return QuickSDFToolUI::GetActivePaintTool() != nullptr;
 }
 
 EQuickSDFMaterialPreviewMode QuickSDFToolUI::GetMaterialPreviewMode(const UQuickSDFToolProperties* Properties)

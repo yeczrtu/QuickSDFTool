@@ -1,6 +1,7 @@
 #include "QuickSDFPaintTool.h"
 #include "QuickSDFPaintToolPrivate.h"
 #include "QuickSDFMeshComponentAdapter.h"
+#include "QuickSDFTextureSetSync.h"
 #include "QuickSDFToolSubsystem.h"
 #include "QuickSDFAsset.h"
 #include "SDFProcessor.h"
@@ -2783,26 +2784,8 @@ void UQuickSDFPaintTool::SyncPropertiesFromActiveAsset()
 	{
 		return;
 	}
-	EnsureMaskGuids(Asset);
 
-	Properties->TargetAsset = Asset;
-	Properties->Resolution = Asset->GetActiveResolution();
-	Properties->UVChannel = Asset->GetActiveUVChannel();
-	Properties->ActiveTextureSetIndex = Asset->ActiveTextureSetIndex;
-	if (const FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet())
-	{
-		Properties->TargetMaterialSlot = ActiveSet->MaterialSlotIndex;
-	}
-	Properties->NumAngles = Asset->GetActiveAngleDataList().Num();
-	Properties->TargetAngles.SetNum(Properties->NumAngles);
-	Properties->TargetTextures.SetNum(Properties->NumAngles);
-
-	for (int32 Index = 0; Index < Properties->NumAngles; ++Index)
-	{
-		Properties->TargetAngles[Index] = Asset->GetActiveAngleDataList()[Index].Angle;
-		Properties->TargetTextures[Index] = Asset->GetActiveAngleDataList()[Index].TextureMask;
-	}
-
+	QuickSDFTextureSetSync::SyncPropertiesFromActiveAsset(Properties, Asset);
 	Properties->EditAngleIndex = FMath::Clamp(Properties->EditAngleIndex, 0, FMath::Max(Properties->NumAngles - 1, 0));
 }
 

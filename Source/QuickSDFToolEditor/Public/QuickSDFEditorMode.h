@@ -28,6 +28,8 @@ public:
 	void SetTimelineSeekAngle(float AzimuthAngle);
 	class ADirectionalLight* GetPreviewLight() const { return PreviewLight; }
 	bool RequestBrushResizeFromHoveredViewport();
+	void StartQuickSDFPaintTool();
+	void StartQuickSDFSelectTool();
 	
 protected:
 	virtual void CreateToolkit() override;
@@ -43,6 +45,8 @@ private:
 	void CacheViewportViewState(FEditorViewportClient* ViewportClient, FViewport* Viewport);
 	void RestoreViewportViewState(FEditorViewportClient* ViewportClient);
 	void EndViewportNavigationSuppression();
+	bool IsPaintToolActive() const;
+	void UpdatePaintToolEnvironment();
 	void MuteLights();
 	void RestoreLights();
 	void OnPreSaveWorld(UWorld* InWorld, FObjectPreSaveContext InContext);
