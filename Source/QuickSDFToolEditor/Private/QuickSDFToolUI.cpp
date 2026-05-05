@@ -68,6 +68,16 @@ FText GetPaintTargetModeToolTip(UQuickSDFToolProperties* Properties, EQuickSDFPa
 		QuickSDFToolUI::GetPaintTargetModeDescription(Mode));
 }
 
+FText GetMeshPaintModeToolTip(UQuickSDFToolProperties* Properties, EQuickSDFMeshPaintMode Mode)
+{
+	const bool bSelected = QuickSDFToolUI::GetMeshPaintMode(Properties) == Mode;
+	return FText::Format(
+		LOCTEXT("MeshPaintModeTooltipFormat", "{0}: {1}\n{2}"),
+		QuickSDFToolUI::GetMeshPaintModeLabel(Mode),
+		bSelected ? LOCTEXT("MeshPaintModeSelected", "Selected") : LOCTEXT("MeshPaintModeClickToUse", "Click to use"),
+		QuickSDFToolUI::GetMeshPaintModeDescription(Mode));
+}
+
 bool IsMaterialPreviewModeEnabled(UQuickSDFPaintTool* Tool, EQuickSDFMaterialPreviewMode Mode)
 {
 	return Mode != EQuickSDFMaterialPreviewMode::GeneratedSDF || (Tool && Tool->CanUseGeneratedSDFPreview());
@@ -112,6 +122,16 @@ const TArray<EQuickSDFMaterialPreviewMode>& QuickSDFToolUI::GetMaterialPreviewMo
 		EQuickSDFMaterialPreviewMode::UV,
 		EQuickSDFMaterialPreviewMode::OriginalShadow,
 		EQuickSDFMaterialPreviewMode::GeneratedSDF,
+	};
+	return Modes;
+}
+
+const TArray<EQuickSDFMeshPaintMode>& QuickSDFToolUI::GetMeshPaintModes()
+{
+	static const TArray<EQuickSDFMeshPaintMode> Modes = {
+		EQuickSDFMeshPaintMode::UVSpaceLegacy,
+		EQuickSDFMeshPaintMode::ProjectedSurface,
+		EQuickSDFMeshPaintMode::ScreenProjection,
 	};
 	return Modes;
 }
@@ -249,6 +269,110 @@ void QuickSDFToolUI::CycleMaterialPreviewMode(UQuickSDFPaintTool* Tool, UQuickSD
 			SetMaterialPreviewMode(Tool, Properties, Modes[NextIndex]);
 			return;
 		}
+	}
+}
+
+EQuickSDFMeshPaintMode QuickSDFToolUI::GetMeshPaintMode(const UQuickSDFToolProperties* Properties)
+{
+	if (!Properties)
+	{
+		return EQuickSDFMeshPaintMode::UVSpaceLegacy;
+	}
+
+	if (Properties->bUseSurfaceSpacePaint &&
+		Properties->MeshPaintMode == EQuickSDFMeshPaintMode::UVSpaceLegacy)
+	{
+		return EQuickSDFMeshPaintMode::ProjectedSurface;
+	}
+
+	return Properties->MeshPaintMode;
+}
+
+FText QuickSDFToolUI::GetMeshPaintModeLabel(EQuickSDFMeshPaintMode Mode)
+{
+	switch (Mode)
+	{
+	case EQuickSDFMeshPaintMode::UVSpaceLegacy:
+		return LOCTEXT("MeshPaintUVSpaceLabel", "UV Space");
+	case EQuickSDFMeshPaintMode::ProjectedSurface:
+		return LOCTEXT("MeshPaintSurfaceProjectionLabel", "Surface Projection");
+	case EQuickSDFMeshPaintMode::ScreenProjection:
+		return LOCTEXT("MeshPaintScreenProjectionLabel", "Screen Projection");
+	default:
+		return FText::GetEmpty();
+	}
+}
+
+FText QuickSDFToolUI::GetMeshPaintModeShortLabel(EQuickSDFMeshPaintMode Mode)
+{
+	switch (Mode)
+	{
+	case EQuickSDFMeshPaintMode::UVSpaceLegacy:
+		return LOCTEXT("MeshPaintUVSpaceShortLabel", "UV");
+	case EQuickSDFMeshPaintMode::ProjectedSurface:
+		return LOCTEXT("MeshPaintSurfaceProjectionShortLabel", "Surface");
+	case EQuickSDFMeshPaintMode::ScreenProjection:
+		return LOCTEXT("MeshPaintScreenProjectionShortLabel", "Screen");
+	default:
+		return FText::GetEmpty();
+	}
+}
+
+FText QuickSDFToolUI::GetMeshPaintModeDescription(EQuickSDFMeshPaintMode Mode)
+{
+	switch (Mode)
+	{
+	case EQuickSDFMeshPaintMode::UVSpaceLegacy:
+		return LOCTEXT("MeshPaintUVSpaceDesc", "Paints directly through the active UV channel into the mask texture.");
+	case EQuickSDFMeshPaintMode::ProjectedSurface:
+		return LOCTEXT("MeshPaintSurfaceProjectionDesc", "Projects brush strokes across the mesh surface and writes them back into UV texture space.");
+	case EQuickSDFMeshPaintMode::ScreenProjection:
+		return LOCTEXT("MeshPaintScreenProjectionDesc", "Uses a screen-space brush footprint projected onto the visible mesh surface.");
+	default:
+		return FText::GetEmpty();
+	}
+}
+
+FName QuickSDFToolUI::GetMeshPaintModeIconName(EQuickSDFMeshPaintMode Mode)
+{
+	switch (Mode)
+	{
+	case EQuickSDFMeshPaintMode::UVSpaceLegacy:
+		return "QuickSDF.Toggle.OverlayUV";
+	case EQuickSDFMeshPaintMode::ProjectedSurface:
+		return "QuickSDF.PaintTextureColor";
+	case EQuickSDFMeshPaintMode::ScreenProjection:
+		return "QuickSDF.Toggle.ShowPreview";
+	default:
+		return NAME_None;
+	}
+}
+
+void QuickSDFToolUI::SetMeshPaintMode(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties, EQuickSDFMeshPaintMode Mode)
+{
+	if (!Properties)
+	{
+		return;
+	}
+
+	const bool bExpectedSurfacePaint = Mode == EQuickSDFMeshPaintMode::ProjectedSurface;
+	if (Properties->MeshPaintMode == Mode && Properties->bUseSurfaceSpacePaint == bExpectedSurfacePaint)
+	{
+		return;
+	}
+
+	Properties->MeshPaintMode = Mode;
+	Properties->bUseSurfaceSpacePaint = bExpectedSurfacePaint;
+
+	if (Tool)
+	{
+		FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MeshPaintMode));
+		Tool->OnPropertyModified(Properties, Prop);
+	}
+
+	if (GEditor)
+	{
+		GEditor->RedrawAllViewports(false);
 	}
 }
 
@@ -715,6 +839,133 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeAutoSDFPreviewToggle(FGetPaintTool GetPa
 		];
 }
 
+TSharedRef<SWidget> QuickSDFToolUI::MakeMeshPaintModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties, bool bUseCompactLayout)
+{
+	if (bUseCompactLayout)
+	{
+		TSharedRef<SHorizontalBox> ModeRow = SNew(SHorizontalBox);
+		for (EQuickSDFMeshPaintMode Mode : GetMeshPaintModes())
+		{
+			ModeRow->AddSlot()
+			.AutoWidth()
+			.Padding(0.5f, 0.0f)
+			[
+				SNew(SBox)
+				.WidthOverride(58.0f)
+				.HeightOverride(24.0f)
+				[
+					SNew(SCheckBox)
+					.Style(FQuickSDFToolStyle::Get().Get(), "QuickSDF.Timeline.ToggleButton")
+					.ToolTipText_Lambda([Mode, GetPaintTool, FallbackProperties]()
+					{
+						return GetMeshPaintModeToolTip(GetProperties(GetPaintTool(), FallbackProperties), Mode);
+					})
+					.IsChecked_Lambda([Mode, GetPaintTool, FallbackProperties]()
+					{
+						return GetMeshPaintMode(GetProperties(GetPaintTool(), FallbackProperties)) == Mode
+							? ECheckBoxState::Checked
+							: ECheckBoxState::Unchecked;
+					})
+					.OnCheckStateChanged_Lambda([Mode, GetPaintTool, FallbackProperties](ECheckBoxState NewState)
+					{
+						if (NewState == ECheckBoxState::Checked)
+						{
+							UQuickSDFPaintTool* Tool = GetPaintTool();
+							SetMeshPaintMode(Tool, GetProperties(Tool, FallbackProperties), Mode);
+						}
+					})
+					.Padding(FMargin(5.0f, 2.0f))
+					[
+						SNew(STextBlock)
+						.Text(GetMeshPaintModeShortLabel(Mode))
+						.Justification(ETextJustify::Center)
+						.Font(FAppStyle::GetFontStyle("SmallFont"))
+						.ColorAndOpacity_Lambda([Mode, GetPaintTool, FallbackProperties]()
+						{
+							return GetMeshPaintMode(GetProperties(GetPaintTool(), FallbackProperties)) == Mode
+								? FSlateColor(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
+								: FSlateColor(FLinearColor(0.62f, 0.62f, 0.62f, 1.0f));
+						})
+					]
+				]
+			];
+		}
+		return ModeRow;
+	}
+
+	TSharedRef<SUniformGridPanel> ModeGrid = SNew(SUniformGridPanel)
+		.SlotPadding(FMargin(3.0f));
+
+	const TArray<EQuickSDFMeshPaintMode>& Modes = GetMeshPaintModes();
+	for (int32 Index = 0; Index < Modes.Num(); ++Index)
+	{
+		const EQuickSDFMeshPaintMode Mode = Modes[Index];
+		ModeGrid->AddSlot(Index, 0)
+		[
+			SNew(SBox)
+			.WidthOverride(118.0f)
+			.HeightOverride(58.0f)
+			[
+				SNew(SCheckBox)
+				.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
+				.ToolTipText_Lambda([Mode, GetPaintTool, FallbackProperties]()
+				{
+					return GetMeshPaintModeToolTip(GetProperties(GetPaintTool(), FallbackProperties), Mode);
+				})
+				.IsChecked_Lambda([Mode, GetPaintTool, FallbackProperties]()
+				{
+					return GetMeshPaintMode(GetProperties(GetPaintTool(), FallbackProperties)) == Mode
+						? ECheckBoxState::Checked
+						: ECheckBoxState::Unchecked;
+				})
+				.OnCheckStateChanged_Lambda([Mode, GetPaintTool, FallbackProperties](ECheckBoxState NewState)
+				{
+					if (NewState == ECheckBoxState::Checked)
+					{
+						UQuickSDFPaintTool* Tool = GetPaintTool();
+						SetMeshPaintMode(Tool, GetProperties(Tool, FallbackProperties), Mode);
+					}
+				})
+				.Padding(FMargin(6.0f, 4.0f))
+				[
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.HAlign(HAlign_Center)
+					[
+						SNew(SImage)
+						.Image(FQuickSDFToolStyle::GetBrush(GetMeshPaintModeIconName(Mode)))
+						.ColorAndOpacity_Lambda([Mode, GetPaintTool, FallbackProperties]()
+						{
+							return GetMeshPaintMode(GetProperties(GetPaintTool(), FallbackProperties)) == Mode
+								? FSlateColor(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
+								: FSlateColor(FLinearColor(0.68f, 0.68f, 0.68f, 1.0f));
+						})
+					]
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.HAlign(HAlign_Center)
+					.Padding(0.0f, 4.0f, 0.0f, 0.0f)
+					[
+						SNew(STextBlock)
+						.Text(GetMeshPaintModeLabel(Mode))
+						.Justification(ETextJustify::Center)
+						.Font(FAppStyle::GetFontStyle("SmallFont"))
+						.ColorAndOpacity_Lambda([Mode, GetPaintTool, FallbackProperties]()
+						{
+							return GetMeshPaintMode(GetProperties(GetPaintTool(), FallbackProperties)) == Mode
+								? FSlateColor(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
+								: FSlateColor(FLinearColor(0.68f, 0.68f, 0.68f, 1.0f));
+						})
+					]
+				]
+			]
+		];
+	}
+
+	return ModeGrid;
+}
+
 TSharedRef<SWidget> QuickSDFToolUI::MakePaintTargetModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties)
 {
 	TSharedRef<SHorizontalBox> ModeRow = SNew(SHorizontalBox);
@@ -890,6 +1141,27 @@ TSharedRef<SWidget> QuickSDFToolUI::MakePaintToggleButton(EQuickSDFPaintToggle T
 TSharedRef<SWidget> QuickSDFToolUI::MakePaintToggleBar(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties)
 {
 	TSharedRef<SHorizontalBox> ToggleRow = SNew(SHorizontalBox);
+	ToggleRow->AddSlot()
+	.AutoWidth()
+	.Padding(0.0f)
+	[
+		MakeMeshPaintModeSelector(GetPaintTool, FallbackProperties)
+	];
+
+	ToggleRow->AddSlot()
+	.AutoWidth()
+	.Padding(4.0f, 0.0f, 3.0f, 0.0f)
+	[
+		SNew(SBox)
+		.WidthOverride(1.0f)
+		.HeightOverride(18.0f)
+		[
+			SNew(SBorder)
+			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+			.BorderBackgroundColor(FLinearColor(1.0f, 1.0f, 1.0f, 0.10f))
+		]
+	];
+
 	ToggleRow->AddSlot()
 	.AutoWidth()
 	.Padding(0.0f)
@@ -1143,6 +1415,12 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeQuickToggleMenu(FGetPaintTool GetPaintTo
 			.Padding(3.0f, 4.0f, 0.0f, 0.0f)
 			[
 				MakeAutoSDFPreviewToggle(GetPaintTool)
+			]
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0.0f, 6.0f, 0.0f, 0.0f)
+			[
+				MakeMeshPaintModeSelector(GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties>(), false)
 			]
 			+ SVerticalBox::Slot()
 			.AutoHeight()

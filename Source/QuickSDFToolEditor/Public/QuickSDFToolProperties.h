@@ -29,9 +29,9 @@ enum class EQuickSDFPaintTargetMode : uint8
 UENUM(BlueprintType)
 enum class EQuickSDFMeshPaintMode : uint8
 {
-	UVSpaceLegacy UMETA(DisplayName = "UV Space / Legacy"),
-	ProjectedSurface UMETA(DisplayName = "Projected Surface Paint (Experimental)"),
-	ScreenProjection UMETA(DisplayName = "Screen Projection Paint (Experimental)")
+	UVSpaceLegacy UMETA(DisplayName = "UV Space"),
+	ProjectedSurface UMETA(DisplayName = "Surface Projection"),
+	ScreenProjection UMETA(DisplayName = "Screen Projection")
 };
 
 UENUM(BlueprintType)
