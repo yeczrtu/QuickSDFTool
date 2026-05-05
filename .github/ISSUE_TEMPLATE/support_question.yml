@@ -1,0 +1,58 @@
+name: Support question
+description: Ask about setup, build, or expected QuickSDFTool usage.
+title: "[Question]: "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for non-security questions. If you found a reproducible bug, please use the bug report form instead.
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Question topic
+      options:
+        - Installation or setup
+        - Build or compile error
+        - Plugin does not appear
+        - Paint workflow
+        - Mask import or export
+        - SDF generation
+        - Material setup
+        - Example content
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Describe what you are trying to do and where you are stuck.
+    validations:
+      required: true
+  - type: input
+    id: quicksdftool-version
+    attributes:
+      label: QuickSDFTool version
+      placeholder: "1.0.0, v1.0.0, or commit SHA"
+    validations:
+      required: true
+  - type: input
+    id: unreal-version
+    attributes:
+      label: Unreal Engine version
+      placeholder: "5.7.4"
+    validations:
+      required: true
+  - type: input
+    id: os-compiler
+    attributes:
+      label: Operating system and compiler
+      placeholder: "Windows 11, Visual Studio 2022"
+  - type: textarea
+    id: details
+    attributes:
+      label: Relevant details
+      description: Include logs, screenshots, material setup, mesh type, or steps already tried.
+      render: text

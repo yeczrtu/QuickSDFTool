@@ -1,0 +1,57 @@
+name: Feature request
+description: Suggest an improvement to the QuickSDFTool workflow.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for workflow, rendering, authoring, compatibility, or documentation improvements.
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: Describe the artist or technical-art workflow this would improve.
+      placeholder: "When painting toon-shadow masks for..., I need..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-behavior
+    attributes:
+      label: Proposed behavior
+      description: Explain what QuickSDFTool should do.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe current workarounds or other approaches.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Paint workflow
+        - Timeline or mask management
+        - Bake workflow
+        - SDF generation
+        - Material or shader setup
+        - Import or export
+        - Example content
+        - Documentation
+        - Unreal Engine compatibility
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: unreal-version
+    attributes:
+      label: Unreal Engine version, if relevant
+      placeholder: "5.7.4"
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility notes
+      description: Note any impact on saved assets, generated textures, materials, or existing projects.

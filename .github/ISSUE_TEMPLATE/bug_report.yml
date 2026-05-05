@@ -1,0 +1,85 @@
+name: Bug report
+description: Report a reproducible QuickSDFTool problem.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please include enough detail for maintainers to reproduce the issue in a clean Unreal project.
+  - type: input
+    id: quicksdftool-version
+    attributes:
+      label: QuickSDFTool version
+      description: Release tag, version, or commit SHA.
+      placeholder: "1.0.0, v1.0.0, or commit SHA"
+    validations:
+      required: true
+  - type: input
+    id: unreal-version
+    attributes:
+      label: Unreal Engine version
+      placeholder: "5.7.4"
+    validations:
+      required: true
+  - type: input
+    id: os-compiler
+    attributes:
+      label: Operating system and compiler
+      placeholder: "Windows 11, Visual Studio 2022"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Editor mode setup
+        - Mesh or material-slot selection
+        - 3D painting
+        - 2D UV painting
+        - Timeline or mask angles
+        - Mask import or export
+        - Bake workflow
+        - SDF generation
+        - Generated texture or material output
+        - Build or packaging
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest sequence that triggers the bug.
+      placeholder: |
+        1. Create or open a C++ UE project.
+        2. Install QuickSDFTool under Plugins/QuickSDFTool.
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, screenshots, or videos
+      description: Paste relevant log excerpts or attach media. Do not include private project assets unless they are safe to share.
+      render: text
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Include mesh type, material-slot setup, texture size, imported mask details, or any workaround you found.

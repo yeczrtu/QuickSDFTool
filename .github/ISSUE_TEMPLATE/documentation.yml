@@ -1,0 +1,35 @@
+name: Documentation issue
+description: Report missing, confusing, or incorrect documentation.
+title: "[Docs]: "
+labels:
+  - documentation
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Affected page or section
+      placeholder: "README.md, Docs/MaterialSetup.md, Docs/Troubleshooting.md"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong or missing?
+      description: Explain what confused you or what information is incorrect.
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested correction
+      description: Share the wording, screenshot, command, or workflow detail that would help.
+  - type: input
+    id: quicksdftool-version
+    attributes:
+      label: QuickSDFTool version, if relevant
+      placeholder: "1.0.0, v1.0.0, or commit SHA"
+  - type: input
+    id: unreal-version
+    attributes:
+      label: Unreal Engine version, if relevant
+      placeholder: "5.7.4"
