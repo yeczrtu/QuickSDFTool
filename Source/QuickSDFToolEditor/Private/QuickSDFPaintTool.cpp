@@ -253,6 +253,7 @@ void UQuickSDFPaintTool::Setup()
 
 	if (BrushProperties)
 	{
+		BrushProperties->ClearFlags(RF_Transactional);
 		BrushProperties->bSpecifyRadius = true;
 		BrushProperties->bToolSupportsPressureSensitivity = true;
 		BrushProperties->BrushRadius = QuickSDFInitialBrushRadius;
@@ -651,11 +652,6 @@ void UQuickSDFPaintTool::Shutdown(EToolShutdownType ShutdownType)
 	if (bAdjustingBrushRadius)
 	{
 		EndBrushResizeMode();
-	}
-	else if (bBrushResizeTransactionOpen)
-	{
-		GetToolManager()->EndUndoTransaction();
-		bBrushResizeTransactionOpen = false;
 	}
 	
 	ChangeTargetComponent(nullptr);

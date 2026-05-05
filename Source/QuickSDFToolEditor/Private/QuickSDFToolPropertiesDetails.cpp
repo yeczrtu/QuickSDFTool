@@ -373,7 +373,6 @@ void SyncPropertiesFromTextureSet(UQuickSDFToolProperties* Properties, const UQu
 	}
 
 	const FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet();
-	Properties->Modify();
 	Properties->ActiveTextureSetIndex = TextureSetIndex;
 	Properties->Resolution = Asset->GetActiveResolution();
 	Properties->UVChannel = Asset->GetActiveUVChannel();
@@ -404,7 +403,6 @@ FReply SelectTextureSet(TWeakObjectPtr<UQuickSDFToolProperties> WeakProperties, 
 	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
 	if (Asset && Asset->TextureSets.IsValidIndex(TextureSetIndex))
 	{
-		Asset->Modify();
 		if (Asset->SetActiveTextureSetIndex(TextureSetIndex))
 		{
 			SyncPropertiesFromTextureSet(WeakProperties.Get(), Asset, TextureSetIndex);

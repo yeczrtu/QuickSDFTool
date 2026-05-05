@@ -1225,12 +1225,10 @@ void UQuickSDFPaintTool::ConvertIntermediateSDF(EQuickSDFThresholdMapOutputMode 
 
 	if (Properties->bAutoPreviewGeneratedSDF && bSupportsGeneratedSDFPreview)
 	{
-		Properties->Modify();
 		Properties->MaterialPreviewMode = EQuickSDFMaterialPreviewMode::GeneratedSDF;
 	}
 	else if (!bSupportsGeneratedSDFPreview && Properties->MaterialPreviewMode == EQuickSDFMaterialPreviewMode::GeneratedSDF)
 	{
-		Properties->Modify();
 		Properties->MaterialPreviewMode = EQuickSDFMaterialPreviewMode::Mask;
 	}
 	RefreshPreviewMaterial();
@@ -1605,12 +1603,10 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 
 		if (Properties->bAutoPreviewGeneratedSDF && bSupportsGeneratedSDFPreview)
 		{
-			Properties->Modify();
 			Properties->MaterialPreviewMode = EQuickSDFMaterialPreviewMode::GeneratedSDF;
 		}
 		else if (!bSupportsGeneratedSDFPreview && Properties->MaterialPreviewMode == EQuickSDFMaterialPreviewMode::GeneratedSDF)
 		{
-			Properties->Modify();
 			Properties->MaterialPreviewMode = EQuickSDFMaterialPreviewMode::Mask;
 		}
 		RefreshPreviewMaterial();
@@ -1681,7 +1677,6 @@ void UQuickSDFPaintTool::ShowGeneratedSDFPreviewNotification(EQuickSDFMaterialPr
 			{
 				return;
 			}
-			Properties->Modify();
 			Properties->MaterialPreviewMode = PreviousMode;
 			FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MaterialPreviewMode));
 			OnPropertyModified(Properties, Prop);
@@ -1700,7 +1695,6 @@ void UQuickSDFPaintTool::ShowGeneratedSDFPreviewNotification(EQuickSDFMaterialPr
 			{
 				return;
 			}
-			Properties->Modify();
 			Properties->MaterialPreviewMode = EQuickSDFMaterialPreviewMode::Mask;
 			FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MaterialPreviewMode));
 			OnPropertyModified(Properties, Prop);

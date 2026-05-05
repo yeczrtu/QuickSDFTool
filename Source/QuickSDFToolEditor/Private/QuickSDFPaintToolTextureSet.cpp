@@ -231,7 +231,6 @@ bool UQuickSDFPaintTool::SelectTextureSet(int32 TextureSetIndex)
 		return false;
 	}
 
-	Asset->Modify();
 	if (!Asset->SetActiveTextureSetIndex(TextureSetIndex))
 	{
 		return false;
@@ -240,11 +239,11 @@ bool UQuickSDFPaintTool::SelectTextureSet(int32 TextureSetIndex)
 	FQuickSDFTextureSetData* ActiveSet = Asset->GetActiveTextureSet();
 	if (ActiveSet && ActiveSet->AngleDataList.Num() == 0)
 	{
+		Asset->Modify();
 		InitializeDefaultAngleData(ActiveSet->AngleDataList, true);
 		Asset->SyncLegacyFromActiveTextureSet();
 	}
 
-	Properties->Modify();
 	Properties->ActiveTextureSetIndex = TextureSetIndex;
 	Properties->TargetMaterialSlot = ActiveSet ? ActiveSet->MaterialSlotIndex : INDEX_NONE;
 	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());

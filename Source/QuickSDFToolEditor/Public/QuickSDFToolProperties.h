@@ -83,124 +83,124 @@ class UQuickSDFToolProperties : public UInteractiveToolPropertySet
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, Category = "Quick Start", meta = (DisplayName = "Quality"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Quick Start", meta = (DisplayName = "Quality"))
 	EQuickSDFQualityPreset QualityPreset = EQuickSDFQualityPreset::Standard1024;
 
-	UPROPERTY(EditAnywhere, Category = "Quick Start", meta = (DisplayName = "Refine Masks", HideInDetailPanel))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Quick Start", meta = (DisplayName = "Refine Masks", HideInDetailPanel))
 	bool bRefineMasks = false;
 
-	UPROPERTY(EditAnywhere, Category = "Asset Settings")
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Asset Settings")
 	UQuickSDFAsset* TargetAsset = nullptr;
 
-	UPROPERTY(EditAnywhere, Category = "Asset Settings", meta = (DisplayName = "QuickSDF Asset Folder", ContentDir))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Asset Settings", meta = (DisplayName = "QuickSDF Asset Folder", ContentDir))
 	FString QuickSDFAssetFolder = TEXT("/Game/QuickSDF_Assets");
 
-	UPROPERTY(EditAnywhere, Category = "Asset Settings", meta = (DisplayName = "QuickSDF Asset Name"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Asset Settings", meta = (DisplayName = "QuickSDF Asset Name"))
 	FString QuickSDFAssetName = TEXT("DA_QuickSDF");
 
-	UPROPERTY(EditAnywhere, Category = "Asset Settings", meta = (DisplayName = "Save Mask Textures With Asset"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Asset Settings", meta = (DisplayName = "Save Mask Textures With Asset"))
 	bool bSaveMaskTexturesWithAsset = true;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings")
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings")
 	int32 EditAngleIndex = 0;
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (ClampMin = "1", UIMin = "1"))
 	int32 NumAngles = 8;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings")
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings")
 	int32 UVChannel = 0;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings")
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings")
 	bool bShowPreview = true;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Material Preview Mode", HideInDetailPanel))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Material Preview Mode", HideInDetailPanel))
 	EQuickSDFMaterialPreviewMode MaterialPreviewMode = EQuickSDFMaterialPreviewMode::OriginalMaterial;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto SDF Preview", HideInDetailPanel))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto SDF Preview", HideInDetailPanel))
 	bool bAutoPreviewGeneratedSDF = true;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings")
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings")
 	bool bOverlayUV = true;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint Through Context"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint Through Context"))
 	bool bPaintThroughNonTargetGeometry = true;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Mesh Paint Mode"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Mesh Paint Mode"))
 	EQuickSDFMeshPaintMode MeshPaintMode = EQuickSDFMeshPaintMode::UVSpaceLegacy;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Screen Projection Brush Radius Pixels", ClampMin = "1.0", UIMin = "1.0", UIMax = "256.0", EditCondition = "MeshPaintMode == EQuickSDFMeshPaintMode::ScreenProjection"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Screen Projection Brush Radius Pixels", ClampMin = "1.0", UIMin = "1.0", UIMax = "256.0", EditCondition = "MeshPaintMode == EQuickSDFMeshPaintMode::ScreenProjection"))
 	float ScreenProjectionBrushRadiusPixels = 32.0f;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DeprecatedProperty, DeprecationMessage = "Use Mesh Paint Mode instead.", HideInDetailPanel))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DeprecatedProperty, DeprecationMessage = "Use Mesh Paint Mode instead.", HideInDetailPanel))
 	bool bUseSurfaceSpacePaint = false;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings")
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings")
 	bool bAutoSyncLight = true;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint Target Mode"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint Target Mode"))
 	EQuickSDFPaintTargetMode PaintTargetMode = EQuickSDFPaintTargetMode::CurrentOnly;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint All Textures", HideInDetailPanel))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint All Textures", HideInDetailPanel))
 	bool bPaintAllAngles = false;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Enable Quick Stroke"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Enable Quick Stroke"))
 	bool bEnableQuickLine = true;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Quick Stroke Hold Time", ClampMin = "0.1", UIMin = "0.1", UIMax = "2.0"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Quick Stroke Hold Time", ClampMin = "0.1", UIMin = "0.1", UIMax = "2.0"))
 	float QuickLineHoldTime = 0.45f;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Quick Stroke Move Tolerance", ClampMin = "1.0", UIMin = "1.0", UIMax = "32.0"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Quick Stroke Move Tolerance", ClampMin = "1.0", UIMin = "1.0", UIMax = "32.0"))
 	float QuickLineMoveTolerance = 6.0f;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Enable Stroke Stabilizer"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Enable Stroke Stabilizer"))
 	bool bEnableStrokeStabilizer = true;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Stroke Stabilizer Radius", ClampMin = "0.0", UIMin = "0.0", UIMax = "48.0"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Stroke Stabilizer Radius", ClampMin = "0.0", UIMin = "0.0", UIMax = "48.0"))
 	float StrokeStabilizerRadius = 12.0f;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Stroke Spacing", ClampMin = "0.02", UIMin = "0.02", UIMax = "0.25"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Stroke Spacing", ClampMin = "0.02", UIMin = "0.02", UIMax = "0.25"))
 	float StrokeSpacingRatio = 0.08f;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Brush Edge Antialiasing"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Brush Edge Antialiasing"))
 	bool bEnableBrushAntialiasing = true;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Brush Edge AA Width", ClampMin = "0.25", UIMin = "0.25", UIMax = "3.0", EditCondition = "bEnableBrushAntialiasing"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Brush Edge AA Width", ClampMin = "0.25", UIMin = "0.25", UIMax = "3.0", EditCondition = "bEnableBrushAntialiasing"))
 	float BrushAntialiasingWidth = 1.25f;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings")
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings")
 	bool bEnableOnionSkin = false;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Symmetry Mode"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Symmetry Mode"))
 	EQuickSDFSymmetryMode SymmetryMode = EQuickSDFSymmetryMode::Auto;
 
-	UPROPERTY(VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Resolved Symmetry"))
+	UPROPERTY(NonTransactional, VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Resolved Symmetry"))
 	EQuickSDFSymmetryMode AutoSymmetryResolvedMode = EQuickSDFSymmetryMode::WholeTextureFlip90;
 
-	UPROPERTY(VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Status", MultiLine = true))
+	UPROPERTY(NonTransactional, VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Status", MultiLine = true))
 	FText AutoSymmetryStatus;
 
-	UPROPERTY(VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Confidence", ClampMin = "0.0", ClampMax = "1.0"))
+	UPROPERTY(NonTransactional, VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Confidence", ClampMin = "0.0", ClampMax = "1.0"))
 	float AutoSymmetryConfidence = 0.0f;
 
-	UPROPERTY(VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Islands"))
+	UPROPERTY(NonTransactional, VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Islands"))
 	int32 AutoSymmetryIslandCount = 0;
 
-	UPROPERTY(VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Unpaired Islands"))
+	UPROPERTY(NonTransactional, VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Unpaired Islands"))
 	int32 AutoSymmetryUnpairedIslandCount = 0;
 
-	UPROPERTY(VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Ambiguous Pixels"))
+	UPROPERTY(NonTransactional, VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Ambiguous Pixels"))
 	int32 AutoSymmetryAmbiguousPixelCount = 0;
 
-	UPROPERTY(VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Out-of-Range Islands"))
+	UPROPERTY(NonTransactional, VisibleAnywhere, Category = "Paint Settings", meta = (DisplayName = "Auto Symmetry Out-of-Range Islands"))
 	int32 AutoSymmetryOutOfRangeIslandCount = 0;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DeprecatedProperty, DeprecationMessage = "Use SymmetryMode instead.", HideInDetailPanel))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DeprecatedProperty, DeprecationMessage = "Use SymmetryMode instead.", HideInDetailPanel))
 	bool bSymmetryMode = true;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Enable Monotonic Guard"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Enable Monotonic Guard"))
 	bool bEnableMonotonicGuard = false;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Clip Direction", EditCondition = "bEnableMonotonicGuard"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Clip Direction", EditCondition = "bEnableMonotonicGuard"))
 	EQuickSDFClipDirection ClipDirection = EQuickSDFClipDirection::Auto;
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (UIMin = "0.0", UIMax = "180.0"))
@@ -209,49 +209,49 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	TArray<UTexture2D*> TargetTextures;
 
-	UPROPERTY(VisibleAnywhere, Category = "Texture Sets", meta = (DisplayName = "Active Texture Set"))
+	UPROPERTY(NonTransactional, VisibleAnywhere, Category = "Texture Sets", meta = (DisplayName = "Active Texture Set"))
 	int32 ActiveTextureSetIndex = 0;
 
 	UPROPERTY(EditAnywhere, Category = "Target Settings")
 	FIntPoint Resolution = FIntPoint(1024, 1024);
 
-	UPROPERTY(EditAnywhere, Category = "Target Settings", meta = (DisplayName = "Target Material Slot", ClampMin = "-1", UIMin = "-1"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Target Settings", meta = (DisplayName = "Target Material Slot", ClampMin = "-1", UIMin = "-1"))
 	int32 TargetMaterialSlot = -1;
 
-	UPROPERTY(EditAnywhere, Category = "Target Settings", meta = (DisplayName = "Isolate Target Material Slot", EditCondition = "TargetMaterialSlot >= 0"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Target Settings", meta = (DisplayName = "Isolate Target Material Slot", EditCondition = "TargetMaterialSlot >= 0"))
 	bool bIsolateTargetMaterialSlot = true;
 
-	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (ClampMin = "1", UIMin = "1", ClampMax = "8", UIMax = "8"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Export Settings", meta = (ClampMin = "1", UIMin = "1", ClampMax = "8", UIMax = "8"))
 	int32 UpscaleFactor = 1;
 
-	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "SDF Output Folder", ContentDir))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Export Settings", meta = (DisplayName = "SDF Output Folder", ContentDir))
 	FString SDFOutputFolder = TEXT("/Game/QuickSDF_GENERATED");
 
-	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "SDF Texture Name"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Export Settings", meta = (DisplayName = "SDF Texture Name"))
 	FString SDFTextureName = TEXT("T_QuickSDF_ThresholdMap");
 
-	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Overwrite Existing SDF Texture"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Overwrite Existing SDF Texture"))
 	bool bOverwriteExistingSDF = false;
 
-	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "SDF Output Format"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Export Settings", meta = (DisplayName = "SDF Output Format"))
 	EQuickSDFThresholdMapOutputMode SDFOutputFormat = EQuickSDFThresholdMapOutputMode::Native;
 
-	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Mask Export Folder", ContentDir))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Mask Export Folder", ContentDir))
 	FString MaskExportFolder = TEXT("/Game/QuickSDF_Exports");
 
-	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Create Mask Folder Per Export"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Create Mask Folder Per Export"))
 	bool bCreateMaskFolderPerExport = true;
 
-	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Mask Export Folder Prefix"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Mask Export Folder Prefix"))
 	FString MaskExportFolderPrefix = TEXT("Masks");
 
-	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Mask Texture Prefix"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Mask Texture Prefix"))
 	FString MaskTextureNamePrefix = TEXT("T_QuickSDF_Angle");
 
-	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Mask File Name Mode"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Mask File Name Mode"))
 	EQuickSDFMaskFileNameMode MaskFileNameMode = EQuickSDFMaskFileNameMode::Alphabetic;
 
-	UPROPERTY(EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Overwrite Existing Mask Textures"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Export Settings", meta = (DisplayName = "Overwrite Existing Mask Textures"))
 	bool bOverwriteExistingMasks = false;
 
 	void ExportToTexture();

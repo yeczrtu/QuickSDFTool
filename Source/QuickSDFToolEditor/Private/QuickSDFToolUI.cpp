@@ -219,7 +219,6 @@ void QuickSDFToolUI::SetMaterialPreviewMode(UQuickSDFPaintTool* Tool, UQuickSDFT
 		return;
 	}
 
-	Properties->Modify();
 	Properties->MaterialPreviewMode = Mode;
 
 	if (Tool)
@@ -333,7 +332,6 @@ void QuickSDFToolUI::SetPaintTargetMode(UQuickSDFPaintTool* Tool, UQuickSDFToolP
 		return;
 	}
 
-	Properties->Modify();
 	Properties->PaintTargetMode = Mode;
 	Properties->bPaintAllAngles = bExpectedPaintAll;
 
@@ -401,7 +399,6 @@ void QuickSDFToolUI::SetSymmetryMode(UQuickSDFPaintTool* Tool, UQuickSDFToolProp
 		return;
 	}
 
-	Properties->Modify();
 	Properties->SetSymmetryMode(Mode);
 	if (Tool)
 	{
@@ -562,7 +559,6 @@ void QuickSDFToolUI::SetToggleValue(UQuickSDFPaintTool* Tool, UQuickSDFToolPrope
 		return;
 	}
 
-	Properties->Modify();
 	switch (Toggle)
 	{
 	case EQuickSDFPaintToggle::AutoSyncLight:
@@ -719,7 +715,6 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeAutoSDFPreviewToggle(FGetPaintTool GetPa
 				return;
 			}
 
-			Properties->Modify();
 			Properties->bAutoPreviewGeneratedSDF = NewState == ECheckBoxState::Checked;
 			if (Tool)
 			{

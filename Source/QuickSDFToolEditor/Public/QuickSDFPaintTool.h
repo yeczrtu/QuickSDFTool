@@ -458,7 +458,6 @@ protected:
 	FBrushStampData BrushResizeStartStamp;
 	float BrushResizeStartRadius = 0.0f;
 	float BrushResizeSensitivity = 0.025f;
-	bool bBrushResizeTransactionOpen = false;
 	bool bBrushResizeHadVisibleStamp = false;
 	bool bStrokeTransactionActive = false;
 	bool bStampingAllPaintTargets = false;

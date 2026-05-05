@@ -1096,21 +1096,6 @@ void UQuickSDFPaintTool::BeginBrushResizeMode()
 	if (bAdjustingBrushRadius) return;
 	if (!IsCursorOverLevelViewport()) return;
 	const FVector2D CurrentCursorPosition = FSlateApplication::Get().GetCursorPos();
-	if (!bBrushResizeTransactionOpen)
-	{
-		GetToolManager()->BeginUndoTransaction(LOCTEXT("QuickSDFBrushResizeTransaction", "Quick SDF Change Brush Radius"));
-		if (Properties && GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection)
-		{
-			Properties->SetFlags(RF_Transactional);
-			Properties->Modify();
-		}
-		else
-		{
-			BrushProperties->SetFlags(RF_Transactional);
-			BrushProperties->Modify();
-		}
-		bBrushResizeTransactionOpen = true;
-	}
 	bAdjustingBrushRadius = true;
 	LastInputScreenPosition = CurrentCursorPosition;
 	BrushResizeStartScreenPosition = CurrentCursorPosition;
@@ -1139,8 +1124,6 @@ void UQuickSDFPaintTool::UpdateBrushResizeFromCursor()
 		{
 			return;
 		}
-		Properties->SetFlags(RF_Transactional);
-		Properties->Modify();
 		Properties->ScreenProjectionBrushRadiusPixels = NewRadius;
 		LastBrushStamp.Radius = NewRadius;
 		NotifyOfPropertyChangeByTool(Properties);
@@ -1184,11 +1167,6 @@ void UQuickSDFPaintTool::EndBrushResizeMode()
 	LastInputScreenPosition = BrushResizeStartScreenPosition;
 	bAdjustingBrushRadius = false;
 	bBrushResizeHadVisibleStamp = false;
-	if (bBrushResizeTransactionOpen)
-	{
-		GetToolManager()->EndUndoTransaction();
-		bBrushResizeTransactionOpen = false;
-	}
 }
 
 FInputRayHit UQuickSDFPaintTool::CanBeginClickDragSequence(const FInputDeviceRay& PressPos)
