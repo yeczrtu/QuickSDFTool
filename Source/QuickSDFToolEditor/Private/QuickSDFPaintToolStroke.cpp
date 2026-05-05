@@ -356,8 +356,9 @@ FVector2D UQuickSDFPaintTool::GetPreviewSize() const { return PreviewCanvasSize;
 
 FVector2D UQuickSDFPaintTool::ConvertInputScreenToCanvasSpace(const FVector2D& ScreenPosition) const
 {
-	const float DPIScale = FMath::Max(FPlatformApplicationMisc::GetDPIScaleFactorAtPoint(ScreenPosition.X, ScreenPosition.Y), 1.0f);
-	return ScreenPosition / DPIScale;
+	// Interactive Tools input and FCanvas HUD drawing both use viewport-local coordinates.
+	// Applying platform DPI here shifts the brush preview on non-primary or scaled displays.
+	return ScreenPosition;
 }
 
 bool UQuickSDFPaintTool::IsInPreviewBounds(const FVector2D& ScreenPosition) const

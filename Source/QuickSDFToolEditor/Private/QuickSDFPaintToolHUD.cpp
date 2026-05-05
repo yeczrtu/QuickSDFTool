@@ -389,10 +389,8 @@ void UQuickSDFPaintTool::DrawScreenProjectionBrushHUD(FCanvas* Canvas)
 		return;
 	}
 
-	const FVector2D Center = bResizePreview ? BrushResizeStartScreenPosition : ConvertInputScreenToCanvasSpace(BrushScreenPosition);
-	const FVector2D DPIScalePosition = bResizePreview ? BrushResizeStartAbsolutePosition : BrushScreenPosition;
-	const float DPIScale = FMath::Max(FPlatformApplicationMisc::GetDPIScaleFactorAtPoint(DPIScalePosition.X, DPIScalePosition.Y), 1.0f);
-	const double Radius = static_cast<double>(GetScreenProjectionBrushRadiusPixels()) / static_cast<double>(DPIScale);
+	const FVector2D Center = ConvertInputScreenToCanvasSpace(BrushScreenPosition);
+	const double Radius = static_cast<double>(GetScreenProjectionBrushRadiusPixels());
 	if (Radius <= 0.0)
 	{
 		return;
@@ -422,7 +420,7 @@ void UQuickSDFPaintTool::DrawScreenProjectionBrushHUD(FCanvas* Canvas)
 
 	if (bResizePreview)
 	{
-		const double OriginalRadius = static_cast<double>(BrushResizeStartRadius) / static_cast<double>(DPIScale);
+		const double OriginalRadius = static_cast<double>(BrushResizeStartRadius);
 		DrawCircle(OriginalRadius, FLinearColor(0.85f, 0.85f, 0.85f, 0.55f), 1.0f);
 	}
 	DrawCircle(Radius, FLinearColor(0.0f, 1.0f, 0.0f, 0.95f), 2.0f);
