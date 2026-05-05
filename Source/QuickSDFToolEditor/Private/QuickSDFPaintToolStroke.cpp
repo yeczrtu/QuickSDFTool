@@ -38,6 +38,8 @@
 #include "HAL/PlatformApplicationMisc.h"
 #include "HAL/PlatformTime.h"
 #include "InteractiveToolChange.h"
+#include "EditorModeManager.h"
+#include "EditorViewportClient.h"
 #include "Misc/ScopedSlowTask.h"
 #include "Misc/MessageDialog.h"
 #include "DesktopPlatformModule.h"
@@ -67,6 +69,17 @@ using namespace QuickSDFPaintToolPrivate;
 
 namespace
 {
+float GetCurrentLevelViewportDPIScale()
+{
+	FEditorViewportClient* ViewportClient = GLevelEditorModeTools().GetHoveredViewportClient();
+	if (!ViewportClient)
+	{
+		ViewportClient = GLevelEditorModeTools().GetFocusedViewportClient();
+	}
+
+	return ViewportClient ? FMath::Max(ViewportClient->GetDPIScale(), 1.0f) : 1.0f;
+}
+
 bool GetHoveredLevelViewportCursorPosition(FVector2D& OutAbsolutePosition, FVector2D& OutCanvasPosition)
 {
 	if (!FModuleManager::Get().IsModuleLoaded(TEXT("LevelEditor")))
@@ -356,9 +369,9 @@ FVector2D UQuickSDFPaintTool::GetPreviewSize() const { return PreviewCanvasSize;
 
 FVector2D UQuickSDFPaintTool::ConvertInputScreenToCanvasSpace(const FVector2D& ScreenPosition) const
 {
-	// Interactive Tools input and FCanvas HUD drawing both use viewport-local coordinates.
-	// Applying platform DPI here shifts the brush preview on non-primary or scaled displays.
-	return ScreenPosition;
+	// Interactive Tools mouse positions are viewport pixels. FCanvas draws in DPI-scaled HUD units.
+	// Use the active viewport DPI instead of a monitor lookup so mixed-DPI displays stay aligned.
+	return ScreenPosition / GetCurrentLevelViewportDPIScale();
 }
 
 bool UQuickSDFPaintTool::IsInPreviewBounds(const FVector2D& ScreenPosition) const

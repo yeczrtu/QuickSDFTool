@@ -382,15 +382,24 @@ void UQuickSDFPaintTool::DrawScreenProjectionBrushHUD(FCanvas* Canvas)
 
 	const bool bResizePreview = bAdjustingBrushRadius;
 	const FVector2D BrushScreenPosition = bResizePreview ? BrushResizeStartScreenPosition : LastInputScreenPosition;
+	const float CanvasDPIScale = FMath::Max(Canvas->GetDPIScale(), 1.0f);
+	const FVector2D BrushCanvasPosition = bResizePreview ? BrushScreenPosition : BrushScreenPosition / CanvasDPIScale;
+	const FVector2D PreviewOrigin = GetPreviewOrigin();
+	const FVector2D PreviewSize = GetPreviewSize();
+	const bool bBrushInPreviewBounds =
+		BrushCanvasPosition.X >= PreviewOrigin.X &&
+		BrushCanvasPosition.Y >= PreviewOrigin.Y &&
+		BrushCanvasPosition.X <= PreviewOrigin.X + PreviewSize.X &&
+		BrushCanvasPosition.Y <= PreviewOrigin.Y + PreviewSize.Y;
 	if (!bResizePreview &&
 		(ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ||
-			IsInPreviewBounds(BrushScreenPosition)))
+			bBrushInPreviewBounds))
 	{
 		return;
 	}
 
-	const FVector2D Center = ConvertInputScreenToCanvasSpace(BrushScreenPosition);
-	const double Radius = static_cast<double>(GetScreenProjectionBrushRadiusPixels());
+	const FVector2D Center = BrushCanvasPosition;
+	const double Radius = static_cast<double>(GetScreenProjectionBrushRadiusPixels()) / static_cast<double>(CanvasDPIScale);
 	if (Radius <= 0.0)
 	{
 		return;
@@ -420,7 +429,7 @@ void UQuickSDFPaintTool::DrawScreenProjectionBrushHUD(FCanvas* Canvas)
 
 	if (bResizePreview)
 	{
-		const double OriginalRadius = static_cast<double>(BrushResizeStartRadius);
+		const double OriginalRadius = static_cast<double>(BrushResizeStartRadius) / static_cast<double>(CanvasDPIScale);
 		DrawCircle(OriginalRadius, FLinearColor(0.85f, 0.85f, 0.85f, 0.55f), 1.0f);
 	}
 	DrawCircle(Radius, FLinearColor(0.0f, 1.0f, 0.0f, 0.95f), 2.0f);
