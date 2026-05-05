@@ -67,7 +67,7 @@ using namespace QuickSDFPaintToolPrivate;
 
 namespace
 {
-bool IsCursorOverLevelViewport()
+bool GetHoveredLevelViewportCursorPosition(FVector2D& OutAbsolutePosition, FVector2D& OutCanvasPosition)
 {
 	if (!FModuleManager::Get().IsModuleLoaded(TEXT("LevelEditor")))
 	{
@@ -81,7 +81,7 @@ bool IsCursorOverLevelViewport()
 		return false;
 	}
 
-	const FVector2D CursorPosition = FSlateApplication::Get().GetCursorPos();
+	OutAbsolutePosition = FSlateApplication::Get().GetCursorPos();
 	for (const TSharedPtr<SLevelViewport>& LevelViewport : LevelEditor->GetViewports())
 	{
 		if (!LevelViewport.IsValid())
@@ -91,8 +91,10 @@ bool IsCursorOverLevelViewport()
 
 		if (const TSharedPtr<SViewport> ViewportWidget = LevelViewport->GetViewportWidget().Pin())
 		{
-			if (ViewportWidget->GetTickSpaceGeometry().IsUnderLocation(CursorPosition))
+			const FGeometry ViewportGeometry = ViewportWidget->GetTickSpaceGeometry();
+			if (ViewportGeometry.IsUnderLocation(OutAbsolutePosition))
 			{
+				OutCanvasPosition = ViewportGeometry.AbsoluteToLocal(OutAbsolutePosition);
 				return true;
 			}
 		}
@@ -100,6 +102,7 @@ bool IsCursorOverLevelViewport()
 
 	return false;
 }
+
 }
 
 void UQuickSDFPaintTool::InvalidatePaintChartCache()
@@ -1094,30 +1097,45 @@ void UQuickSDFPaintTool::BeginBrushResizeMode()
 {
 	if (!BrushProperties) return;
 	if (bAdjustingBrushRadius) return;
-	if (!IsCursorOverLevelViewport()) return;
-	const FVector2D CurrentCursorPosition = FSlateApplication::Get().GetCursorPos();
+	FVector2D CurrentAbsolutePosition;
+	FVector2D CurrentCanvasPosition;
+	if (!GetHoveredLevelViewportCursorPosition(CurrentAbsolutePosition, CurrentCanvasPosition)) return;
 	bAdjustingBrushRadius = true;
-	LastInputScreenPosition = CurrentCursorPosition;
-	BrushResizeStartScreenPosition = CurrentCursorPosition;
-	BrushResizeStartAbsolutePosition = CurrentCursorPosition;
+	LastInputScreenPosition = CurrentCanvasPosition;
+	BrushResizeStartScreenPosition = CurrentCanvasPosition;
 	BrushResizeStartStamp = LastBrushStamp;
-	BrushResizeStartRadius = Properties && GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection
+	const bool bResizeScreenProjectionBrush = Properties && GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection;
+	BrushResizeStartRadius = bResizeScreenProjectionBrush
 		? GetScreenProjectionBrushRadiusPixels()
 		: BrushProperties->BrushRadius;
+	BrushResizeStartAbsolutePosition = CurrentAbsolutePosition;
 	bBrushResizeHadVisibleStamp = BrushStampIndicator && BrushStampIndicator->bVisible;
 	if (BrushStampIndicator && bBrushResizeHadVisibleStamp)
 	{
 		BrushStampIndicator->bVisible = true;
+	}
+	if (GEditor)
+	{
+		GEditor->RedrawAllViewports(false);
 	}
 }
 
 void UQuickSDFPaintTool::UpdateBrushResizeFromCursor()
 {
 	if (!bAdjustingBrushRadius || !BrushProperties) return;
-	LastInputScreenPosition = FSlateApplication::Get().GetCursorPos();
-	const FVector2D Delta = ConvertInputScreenToCanvasSpace(LastInputScreenPosition) - ConvertInputScreenToCanvasSpace(BrushResizeStartScreenPosition);
+	const FVector2D CurrentAbsolutePosition = FSlateApplication::Get().GetCursorPos();
+	const float ResizeDPIScale = FMath::Max(FPlatformApplicationMisc::GetDPIScaleFactorAtPoint(
+		BrushResizeStartAbsolutePosition.X,
+		BrushResizeStartAbsolutePosition.Y), 1.0f);
 	const bool bResizeScreenProjectionBrush = Properties && GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection;
-	const float NewRadius = FMath::Max(bResizeScreenProjectionBrush ? 1.0f : 0.1f, BrushResizeStartRadius + (Delta.X * FMath::Max(BrushResizeSensitivity, QuickSDFMinResizeSensitivity)));
+	const float ResizeValuePerPixel = bResizeScreenProjectionBrush
+		? QuickSDFScreenProjectionResizeSensitivity
+		: FMath::Max(BrushResizeSensitivity, QuickSDFMinResizeSensitivity);
+	const FVector2D CursorDeltaPixels = (CurrentAbsolutePosition - BrushResizeStartAbsolutePosition) / ResizeDPIScale;
+	LastInputScreenPosition = BrushResizeStartScreenPosition;
+	const float NewRadius = FMath::Max(
+		bResizeScreenProjectionBrush ? 1.0f : 0.1f,
+		BrushResizeStartRadius + static_cast<float>(CursorDeltaPixels.X) * ResizeValuePerPixel);
 	if (bResizeScreenProjectionBrush)
 	{
 		if (!Properties || FMath::IsNearlyEqual(Properties->ScreenProjectionBrushRadiusPixels, NewRadius, KINDA_SMALL_NUMBER))
@@ -1167,6 +1185,50 @@ void UQuickSDFPaintTool::EndBrushResizeMode()
 	LastInputScreenPosition = BrushResizeStartScreenPosition;
 	bAdjustingBrushRadius = false;
 	bBrushResizeHadVisibleStamp = false;
+}
+
+void UQuickSDFPaintTool::ConfirmBrushResizeMode()
+{
+	EndBrushResizeMode();
+}
+
+void UQuickSDFPaintTool::CancelBrushResizeMode()
+{
+	if (!bAdjustingBrushRadius) return;
+
+	const bool bResizeScreenProjectionBrush = Properties && GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection;
+	if (bResizeScreenProjectionBrush)
+	{
+		if (Properties)
+		{
+			Properties->ScreenProjectionBrushRadiusPixels = BrushResizeStartRadius;
+			LastBrushStamp.Radius = BrushResizeStartRadius;
+			NotifyOfPropertyChangeByTool(Properties);
+		}
+	}
+	else if (BrushProperties)
+	{
+		const float RangeMin = BrushRelativeSizeRange.Min;
+		const float RangeSize = BrushRelativeSizeRange.Max - BrushRelativeSizeRange.Min;
+		BrushProperties->BrushRadius = BrushResizeStartRadius;
+		if (RangeSize > KINDA_SMALL_NUMBER)
+		{
+			BrushProperties->BrushSize = FMath::Clamp((BrushResizeStartRadius - RangeMin) / RangeSize, 0.0f, 1.0f);
+		}
+		RecalculateBrushRadius();
+		BrushProperties->BrushSize = BrushProperties->BrushRadius;
+		LastBrushStamp = BrushResizeStartStamp;
+		NotifyOfPropertyChangeByTool(BrushProperties);
+	}
+
+	LastInputScreenPosition = BrushResizeStartScreenPosition;
+	FSlateApplication::Get().SetCursorPos(BrushResizeStartAbsolutePosition);
+	bAdjustingBrushRadius = false;
+	bBrushResizeHadVisibleStamp = false;
+	if (GEditor)
+	{
+		GEditor->RedrawAllViewports(false);
+	}
 }
 
 FInputRayHit UQuickSDFPaintTool::CanBeginClickDragSequence(const FInputDeviceRay& PressPos)

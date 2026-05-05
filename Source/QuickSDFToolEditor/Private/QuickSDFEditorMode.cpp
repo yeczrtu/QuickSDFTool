@@ -21,6 +21,7 @@
 #include "Framework/Application/IInputProcessor.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Commands/UICommandList.h"
+#include "Input/Events.h"
 #include "Widgets/SViewport.h"
 
 const FEditorModeID UQuickSDFEditorMode::EM_QuickSDFEditorModeId = TEXT("EM_QuickSDFEditorMode");
@@ -41,6 +42,22 @@ public:
 
 	virtual bool HandleKeyDownEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent) override
 	{
+		if (UQuickSDFPaintTool* PaintTool = GetActivePaintTool())
+		{
+			if (PaintTool->IsBrushResizeModeActive())
+			{
+				if (InKeyEvent.GetKey() == EKeys::Escape)
+				{
+					PaintTool->CancelBrushResizeMode();
+					return true;
+				}
+				if (InKeyEvent.GetKey() == EKeys::F)
+				{
+					return true;
+				}
+			}
+		}
+
 		if (InKeyEvent.GetKey() != EKeys::F || !InKeyEvent.IsControlDown())
 		{
 			return false;
@@ -50,13 +67,60 @@ public:
 		return ModePtr ? ModePtr->RequestBrushResizeFromHoveredViewport() : false;
 	}
 
+	virtual bool HandleMouseButtonDownEvent(FSlateApplication& SlateApp, const FPointerEvent& MouseEvent) override
+	{
+		UQuickSDFPaintTool* PaintTool = GetActivePaintTool();
+		if (!PaintTool || !PaintTool->IsBrushResizeModeActive())
+		{
+			return false;
+		}
+
+		if (MouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
+		{
+			PaintTool->CancelBrushResizeMode();
+			bSuppressNextMouseButtonUp = true;
+			return true;
+		}
+
+		if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+		{
+			PaintTool->ConfirmBrushResizeMode();
+			bSuppressNextMouseButtonUp = true;
+			return true;
+		}
+
+		return true;
+	}
+
+	virtual bool HandleMouseButtonUpEvent(FSlateApplication& SlateApp, const FPointerEvent& MouseEvent) override
+	{
+		if (bSuppressNextMouseButtonUp &&
+			(MouseEvent.GetEffectingButton() == EKeys::RightMouseButton ||
+				MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton))
+		{
+			bSuppressNextMouseButtonUp = false;
+			return true;
+		}
+
+		return false;
+	}
+
 	virtual const TCHAR* GetDebugName() const override
 	{
 		return TEXT("QuickSDFBrushResizeInputPreProcessor");
 	}
 
 private:
+	UQuickSDFPaintTool* GetActivePaintTool() const
+	{
+		UQuickSDFEditorMode* ModePtr = Mode.Get();
+		return ModePtr && ModePtr->GetToolManager()
+			? Cast<UQuickSDFPaintTool>(ModePtr->GetToolManager()->GetActiveTool(EToolSide::Left))
+			: nullptr;
+	}
+
 	TWeakObjectPtr<UQuickSDFEditorMode> Mode;
+	bool bSuppressNextMouseButtonUp = false;
 };
 }
 
@@ -327,6 +391,46 @@ void UQuickSDFEditorMode::BindCommands()
 
 bool UQuickSDFEditorMode::InputKey(FEditorViewportClient* ViewportClient, FViewport* Viewport, FKey Key, EInputEvent Event)
 {
+	if (bSuppressBrushResizeMouseButtonRelease &&
+		Event == IE_Released &&
+		(Key == EKeys::RightMouseButton || Key == EKeys::LeftMouseButton))
+	{
+		bSuppressBrushResizeMouseButtonRelease = false;
+		return true;
+	}
+
+	if (UQuickSDFPaintTool* PaintTool = Cast<UQuickSDFPaintTool>(GetToolManager()->GetActiveTool(EToolSide::Left)))
+	{
+		if (PaintTool->IsBrushResizeModeActive())
+		{
+			if (Event == IE_Pressed)
+			{
+				if (Key == EKeys::RightMouseButton || Key == EKeys::Escape)
+				{
+					PaintTool->CancelBrushResizeMode();
+					if (Key == EKeys::RightMouseButton)
+					{
+						bSuppressBrushResizeMouseButtonRelease = true;
+					}
+					return true;
+				}
+				if (Key == EKeys::LeftMouseButton)
+				{
+					PaintTool->ConfirmBrushResizeMode();
+					bSuppressBrushResizeMouseButtonRelease = true;
+					return true;
+				}
+			}
+
+			if (Key == EKeys::RightMouseButton ||
+				Key == EKeys::LeftMouseButton ||
+				Key == EKeys::Escape)
+			{
+				return true;
+			}
+		}
+	}
+
 	if (Key == EKeys::F && (Event == IE_Pressed || Event == IE_Repeat))
 	{
 		const FModifierKeysState ModifierKeys = FSlateApplication::Get().GetModifierKeys();

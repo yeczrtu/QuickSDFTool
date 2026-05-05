@@ -241,6 +241,9 @@ public:
 	void FillMaskColor(bool bFillAllAngles, const FLinearColor& FillColor);
 	void MarkMasksChanged();
 	void RequestBrushResizeMode();
+	bool IsBrushResizeModeActive() const { return bAdjustingBrushRadius; }
+	void ConfirmBrushResizeMode();
+	void CancelBrushResizeMode();
 	int32 GetMaskRevision() const { return MaskRevision; }
 	bool SelectTextureSet(int32 TextureSetIndex);
 	void RefreshTextureSetsForCurrentComponent();

@@ -294,35 +294,57 @@ void UQuickSDFPaintTool::DrawQuickLineHUDPreview(FCanvas* Canvas)
 void UQuickSDFPaintTool::DrawScreenProjectionBrushHUD(FCanvas* Canvas)
 {
 	if (!Canvas || !Properties ||
-		GetMeshPaintMode() != EQuickSDFMeshPaintMode::ScreenProjection ||
-		ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ||
-		IsInPreviewBounds(LastInputScreenPosition))
+		GetMeshPaintMode() != EQuickSDFMeshPaintMode::ScreenProjection)
 	{
 		return;
 	}
 
-	const FVector2D Center = ConvertInputScreenToCanvasSpace(LastInputScreenPosition);
-	const float DPIScale = FMath::Max(FPlatformApplicationMisc::GetDPIScaleFactorAtPoint(LastInputScreenPosition.X, LastInputScreenPosition.Y), 1.0f);
+	const bool bResizePreview = bAdjustingBrushRadius;
+	const FVector2D BrushScreenPosition = bResizePreview ? BrushResizeStartScreenPosition : LastInputScreenPosition;
+	if (!bResizePreview &&
+		(ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ||
+			IsInPreviewBounds(BrushScreenPosition)))
+	{
+		return;
+	}
+
+	const FVector2D Center = bResizePreview ? BrushResizeStartScreenPosition : ConvertInputScreenToCanvasSpace(BrushScreenPosition);
+	const FVector2D DPIScalePosition = bResizePreview ? BrushResizeStartAbsolutePosition : BrushScreenPosition;
+	const float DPIScale = FMath::Max(FPlatformApplicationMisc::GetDPIScaleFactorAtPoint(DPIScalePosition.X, DPIScalePosition.Y), 1.0f);
 	const double Radius = static_cast<double>(GetScreenProjectionBrushRadiusPixels()) / static_cast<double>(DPIScale);
 	if (Radius <= 0.0)
 	{
 		return;
 	}
 
-	const FLinearColor CircleColor(0.0f, 1.0f, 0.0f, 0.95f);
-	const int32 SegmentCount = 64;
-	FVector2D PreviousPoint = Center + FVector2D(Radius, 0.0);
-	for (int32 SegmentIndex = 1; SegmentIndex <= SegmentCount; ++SegmentIndex)
+	auto DrawCircle = [Canvas, Center](double InRadius, const FLinearColor& InColor, float InThickness)
 	{
-		const double Angle = (static_cast<double>(SegmentIndex) / static_cast<double>(SegmentCount)) * 2.0 * PI;
-		const FVector2D Point = Center + FVector2D(FMath::Cos(Angle) * Radius, FMath::Sin(Angle) * Radius);
-		FCanvasLineItem Line(PreviousPoint, Point);
-		Line.SetColor(CircleColor);
-		Line.BlendMode = SE_BLEND_Translucent;
-		Line.LineThickness = 2.0f;
-		Canvas->DrawItem(Line);
-		PreviousPoint = Point;
+		if (InRadius <= 0.0)
+		{
+			return;
+		}
+
+		const int32 SegmentCount = 64;
+		FVector2D PreviousPoint = Center + FVector2D(InRadius, 0.0);
+		for (int32 SegmentIndex = 1; SegmentIndex <= SegmentCount; ++SegmentIndex)
+		{
+			const double Angle = (static_cast<double>(SegmentIndex) / static_cast<double>(SegmentCount)) * 2.0 * PI;
+			const FVector2D Point = Center + FVector2D(FMath::Cos(Angle) * InRadius, FMath::Sin(Angle) * InRadius);
+			FCanvasLineItem Line(PreviousPoint, Point);
+			Line.SetColor(InColor);
+			Line.BlendMode = SE_BLEND_Translucent;
+			Line.LineThickness = InThickness;
+			Canvas->DrawItem(Line);
+			PreviousPoint = Point;
+		}
+	};
+
+	if (bResizePreview)
+	{
+		const double OriginalRadius = static_cast<double>(BrushResizeStartRadius) / static_cast<double>(DPIScale);
+		DrawCircle(OriginalRadius, FLinearColor(0.85f, 0.85f, 0.85f, 0.55f), 1.0f);
 	}
+	DrawCircle(Radius, FLinearColor(0.0f, 1.0f, 0.0f, 0.95f), 2.0f);
 }
 
 void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI)

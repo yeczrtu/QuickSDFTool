@@ -75,4 +75,5 @@ private:
 	FViewportViewState CachedViewportViewState;
 	FEditorViewportClient* SuppressedViewportClient = nullptr;
 	FViewport* SuppressedViewport = nullptr;
+	bool bSuppressBrushResizeMouseButtonRelease = false;
 };

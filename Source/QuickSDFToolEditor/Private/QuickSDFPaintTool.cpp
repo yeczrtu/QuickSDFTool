@@ -86,6 +86,14 @@ void ClearMaterialPackageDirtyState(UPackage* Package)
 	}
 	Package->ClearDirtyFlag();
 }
+
+bool IsBrushResizeCancelPressed(const FInputDeviceState& Input)
+{
+	return (Input.IsFromDevice(EInputDevices::Mouse) && Input.Mouse.Right.bPressed) ||
+		(Input.IsFromDevice(EInputDevices::Keyboard) &&
+			Input.Keyboard.ActiveKey.Button == EKeys::Escape &&
+			Input.Keyboard.ActiveKey.bPressed);
+}
 }
 
 
@@ -96,7 +104,7 @@ void UQuickSDFBrushResizeInputBehavior::Initialize(UQuickSDFPaintTool* InTool)
 
 EInputDevices UQuickSDFBrushResizeInputBehavior::GetSupportedDevices()
 {
-	return EInputDevices::Keyboard;
+	return EInputDevices::Keyboard | EInputDevices::Mouse;
 }
 
 bool UQuickSDFBrushResizeInputBehavior::IsPressed(const FInputDeviceState& Input)
@@ -116,14 +124,25 @@ bool UQuickSDFBrushResizeInputBehavior::IsReleased(const FInputDeviceState& Inpu
 
 FInputCaptureRequest UQuickSDFBrushResizeInputBehavior::WantsCapture(const FInputDeviceState& Input)
 {
-	return IsPressed(Input) ? FInputCaptureRequest::Begin(this, EInputCaptureSide::Any, 0.0f) : FInputCaptureRequest::Ignore();
+	if (IsPressed(Input) || (BrushTool && BrushTool->bAdjustingBrushRadius && IsBrushResizeCancelPressed(Input)))
+	{
+		return FInputCaptureRequest::Begin(this, EInputCaptureSide::Any, 0.0f);
+	}
+	return FInputCaptureRequest::Ignore();
 }
 
 FInputCaptureUpdate UQuickSDFBrushResizeInputBehavior::BeginCapture(const FInputDeviceState& Input, EInputCaptureSide Side)
 {
 	if (BrushTool)
 	{
-		BrushTool->BeginBrushResizeMode();
+		if (BrushTool->bAdjustingBrushRadius && IsBrushResizeCancelPressed(Input))
+		{
+			BrushTool->CancelBrushResizeMode();
+		}
+		else
+		{
+			BrushTool->BeginBrushResizeMode();
+		}
 	}
 
 	return FInputCaptureUpdate::End();
