@@ -482,11 +482,24 @@ void UQuickSDFPaintTool::UpdateBrushStampIndicator()
 			BrushStampIndicator->bVisible = false;
 			return;
 		}
+		const double EffectiveRadius = GetEffectiveBrushRadius();
+		const bool bShowOriginalResizeRadius =
+			bAdjustingBrushRadius &&
+			(!Properties || GetMeshPaintMode() != EQuickSDFMeshPaintMode::ScreenProjection) &&
+			EffectiveRadius > KINDA_SMALL_NUMBER &&
+			BrushResizeStartRadius > KINDA_SMALL_NUMBER;
+		const float IndicatorFalloff = bShowOriginalResizeRadius
+			? static_cast<float>(static_cast<double>(BrushResizeStartRadius) / EffectiveRadius)
+			: BrushProperties->BrushFalloffAmount;
+		BrushStampIndicator->SecondaryLineColor = bShowOriginalResizeRadius
+			? FLinearColor(0.85f, 0.85f, 0.85f, 0.55f)
+			: FLinearColor(0.5f, 0.5f, 0.5f, 0.5f);
+		BrushStampIndicator->SecondaryLineThickness = bShowOriginalResizeRadius ? 1.0f : 0.5f;
 		BrushStampIndicator->Update(
-			GetEffectiveBrushRadius(),
+			EffectiveRadius,
 			LastBrushStamp.WorldPosition,
 			LastBrushStamp.WorldNormal,
-			BrushProperties->BrushFalloffAmount,
+			IndicatorFalloff,
 			BrushProperties->BrushStrength);
 	}
 }
@@ -1174,6 +1187,7 @@ void UQuickSDFPaintTool::UpdateBrushResizeFromCursor()
 	{
 		LastBrushStamp.Radius = NewRadius;
 	}
+	UpdateBrushStampIndicator();
 	NotifyOfPropertyChangeByTool(BrushProperties);
 }
 
