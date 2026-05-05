@@ -35,6 +35,7 @@
 #include "CanvasTypes.h"
 #include "TextureResource.h"
 #include "RenderResource.h"
+#include "RenderingThread.h"
 #include "Math/UnrealMathUtility.h"
 #include "InputCoreTypes.h"
 #include "HAL/PlatformApplicationMisc.h"
@@ -163,15 +164,95 @@ void UQuickSDFPaintTool::RebuildUVOverlayRenderTarget(int32 Width, int32 Height)
 		AddUniqueEdge(UV2, UV0);
 	}
 
-	const FLinearColor UVLineColor(0.0f, 0.42f, 0.18f, 0.045f);
+	TArray<FColor> OverlayPixels;
+	OverlayPixels.Init(FColor::Transparent, Width * Height);
+
+	const double OverlayScale = static_cast<double>(QuickSDFUVOverlaySupersample);
+	const double UVCoreRadius = 0.45 * OverlayScale;
+	const double UVFeatherRadius = 0.95 * OverlayScale;
+	const uint8 UVMaxAlpha = 92;
+	const FColor UVLineColor(0, 118, 50, UVMaxAlpha);
+
+	auto WriteOverlayPixel = [&OverlayPixels, Width, UVLineColor](int32 X, int32 Y, uint8 Alpha)
+	{
+		FColor& Pixel = OverlayPixels[Y * Width + X];
+		if (Alpha > Pixel.A)
+		{
+			Pixel = UVLineColor;
+			Pixel.A = Alpha;
+		}
+	};
+
+	auto DrawUVOverlayLine = [&UVToOverlay, Width, Height, UVCoreRadius, UVFeatherRadius, UVMaxAlpha, &WriteOverlayPixel](const FQuickSDFUVOverlayEdge& Edge)
+	{
+		const FVector2D Start = UVToOverlay(Edge.A);
+		const FVector2D End = UVToOverlay(Edge.B);
+		const FVector2D Segment = End - Start;
+		const double SegmentLengthSqr = Segment.SizeSquared();
+		if (SegmentLengthSqr <= KINDA_SMALL_NUMBER)
+		{
+			return;
+		}
+
+		const int32 MinX = FMath::Clamp(FMath::FloorToInt(FMath::Min(Start.X, End.X) - UVFeatherRadius - 1.0), 0, Width - 1);
+		const int32 MinY = FMath::Clamp(FMath::FloorToInt(FMath::Min(Start.Y, End.Y) - UVFeatherRadius - 1.0), 0, Height - 1);
+		const int32 MaxX = FMath::Clamp(FMath::CeilToInt(FMath::Max(Start.X, End.X) + UVFeatherRadius + 1.0), 0, Width - 1);
+		const int32 MaxY = FMath::Clamp(FMath::CeilToInt(FMath::Max(Start.Y, End.Y) + UVFeatherRadius + 1.0), 0, Height - 1);
+		if (MaxX < MinX || MaxY < MinY)
+		{
+			return;
+		}
+
+		for (int32 Y = MinY; Y <= MaxY; ++Y)
+		{
+			for (int32 X = MinX; X <= MaxX; ++X)
+			{
+				const FVector2D PixelCenter(static_cast<double>(X) + 0.5, static_cast<double>(Y) + 0.5);
+				const double AlongSegment = FMath::Clamp(FVector2D::DotProduct(PixelCenter - Start, Segment) / SegmentLengthSqr, 0.0, 1.0);
+				const FVector2D ClosestPoint = Start + Segment * AlongSegment;
+				const double Distance = FVector2D::Distance(PixelCenter, ClosestPoint);
+				if (Distance > UVFeatherRadius)
+				{
+					continue;
+				}
+
+				const double Coverage = Distance <= UVCoreRadius
+					? 1.0
+					: 1.0 - FMath::SmoothStep(UVCoreRadius, UVFeatherRadius, Distance);
+				const uint8 Alpha = static_cast<uint8>(FMath::RoundToInt(FMath::Clamp(Coverage, 0.0, 1.0) * static_cast<double>(UVMaxAlpha)));
+				if (Alpha > 0)
+				{
+					WriteOverlayPixel(X, Y, Alpha);
+				}
+			}
+		}
+	};
+
 	for (int32 EdgeIndex = 0; EdgeIndex < UniqueEdges.Num(); ++EdgeIndex)
 	{
-		const FQuickSDFUVOverlayEdge& Edge = UniqueEdges[EdgeIndex];
-		FCanvasLineItem Line(UVToOverlay(Edge.A), UVToOverlay(Edge.B));
-		Line.SetColor(UVLineColor);
-		Line.BlendMode = SE_BLEND_Translucent;
-		Line.LineThickness = 1.0f;
-		Canvas.DrawItem(Line);
+		DrawUVOverlayLine(UniqueEdges[EdgeIndex]);
+	}
+
+	UTexture2D* OverlayTexture = UTexture2D::CreateTransient(Width, Height, PF_B8G8R8A8);
+	if (OverlayTexture && OverlayTexture->GetPlatformData() && OverlayTexture->GetPlatformData()->Mips.Num() > 0)
+	{
+		OverlayTexture->MipGenSettings = TMGS_NoMipmaps;
+		OverlayTexture->Filter = TF_Bilinear;
+		OverlayTexture->SRGB = false;
+
+		FTexture2DMipMap& Mip = OverlayTexture->GetPlatformData()->Mips[0];
+		void* Data = Mip.BulkData.Lock(LOCK_READ_WRITE);
+		if (Data)
+		{
+			FMemory::Memcpy(Data, OverlayPixels.GetData(), OverlayPixels.Num() * sizeof(FColor));
+		}
+		Mip.BulkData.Unlock();
+		OverlayTexture->UpdateResource();
+		FlushRenderingCommands();
+
+		FCanvasTileItem TileItem(FVector2D::ZeroVector, OverlayTexture->GetResource(), FVector2D(Width, Height), FLinearColor::White);
+		TileItem.BlendMode = SE_BLEND_Opaque;
+		Canvas.DrawItem(TileItem);
 	}
 
 	Canvas.Flush_GameThread(true);
