@@ -1,3 +1,9 @@
+---
+title: Material Setup
+description: Material integration notes for QuickSDFTool generated threshold maps.
+permalink: /material-setup/
+---
+
 # Material Setup
 
 QuickSDFTool outputs a threshold texture intended to drive stylized light-to-shadow transitions. The exact shader graph can vary by project, but the core idea is stable: compare a light-angle value against the generated texture value, then use the result to choose lit or shadow color.

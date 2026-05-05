@@ -76,7 +76,7 @@ Use this path when you only want to see a result quickly.
 10. Click **Generate Selected SDF** or **Generate SDF Threshold Map** in the tool details.
 11. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
 
-See [Examples](./Examples/README.md), [Material Setup](./Docs/MaterialSetup.md), and [Troubleshooting](./Docs/Troubleshooting.md) for a fuller walkthrough.
+See [Examples](./Examples/README.md), [Material Setup](./docs/material-setup.md), and [Troubleshooting](./docs/troubleshooting.md) for a fuller walkthrough.
 
 ## Installation
 
@@ -371,7 +371,7 @@ For maintainers preparing the GitHub page:
 
 - Add these repository topics: `unreal-engine`, `ue5`, `toon-shading`, `cel-shading`, `sdf`, `editor-plugin`, `technical-art`.
 - Upload `.github/assets/social-preview.svg` as the GitHub Social Preview image, or export it to PNG first.
-- Create releases using the matching files under [Docs/ReleaseNotes](./Docs/ReleaseNotes/).
+- Create releases using the matching files under [docs/release-notes](./docs/release-notes/).
 
 ## Known Limitations
 

@@ -1,3 +1,9 @@
+---
+title: Troubleshooting
+description: Common QuickSDFTool installation, build, material, and brush behavior issues.
+permalink: /troubleshooting/
+---
+
 # Troubleshooting
 
 ## The Plugin Does Not Appear In The Editor
@@ -10,7 +16,7 @@
 ## The Generated Shadow Looks Inverted
 
 - First verify the comparison direction in your project material and check whether the result matches the painted masks.
-- Confirm whether you are using a Monopolar or Bipolar output path, and follow the R/A/B/G output layout documented in [Material Setup](./MaterialSetup.md).
+- Confirm whether you are using a Monopolar or Bipolar output path, and follow the R/A/B/G output layout documented in [Material Setup]({{ '/material-setup/' | relative_url }}).
 - The built-in Generated SDF preview uses the same exported threshold-map layout as the saved texture. If your project material is inverted while the built-in preview is correct, the project shader comparison direction or light-angle mapping is the likely mismatch.
 
 ## Brush Size Feels Wrong On Some Meshes

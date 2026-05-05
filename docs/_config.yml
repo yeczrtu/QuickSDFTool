@@ -1,0 +1,13 @@
+title: QuickSDFTool Docs
+description: Documentation for the QuickSDFTool Unreal Engine editor-mode plugin.
+url: "https://yeczrtu.github.io"
+baseurl: "/QuickSDFTool"
+markdown: kramdown
+highlighter: rouge
+permalink: pretty
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
