@@ -27,6 +27,14 @@ enum class EQuickSDFPaintTargetMode : uint8
 };
 
 UENUM(BlueprintType)
+enum class EQuickSDFMeshPaintMode : uint8
+{
+	UVSpaceLegacy UMETA(DisplayName = "UV Space / Legacy"),
+	ProjectedSurface UMETA(DisplayName = "Projected Surface Paint (Experimental)"),
+	ScreenProjection UMETA(DisplayName = "Screen Projection Paint (Experimental)")
+};
+
+UENUM(BlueprintType)
 enum class EQuickSDFSymmetryMode : uint8
 {
 	None180 = 0 UMETA(DisplayName = "Off (0-180 Paint)"),
@@ -117,7 +125,13 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint Through Context"))
 	bool bPaintThroughNonTargetGeometry = true;
 
-	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Projected Surface Paint (Experimental)"))
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Mesh Paint Mode"))
+	EQuickSDFMeshPaintMode MeshPaintMode = EQuickSDFMeshPaintMode::UVSpaceLegacy;
+
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Screen Projection Brush Radius Pixels", ClampMin = "1.0", UIMin = "1.0", UIMax = "256.0", EditCondition = "MeshPaintMode == EQuickSDFMeshPaintMode::ScreenProjection"))
+	float ScreenProjectionBrushRadiusPixels = 32.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (DeprecatedProperty, DeprecationMessage = "Use Mesh Paint Mode instead.", HideInDetailPanel))
 	bool bUseSurfaceSpacePaint = false;
 
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")

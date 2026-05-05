@@ -139,6 +139,43 @@ struct FQuickSDFProjectedPaintTriangle
 	int32 PaintChartID = INDEX_NONE;
 };
 
+struct FQuickSDFScreenProjectionPaintParams
+{
+	FVector3d ViewOrigin = FVector3d::Zero();
+	FVector3d ViewRight = FVector3d(1.0, 0.0, 0.0);
+	FVector3d ViewUp = FVector3d(0.0, 0.0, 1.0);
+	FVector3d ViewForward = FVector3d(0.0, 1.0, 0.0);
+	FVector2f ScreenOffset = FVector2f::ZeroVector;
+	FVector2f ProjectionScale = FVector2f(1.0f, 1.0f);
+	FVector2f ViewportSize = FVector2f(1.0f, 1.0f);
+	float BrushRadiusPixels = 32.0f;
+	float BrushRadialFalloffRangePixels = 0.0f;
+	float BrushDepthWorld = 1.0f;
+	float BrushDepthFalloffRangeWorld = 0.0f;
+	float BrushAntialiasWidthPixels = 1.0f;
+	float MaxWorldQueryRadius = 1.0f;
+	float Strength = 1.0f;
+	float FacingThreshold = 0.02f;
+	bool bOrthographic = false;
+	FLinearColor Color = FLinearColor::White;
+};
+
+struct FQuickSDFScreenProjectionStrokePoint
+{
+	FVector3d WorldPosition = FVector3d::Zero();
+	FVector2f ScreenPosition = FVector2f::ZeroVector;
+	float ViewDepth = 0.0f;
+	float Pressure = 1.0f;
+};
+
+struct FQuickSDFScreenProjectionPaintTriangle
+{
+	FVector2D UVs[3];
+	FVector2D PixelPositions[3];
+	FVector3d WorldPositions[3];
+	FVector3d WorldNormal = FVector3d(0.0, 0.0, 1.0);
+};
+
 UCLASS()
 class UQuickSDFPaintTool : public UBaseBrushTool
 {
@@ -249,7 +286,12 @@ protected:
 	bool IsTriangleInTargetMaterialSlot(int32 TriangleID) const;
 	bool TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample);
 	bool TryMakePreviewStrokeSample(const FVector2D& ScreenPosition, FQuickSDFStrokeSample& OutSample) const;
+	EQuickSDFMeshPaintMode GetMeshPaintMode() const;
 	bool ShouldUseSurfaceSpacePaint() const;
+	bool ShouldUseProjectedSurfacePaint() const;
+	bool ShouldUseScreenProjectionPaint() const;
+	bool ShouldUseAnySurfaceProjectionPaint() const;
+	float GetScreenProjectionBrushRadiusPixels() const;
 	bool CanInterpolateStrokeSamples(const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B) const;
 	void StampSample(const FQuickSDFStrokeSample& Sample);
 	void StampSamples(const TArray<FQuickSDFStrokeSample>& Samples);
@@ -272,6 +314,14 @@ protected:
 	bool DrawProjectedSurfaceStrokeChunkCoverage(class FCanvas& CoverageCanvas, class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, const FQuickSDFProjectedPaintParams& PaintParams, const TArray<FQuickSDFProjectedStrokePoint>& StrokePoints, int32 CoverageScale, FIntRect* OutDirtyRect);
 	bool ResolveProjectedPaintCoverageToRenderTarget(class UTextureRenderTarget2D* RenderTarget, class UTextureRenderTarget2D* CoverageRenderTarget, const FQuickSDFProjectedPaintParams& PaintParams, const FIntRect& DirtyRect, FIntRect* OutDirtyRect);
 	bool PaintProjectedSurfaceStrokeChunkToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, const FQuickSDFProjectedPaintParams& PaintParams, const TArray<FQuickSDFProjectedStrokePoint>& StrokePoints, FIntRect* OutDirtyRect);
+	bool InitializeScreenProjectionPaintFrame(const FQuickSDFStrokeSample& AnchorSample);
+	bool BuildScreenProjectionPaintParams(const TArray<FQuickSDFStrokeSample>& Samples, class UTextureRenderTarget2D* RenderTarget, FQuickSDFScreenProjectionPaintParams& OutParams, TArray<FQuickSDFScreenProjectionStrokePoint>& OutStrokePoints);
+	bool BuildScreenProjectionStrokePoints(const TArray<FQuickSDFStrokeSample>& Samples, const FQuickSDFScreenProjectionPaintParams& PaintParams, TArray<FQuickSDFScreenProjectionStrokePoint>& OutStrokePoints) const;
+	bool ProjectWorldToScreenProjection(const FQuickSDFScreenProjectionPaintParams& PaintParams, const FVector3d& WorldPosition, FVector2f& OutScreenPosition, float* OutViewDepth = nullptr) const;
+	bool GatherScreenProjectionPaintTriangles(const TArray<FQuickSDFStrokeSample>& Samples, const FQuickSDFScreenProjectionPaintParams& PaintParams, class UTextureRenderTarget2D* RenderTarget, TArray<FQuickSDFScreenProjectionPaintTriangle>& OutTriangles, FIntRect& OutDirtyRect);
+	bool PaintScreenProjectionStrokeToRenderTarget(class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, FIntRect* OutDirtyRect);
+	bool DrawScreenProjectionStrokeChunkCoverage(class FCanvas& CoverageCanvas, class UTextureRenderTarget2D* RenderTarget, const TArray<FQuickSDFStrokeSample>& Samples, const FQuickSDFScreenProjectionPaintParams& PaintParams, const TArray<FQuickSDFScreenProjectionStrokePoint>& StrokePoints, int32 CoverageScale, FIntRect* OutDirtyRect);
+	bool ResolveScreenProjectionPaintCoverageToRenderTarget(class UTextureRenderTarget2D* RenderTarget, class UTextureRenderTarget2D* CoverageRenderTarget, const FQuickSDFScreenProjectionPaintParams& PaintParams, const FIntRect& DirtyRect, FIntRect* OutDirtyRect);
 	bool ProjectSurfaceStrokeSample(const FQuickSDFStrokeSample& Sample, double MaxWorldDistance, FQuickSDFStrokeSample& OutSample);
 	void AppendStrokeSample(const FQuickSDFStrokeSample& Sample);
 	void StampLinearSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample);
@@ -312,6 +362,7 @@ protected:
 	class UTextureRenderTarget2D* GetUVOverlayRenderTarget();
 	void RebuildUVOverlayRenderTarget(int32 Width, int32 Height);
 	void DrawQuickLineHUDPreview(class FCanvas* Canvas);
+	void DrawScreenProjectionBrushHUD(class FCanvas* Canvas);
 	bool RestoreStrokeStartPixels() const;
 	void BeginStrokeTransaction();
 	void EndStrokeTransaction();
@@ -390,9 +441,11 @@ protected:
 	TObjectPtr<UTextureRenderTarget2D> UVOverlayRenderTarget;
 
 	TArray<FQuickSDFStrokeSample> StrokeSamples;
+	FQuickSDFScreenProjectionPaintParams ActiveScreenProjectionPaintParams;
 	FQuickSDFStrokeSample LastStampedSample;
 	FQuickSDFStrokeSample FilteredStrokeSample;
 	bool bHasLastStampedSample = false;
+	bool bHasActiveScreenProjectionPaintParams = false;
 	bool bHasFilteredStrokeSample = false;
 	double DistanceSinceLastStamp = 0.0;
 	FVector2D LastInputScreenPosition = FVector2D::ZeroVector;

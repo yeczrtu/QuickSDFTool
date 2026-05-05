@@ -1,0 +1,147 @@
+#include "/Engine/Public/Platform.ush"
+
+float4x4 c_Transform;
+
+float4 c_ViewOrigin;
+float4 c_ViewRight;
+float4 c_ViewUp;
+float4 c_ViewForward;
+float4 c_ScreenOffsetAndMode;
+float4 c_ProjectionScaleAndViewport;
+
+// x = radius px, y = radial falloff px, z = depth world, w = depth falloff world
+float4 c_BrushMetrics;
+
+// x = stroke point count, y = AA width px, z = facing threshold
+float4 c_StrokeMetrics;
+
+#define QUICK_SDF_MAX_SCREEN_PROJECTION_STROKE_POINTS 256
+float4 c_StrokePoints[QUICK_SDF_MAX_SCREEN_PROJECTION_STROKE_POINTS];
+
+struct FCoverageVSOut
+{
+	float4 Position : SV_POSITION;
+	float2 TextureCoordinates : TEXCOORD0;
+	float3 WorldPosition : TEXCOORD1;
+};
+
+void MainCoverageVS(
+	float4 InPosition : ATTRIBUTE0,
+	float2 InTextureCoordinates : ATTRIBUTE2,
+	float3 InWorldSpaceVertexPosition : ATTRIBUTE3,
+	out FCoverageVSOut Out)
+{
+	Out.Position = mul(InPosition, c_Transform);
+	Out.TextureCoordinates = InTextureCoordinates;
+	Out.WorldPosition = InWorldSpaceVertexPosition;
+}
+
+float2 ProjectWorldToScreen(float3 WorldPosition, out float ViewDepth)
+{
+	const float3 Delta = WorldPosition - c_ViewOrigin.xyz;
+	ViewDepth = dot(Delta, c_ViewForward.xyz);
+	const float X = dot(Delta, c_ViewRight.xyz);
+	const float Y = dot(Delta, c_ViewUp.xyz);
+
+	if (c_ScreenOffsetAndMode.z > 0.5f)
+	{
+		return float2(X * c_ProjectionScaleAndViewport.x, -Y * c_ProjectionScaleAndViewport.y) + c_ScreenOffsetAndMode.xy;
+	}
+
+	const float SafeDepth = max(ViewDepth, 0.0001f);
+	return float2(
+		(X / SafeDepth) * c_ProjectionScaleAndViewport.x,
+		(-Y / SafeDepth) * c_ProjectionScaleAndViewport.y) + c_ScreenOffsetAndMode.xy;
+}
+
+float ComputeFalloff(float Distance, float Radius, float FalloffRange, float AntialiasWidth)
+{
+	float Coverage = Distance <= Radius ? 1.0f : 0.0f;
+	if (FalloffRange > 0.0001f)
+	{
+		const float InnerRadius = max(Radius - FalloffRange, 0.0f);
+		Coverage = saturate((Radius - Distance) / max(Radius - InnerRadius, 0.0001f));
+	}
+	else if (AntialiasWidth > 0.0001f)
+	{
+		Coverage = smoothstep(Radius + AntialiasWidth, Radius - AntialiasWidth, Distance);
+	}
+	return Coverage;
+}
+
+float DistanceToScreenSegment(float2 Position, float2 Start, float2 End, float StartDepth, float EndDepth, out float SegmentDepth)
+{
+	const float2 Segment = End - Start;
+	const float SegmentLengthSqr = dot(Segment, Segment);
+	if (SegmentLengthSqr <= 0.000001f)
+	{
+		SegmentDepth = StartDepth;
+		return length(Position - Start);
+	}
+
+	const float SegmentAlpha = saturate(dot(Position - Start, Segment) / SegmentLengthSqr);
+	SegmentDepth = lerp(StartDepth, EndDepth, SegmentAlpha);
+	return length(Position - (Start + Segment * SegmentAlpha));
+}
+
+void MainCoveragePS(
+	FCoverageVSOut In,
+	out float4 OutColor : SV_Target0)
+{
+	float PixelDepth = 0.0f;
+	const float2 ScreenPosition = ProjectWorldToScreen(In.WorldPosition, PixelDepth);
+
+	const float BrushRadius = c_BrushMetrics.x;
+	const float BrushRadialFalloffRange = c_BrushMetrics.y;
+	const float BrushDepth = c_BrushMetrics.z;
+	const float BrushDepthFalloffRange = c_BrushMetrics.w;
+	const float AntialiasWidth = c_StrokeMetrics.y;
+	const float FacingThreshold = c_StrokeMetrics.z;
+	const int StrokePointCount = min((int)c_StrokeMetrics.x, QUICK_SDF_MAX_SCREEN_PROJECTION_STROKE_POINTS);
+
+	float RadialDistance = BrushRadius + AntialiasWidth + 1.0f;
+	float ClosestDepthDistance = BrushDepth + BrushDepthFalloffRange + 1.0f;
+	if (StrokePointCount <= 1)
+	{
+		RadialDistance = length(ScreenPosition - c_StrokePoints[0].xy);
+		ClosestDepthDistance = abs(PixelDepth - c_StrokePoints[0].z);
+	}
+	else
+	{
+		for (int StrokePointIndex = 1; StrokePointIndex < StrokePointCount; ++StrokePointIndex)
+		{
+			float SegmentDepth = 0.0f;
+			const float SegmentDistance = DistanceToScreenSegment(
+				ScreenPosition,
+				c_StrokePoints[StrokePointIndex - 1].xy,
+				c_StrokePoints[StrokePointIndex].xy,
+				c_StrokePoints[StrokePointIndex - 1].z,
+				c_StrokePoints[StrokePointIndex].z,
+				SegmentDepth);
+
+			if (SegmentDistance < RadialDistance)
+			{
+				RadialDistance = SegmentDistance;
+				ClosestDepthDistance = abs(PixelDepth - SegmentDepth);
+			}
+		}
+	}
+
+	const float3 Dx = ddx(In.WorldPosition);
+	const float3 Dy = ddy(In.WorldPosition);
+	const float3 RawPixelNormal = cross(Dx, Dy);
+	const float PixelNormalLengthSqr = dot(RawPixelNormal, RawPixelNormal);
+	const float3 PixelNormal = PixelNormalLengthSqr > 0.000001f
+		? RawPixelNormal * rsqrt(PixelNormalLengthSqr)
+		: -c_ViewForward.xyz;
+	const float Facing = max(dot(PixelNormal, -c_ViewForward.xyz), dot(-PixelNormal, -c_ViewForward.xyz));
+	const float FacingGate = FacingThreshold <= 0.0f ? 1.0f : step(FacingThreshold, Facing);
+
+	float PaintCoverage =
+		ComputeFalloff(RadialDistance, BrushRadius, BrushRadialFalloffRange, AntialiasWidth) *
+		ComputeFalloff(ClosestDepthDistance, BrushDepth, BrushDepthFalloffRange, 0.0f) *
+		FacingGate *
+		step(0.0001f, PixelDepth);
+
+	OutColor = float4(PaintCoverage, PaintCoverage, PaintCoverage, PaintCoverage);
+}

@@ -2841,6 +2841,16 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 					? EQuickSDFPaintTargetMode::All
 					: EQuickSDFPaintTargetMode::CurrentOnly;
 			}
+			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MeshPaintMode))
+			{
+				Properties->bUseSurfaceSpacePaint = Properties->MeshPaintMode == EQuickSDFMeshPaintMode::ProjectedSurface;
+			}
+			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bUseSurfaceSpacePaint))
+			{
+				Properties->MeshPaintMode = Properties->bUseSurfaceSpacePaint
+					? EQuickSDFMeshPaintMode::ProjectedSurface
+					: EQuickSDFMeshPaintMode::UVSpaceLegacy;
+			}
 			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SymmetryMode))
 			{
 				Properties->SyncLegacySymmetryFlag();

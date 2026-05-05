@@ -217,18 +217,56 @@ int32 UQuickSDFPaintTool::GetPaintChartIDForTriangle(int32 TriangleID)
 	return INDEX_NONE;
 }
 
+EQuickSDFMeshPaintMode UQuickSDFPaintTool::GetMeshPaintMode() const
+{
+	if (!Properties)
+	{
+		return EQuickSDFMeshPaintMode::UVSpaceLegacy;
+	}
+
+	if (Properties->bUseSurfaceSpacePaint &&
+		Properties->MeshPaintMode == EQuickSDFMeshPaintMode::UVSpaceLegacy)
+	{
+		return EQuickSDFMeshPaintMode::ProjectedSurface;
+	}
+
+	return Properties->MeshPaintMode;
+}
+
 bool UQuickSDFPaintTool::ShouldUseSurfaceSpacePaint() const
 {
+	return ShouldUseProjectedSurfacePaint();
+}
+
+bool UQuickSDFPaintTool::ShouldUseProjectedSurfacePaint() const
+{
 	return Properties &&
-		Properties->bUseSurfaceSpacePaint &&
+		GetMeshPaintMode() == EQuickSDFMeshPaintMode::ProjectedSurface &&
 		ActiveStrokeInputMode == EQuickSDFStrokeInputMode::MeshSurface;
+}
+
+bool UQuickSDFPaintTool::ShouldUseScreenProjectionPaint() const
+{
+	return Properties &&
+		GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection &&
+		ActiveStrokeInputMode == EQuickSDFStrokeInputMode::MeshSurface;
+}
+
+bool UQuickSDFPaintTool::ShouldUseAnySurfaceProjectionPaint() const
+{
+	return ShouldUseProjectedSurfacePaint() || ShouldUseScreenProjectionPaint();
+}
+
+float UQuickSDFPaintTool::GetScreenProjectionBrushRadiusPixels() const
+{
+	return Properties ? FMath::Max(Properties->ScreenProjectionBrushRadiusPixels, 1.0f) : 32.0f;
 }
 
 bool UQuickSDFPaintTool::CanInterpolateStrokeSamples(const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B) const
 {
 	if (!Properties ||
 		ActiveStrokeInputMode != EQuickSDFStrokeInputMode::MeshSurface ||
-		ShouldUseSurfaceSpacePaint())
+		ShouldUseAnySurfaceProjectionPaint())
 	{
 		return true;
 	}
@@ -280,12 +318,18 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::SmoothStrokeSample(const FQuickSDFStro
 
 	double LazyRadius = LazyRadiusPixels;
 	double SampleDistance = 0.0;
-	if (ShouldUseSurfaceSpacePaint())
+	if (ShouldUseProjectedSurfacePaint())
 	{
 		const FVector2D BrushPixelSize = GetBrushPixelSize(RT);
 		const double BrushPixelRadius = FMath::Max(static_cast<double>(FMath::Min(BrushPixelSize.X, BrushPixelSize.Y) * 0.5f), 1.0);
 		LazyRadius = (LazyRadiusPixels / BrushPixelRadius) * GetEffectiveBrushRadius();
 		SampleDistance = FVector3d::Distance(FilteredStrokeSample.WorldPos, RawSample.WorldPos);
+	}
+	else if (ShouldUseScreenProjectionPaint())
+	{
+		const double BrushPixelRadius = FMath::Max(static_cast<double>(GetScreenProjectionBrushRadiusPixels()), 1.0);
+		LazyRadius = (LazyRadiusPixels / BrushPixelRadius) * BrushPixelRadius;
+		SampleDistance = FVector2D::Distance(FilteredStrokeSample.ScreenPosition, RawSample.ScreenPosition);
 	}
 	else
 	{
@@ -357,9 +401,13 @@ FVector2D UQuickSDFPaintTool::GetBrushPixelSize(UTextureRenderTarget2D* RenderTa
 double UQuickSDFPaintTool::GetCurrentStrokeSpacing(UTextureRenderTarget2D* RenderTarget) const
 {
 	const double SpacingRatio = Properties ? static_cast<double>(Properties->StrokeSpacingRatio) : QuickSDFStrokeSpacingFactor;
-	if (ShouldUseSurfaceSpacePaint())
+	if (ShouldUseProjectedSurfacePaint())
 	{
 		return FMath::Max(GetEffectiveBrushRadius() * FMath::Max(SpacingRatio, 0.02), 0.1);
+	}
+	if (ShouldUseScreenProjectionPaint())
+	{
+		return FMath::Max(static_cast<double>(GetScreenProjectionBrushRadiusPixels()) * FMath::Max(SpacingRatio, 0.02), 1.0);
 	}
 
 	const FVector2D PixelSize = GetBrushPixelSize(RenderTarget);
@@ -378,6 +426,10 @@ double UQuickSDFPaintTool::GetEffectiveBrushRadius() const
 
 FVector2D UQuickSDFPaintTool::GetSamplePixelPosition(const FQuickSDFStrokeSample& Sample, UTextureRenderTarget2D* RenderTarget) const
 {
+	if (ShouldUseScreenProjectionPaint())
+	{
+		return Sample.ScreenPosition;
+	}
 	if (!RenderTarget)
 	{
 		return FVector2D(Sample.WorldPos.X, Sample.WorldPos.Y);
@@ -387,9 +439,13 @@ FVector2D UQuickSDFPaintTool::GetSamplePixelPosition(const FQuickSDFStrokeSample
 
 double UQuickSDFPaintTool::GetSamplePixelDistance(const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B, UTextureRenderTarget2D* RenderTarget) const
 {
-	if (ShouldUseSurfaceSpacePaint())
+	if (ShouldUseProjectedSurfacePaint())
 	{
 		return FVector3d::Distance(A.WorldPos, B.WorldPos);
+	}
+	if (ShouldUseScreenProjectionPaint())
+	{
+		return FVector2D::Distance(A.ScreenPosition, B.ScreenPosition);
 	}
 	return FVector2D::Distance(GetSamplePixelPosition(A, RenderTarget), GetSamplePixelPosition(B, RenderTarget));
 }
@@ -415,6 +471,14 @@ void UQuickSDFPaintTool::UpdateBrushStampIndicator()
 {
 	if (BrushStampIndicator && BrushProperties)
 	{
+		if (Properties &&
+			GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection &&
+			ActiveStrokeInputMode != EQuickSDFStrokeInputMode::TexturePreview &&
+			PendingStrokeInputMode != EQuickSDFStrokeInputMode::TexturePreview)
+		{
+			BrushStampIndicator->bVisible = false;
+			return;
+		}
 		BrushStampIndicator->Update(
 			GetEffectiveBrushRadius(),
 			LastBrushStamp.WorldPosition,
@@ -626,6 +690,31 @@ void UQuickSDFPaintTool::StampQuickLineSurfaceSegment(const FQuickSDFStrokeSampl
 		return;
 	}
 
+	if (ShouldUseScreenProjectionPaint())
+	{
+		TArray<FQuickSDFStrokeSample> CurveSamples;
+		if (QuickLineSourceSamples.Num() >= 2)
+		{
+			const FQuickSDFStrokeSample& SourceStart = QuickLineSourceSamples[0];
+			const FQuickSDFStrokeSample& SourceEnd = QuickLineSourceSamples.Last();
+			CurveSamples.Reserve(QuickLineSourceSamples.Num());
+			for (const FQuickSDFStrokeSample& SourceSample : QuickLineSourceSamples)
+			{
+				CurveSamples.Add(TransformQuickLineSample(SourceSample, SourceStart, SourceEnd, StartSample, EndSample));
+			}
+		}
+
+		if (CurveSamples.Num() < 2)
+		{
+			CurveSamples.Reset();
+			CurveSamples.Add(StartSample);
+			CurveSamples.Add(EndSample);
+		}
+
+		StampQuickLineResampledSamples(CurveSamples);
+		return;
+	}
+
 	if (!CanInterpolateStrokeSamples(StartSample, EndSample))
 	{
 		TArray<FQuickSDFStrokeSample> EndpointSamples;
@@ -698,7 +787,7 @@ void UQuickSDFPaintTool::StampQuickLineResampledSamples(const TArray<FQuickSDFSt
 		return;
 	}
 
-	const double QuickStrokeSpacingScale = ShouldUseSurfaceSpacePaint() ? 1.0 : 0.35;
+	const double QuickStrokeSpacingScale = ShouldUseAnySurfaceProjectionPaint() ? 1.0 : 0.35;
 	const double SpacingPixels = FMath::Max(GetCurrentStrokeSpacing(RT) * QuickStrokeSpacingScale, 0.35);
 	const double MinControlSpacingPixels = FMath::Max(SpacingPixels * 0.5, 1.0);
 	const int32 MaxResampledSamples = ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ? 512 : 2048;
@@ -898,6 +987,68 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::TransformQuickLineSample(
 		return OutSample;
 	}
 
+	if (ShouldUseScreenProjectionPaint())
+	{
+		const FVector2D SourceAxis = SourceEnd.ScreenPosition - SourceStart.ScreenPosition;
+		const FVector2D TargetAxis = TargetEnd.ScreenPosition - TargetStart.ScreenPosition;
+		const double SourceLength = SourceAxis.Size();
+		const double TargetLength = TargetAxis.Size();
+
+		FQuickSDFStrokeSample OutSample = SourceSample;
+		if (SourceLength <= KINDA_SMALL_NUMBER || TargetLength <= KINDA_SMALL_NUMBER)
+		{
+			OutSample.ScreenPosition = SourceSample.ScreenPosition + (TargetEnd.ScreenPosition - SourceEnd.ScreenPosition);
+			OutSample.WorldPos = TargetEnd.WorldPos;
+			OutSample.UV = TargetEnd.UV;
+			OutSample.LocalUVScale = TargetEnd.LocalUVScale;
+			OutSample.TriangleID = TargetEnd.TriangleID;
+			OutSample.PaintChartID = TargetEnd.PaintChartID;
+			OutSample.RayOrigin = TargetEnd.RayOrigin;
+			OutSample.RayDirection = TargetEnd.RayDirection;
+			return OutSample;
+		}
+
+		const FVector2D SourceUnit = SourceAxis / SourceLength;
+		const FVector2D SourcePerp(-SourceUnit.Y, SourceUnit.X);
+		const FVector2D TargetUnit = TargetAxis / TargetLength;
+		const FVector2D TargetPerp(-TargetUnit.Y, TargetUnit.X);
+		const FVector2D SourceOffset = SourceSample.ScreenPosition - SourceStart.ScreenPosition;
+		const double Along = FVector2D::DotProduct(SourceOffset, SourceUnit);
+		const double Across = FVector2D::DotProduct(SourceOffset, SourcePerp);
+		const double Scale = TargetLength / SourceLength;
+		const float AlongAlpha = static_cast<float>(FMath::Clamp(Along / FMath::Max(SourceLength, KINDA_SMALL_NUMBER), 0.0, 1.0));
+
+		OutSample.ScreenPosition = TargetStart.ScreenPosition + TargetUnit * (Along * Scale) + TargetPerp * (Across * Scale);
+		OutSample.WorldPos = FMath::Lerp(TargetStart.WorldPos, TargetEnd.WorldPos, static_cast<double>(AlongAlpha));
+		if (bHasActiveScreenProjectionPaintParams)
+		{
+			const FQuickSDFScreenProjectionPaintParams& Params = ActiveScreenProjectionPaintParams;
+			const double StartDepth = FVector3d::DotProduct(TargetStart.WorldPos - Params.ViewOrigin, Params.ViewForward);
+			const double EndDepth = FVector3d::DotProduct(TargetEnd.WorldPos - Params.ViewOrigin, Params.ViewForward);
+			const double ViewDepth = FMath::Lerp(StartDepth, EndDepth, static_cast<double>(AlongAlpha));
+			const double ScreenX = OutSample.ScreenPosition.X - static_cast<double>(Params.ScreenOffset.X);
+			const double ScreenY = OutSample.ScreenPosition.Y - static_cast<double>(Params.ScreenOffset.Y);
+			const double ViewX = Params.bOrthographic
+				? ScreenX / FMath::Max(static_cast<double>(Params.ProjectionScale.X), KINDA_SMALL_NUMBER)
+				: (ScreenX / FMath::Max(static_cast<double>(Params.ProjectionScale.X), KINDA_SMALL_NUMBER)) * ViewDepth;
+			const double ViewY = Params.bOrthographic
+				? -ScreenY / FMath::Max(static_cast<double>(Params.ProjectionScale.Y), KINDA_SMALL_NUMBER)
+				: (-ScreenY / FMath::Max(static_cast<double>(Params.ProjectionScale.Y), KINDA_SMALL_NUMBER)) * ViewDepth;
+			OutSample.WorldPos =
+				Params.ViewOrigin +
+				Params.ViewForward * ViewDepth +
+				Params.ViewRight * ViewX +
+				Params.ViewUp * ViewY;
+		}
+		OutSample.UV = FMath::Lerp(TargetStart.UV, TargetEnd.UV, AlongAlpha);
+		OutSample.LocalUVScale = FMath::Lerp(TargetStart.LocalUVScale, TargetEnd.LocalUVScale, AlongAlpha);
+		OutSample.TriangleID = AlongAlpha < 0.5f ? TargetStart.TriangleID : TargetEnd.TriangleID;
+		OutSample.PaintChartID = INDEX_NONE;
+		OutSample.RayOrigin = FMath::Lerp(TargetStart.RayOrigin, TargetEnd.RayOrigin, static_cast<double>(AlongAlpha));
+		OutSample.RayDirection = FMath::Lerp(TargetStart.RayDirection, TargetEnd.RayDirection, static_cast<double>(AlongAlpha)).GetSafeNormal();
+		return OutSample;
+	}
+
 	const FVector2f SourceAxis = SourceEnd.UV - SourceStart.UV;
 	const FVector2f TargetAxis = TargetEnd.UV - TargetStart.UV;
 	const float SourceLength = SourceAxis.Size();
@@ -948,8 +1099,16 @@ void UQuickSDFPaintTool::BeginBrushResizeMode()
 	if (!bBrushResizeTransactionOpen)
 	{
 		GetToolManager()->BeginUndoTransaction(LOCTEXT("QuickSDFBrushResizeTransaction", "Quick SDF Change Brush Radius"));
-		BrushProperties->SetFlags(RF_Transactional);
-		BrushProperties->Modify();
+		if (Properties && GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection)
+		{
+			Properties->SetFlags(RF_Transactional);
+			Properties->Modify();
+		}
+		else
+		{
+			BrushProperties->SetFlags(RF_Transactional);
+			BrushProperties->Modify();
+		}
 		bBrushResizeTransactionOpen = true;
 	}
 	bAdjustingBrushRadius = true;
@@ -957,7 +1116,9 @@ void UQuickSDFPaintTool::BeginBrushResizeMode()
 	BrushResizeStartScreenPosition = CurrentCursorPosition;
 	BrushResizeStartAbsolutePosition = CurrentCursorPosition;
 	BrushResizeStartStamp = LastBrushStamp;
-	BrushResizeStartRadius = BrushProperties->BrushRadius;
+	BrushResizeStartRadius = Properties && GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection
+		? GetScreenProjectionBrushRadiusPixels()
+		: BrushProperties->BrushRadius;
 	bBrushResizeHadVisibleStamp = BrushStampIndicator && BrushStampIndicator->bVisible;
 	if (BrushStampIndicator && bBrushResizeHadVisibleStamp)
 	{
@@ -970,7 +1131,22 @@ void UQuickSDFPaintTool::UpdateBrushResizeFromCursor()
 	if (!bAdjustingBrushRadius || !BrushProperties) return;
 	LastInputScreenPosition = FSlateApplication::Get().GetCursorPos();
 	const FVector2D Delta = ConvertInputScreenToCanvasSpace(LastInputScreenPosition) - ConvertInputScreenToCanvasSpace(BrushResizeStartScreenPosition);
-	const float NewRadius = FMath::Max(0.1f, BrushResizeStartRadius + (Delta.X * FMath::Max(BrushResizeSensitivity, QuickSDFMinResizeSensitivity)));
+	const bool bResizeScreenProjectionBrush = Properties && GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection;
+	const float NewRadius = FMath::Max(bResizeScreenProjectionBrush ? 1.0f : 0.1f, BrushResizeStartRadius + (Delta.X * FMath::Max(BrushResizeSensitivity, QuickSDFMinResizeSensitivity)));
+	if (bResizeScreenProjectionBrush)
+	{
+		if (!Properties || FMath::IsNearlyEqual(Properties->ScreenProjectionBrushRadiusPixels, NewRadius, KINDA_SMALL_NUMBER))
+		{
+			return;
+		}
+		Properties->SetFlags(RF_Transactional);
+		Properties->Modify();
+		Properties->ScreenProjectionBrushRadiusPixels = NewRadius;
+		LastBrushStamp.Radius = NewRadius;
+		NotifyOfPropertyChangeByTool(Properties);
+		return;
+	}
+
 	if (FMath::IsNearlyEqual(BrushProperties->BrushRadius, NewRadius, KINDA_SMALL_NUMBER))
 	{
 		return;
@@ -1240,9 +1416,13 @@ void UQuickSDFPaintTool::OnBeginDrag(const FRay& Ray)
 	if (bHasSample) {
 		if (BrushStampIndicator)
 		{
-			BrushStampIndicator->bVisible = true;
+			BrushStampIndicator->bVisible = !ShouldUseScreenProjectionPaint();
 		}
 		UpdateBrushStampIndicator();
+		if (ShouldUseScreenProjectionPaint())
+		{
+			InitializeScreenProjectionPaintFrame(StartSample);
+		}
 		BeginStrokeTransaction(); 
 		FilteredStrokeSample = StartSample;
 		bHasFilteredStrokeSample = true;
@@ -1306,7 +1486,7 @@ void UQuickSDFPaintTool::OnUpdateDrag(const FRay& Ray)
 		{
 			UTextureRenderTarget2D* RT = GetActiveRenderTarget();
 			const double MinQuickLineSourceSpacing = RT
-				? (ShouldUseSurfaceSpacePaint()
+				? (ShouldUseProjectedSurfacePaint()
 					? FMath::Max(GetCurrentStrokeSpacing(RT) * 0.5, GetEffectiveBrushRadius() * 0.05)
 					: FMath::Max(GetCurrentStrokeSpacing(RT) * 0.5, 1.0))
 				: 0.0;
@@ -1331,7 +1511,7 @@ void UQuickSDFPaintTool::OnEndDrag(const FRay& Ray)
 		return;
 	}
 
-	if (ShouldUseSurfaceSpacePaint())
+	if (ShouldUseAnySurfaceProjectionPaint())
 	{
 		EndStrokeTransaction();
 		PointBuffer.Empty();
@@ -1545,11 +1725,19 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
 	if (!RT) return;
 
-	if (ShouldUseSurfaceSpacePaint())
+	if (ShouldUseAnySurfaceProjectionPaint())
 	{
 		FIntRect BatchDirtyRect;
 		bool bHasBatchDirtyRect = false;
-		if (Samples.Num() > 1)
+		if (ShouldUseScreenProjectionPaint())
+		{
+			if (PaintScreenProjectionStrokeToRenderTarget(RT, Samples, &BatchDirtyRect) &&
+				BatchDirtyRect.Width() > 0 && BatchDirtyRect.Height() > 0)
+			{
+				bHasBatchDirtyRect = true;
+			}
+		}
+		else if (Samples.Num() > 1)
 		{
 			if (PaintSurfacePolylineToRenderTarget(RT, Samples, &BatchDirtyRect) &&
 				BatchDirtyRect.Width() > 0 && BatchDirtyRect.Height() > 0)
@@ -1646,9 +1834,11 @@ void UQuickSDFPaintTool::AppendStrokeSample(const FQuickSDFStrokeSample& Sample)
 
 	if (PointBuffer.Num() > 0)
 	{
-		const bool bDuplicateSample = ShouldUseSurfaceSpacePaint()
+		const bool bDuplicateSample = ShouldUseProjectedSurfacePaint()
 			? FVector3d::DistSquared(PointBuffer.Last().WorldPos, Sample.WorldPos) < 1e-8
-			: FVector2f::DistSquared(PointBuffer.Last().UV, Sample.UV) < 1e-12f;
+			: (ShouldUseScreenProjectionPaint()
+				? FVector2D::DistSquared(PointBuffer.Last().ScreenPosition, Sample.ScreenPosition) < 1e-8
+				: FVector2f::DistSquared(PointBuffer.Last().UV, Sample.UV) < 1e-12f);
 		if (bDuplicateSample)
 		{
 			return;
@@ -1930,6 +2120,7 @@ void UQuickSDFPaintTool::ResetStrokeState()
 	WorldPosFilter.Reset();
 	UVFilter.Reset();
 	bHasLastStampedSample = false;
+	bHasActiveScreenProjectionPaintParams = false;
 	bHasFilteredStrokeSample = false;
 	DistanceSinceLastStamp = 0.0;
 	ActiveStrokeInputMode = EQuickSDFStrokeInputMode::None;

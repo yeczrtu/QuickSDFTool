@@ -291,6 +291,40 @@ void UQuickSDFPaintTool::DrawQuickLineHUDPreview(FCanvas* Canvas)
 	}
 }
 
+void UQuickSDFPaintTool::DrawScreenProjectionBrushHUD(FCanvas* Canvas)
+{
+	if (!Canvas || !Properties ||
+		GetMeshPaintMode() != EQuickSDFMeshPaintMode::ScreenProjection ||
+		ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ||
+		IsInPreviewBounds(LastInputScreenPosition))
+	{
+		return;
+	}
+
+	const FVector2D Center = ConvertInputScreenToCanvasSpace(LastInputScreenPosition);
+	const float DPIScale = FMath::Max(FPlatformApplicationMisc::GetDPIScaleFactorAtPoint(LastInputScreenPosition.X, LastInputScreenPosition.Y), 1.0f);
+	const double Radius = static_cast<double>(GetScreenProjectionBrushRadiusPixels()) / static_cast<double>(DPIScale);
+	if (Radius <= 0.0)
+	{
+		return;
+	}
+
+	const FLinearColor CircleColor(0.0f, 1.0f, 0.0f, 0.95f);
+	const int32 SegmentCount = 64;
+	FVector2D PreviousPoint = Center + FVector2D(Radius, 0.0);
+	for (int32 SegmentIndex = 1; SegmentIndex <= SegmentCount; ++SegmentIndex)
+	{
+		const double Angle = (static_cast<double>(SegmentIndex) / static_cast<double>(SegmentCount)) * 2.0 * PI;
+		const FVector2D Point = Center + FVector2D(FMath::Cos(Angle) * Radius, FMath::Sin(Angle) * Radius);
+		FCanvasLineItem Line(PreviousPoint, Point);
+		Line.SetColor(CircleColor);
+		Line.BlendMode = SE_BLEND_Translucent;
+		Line.LineThickness = 2.0f;
+		Canvas->DrawItem(Line);
+		PreviousPoint = Point;
+	}
+}
+
 void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI)
 {
     Super::DrawHUD(Canvas, RenderAPI);
@@ -421,6 +455,7 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
     }
 
 	DrawQuickLineHUDPreview(Canvas);
+	DrawScreenProjectionBrushHUD(Canvas);
 
 	const FString PaintModeLabel = IsPaintingShadow() ? TEXT("Shadow") : TEXT("Light");
 	const FString MeshLabel = CurrentComponent.IsValid()
@@ -455,7 +490,10 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
 
 	if (bAdjustingBrushRadius)
 	{
-		FCanvasTextItem RadiusText(FVector2D(10.0f, 309.0f), FText::FromString(FString::Printf(TEXT("Brush Radius: %.1f"), BrushProperties ? BrushProperties->BrushRadius : 0.0f)), GEngine->GetSmallFont(), FLinearColor::Yellow);
+		const FString RadiusLabel = GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection
+			? FString::Printf(TEXT("Screen Brush Radius: %.0f px"), GetScreenProjectionBrushRadiusPixels())
+			: FString::Printf(TEXT("Brush Radius: %.1f"), BrushProperties ? BrushProperties->BrushRadius : 0.0f);
+		FCanvasTextItem RadiusText(FVector2D(10.0f, 309.0f), FText::FromString(RadiusLabel), GEngine->GetSmallFont(), FLinearColor::Yellow);
 		RadiusText.EnableShadow(FLinearColor::Black);
 		Canvas->DrawItem(RadiusText);
 	}
