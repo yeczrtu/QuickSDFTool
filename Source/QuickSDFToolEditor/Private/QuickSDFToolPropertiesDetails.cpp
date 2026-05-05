@@ -974,8 +974,6 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		]
 	];
 
-	AddPropertyIfValid(QuickCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, BakeAngleOffsetDegrees)));
-
 	QuickCategory.AddCustomRow(LOCTEXT("MeshPaintModeFilter", "Mesh Paint Mode UV Surface Screen"))
 	.WholeRowContent()
 	[
@@ -1020,6 +1018,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		]
 	];
 
+	AddPropertyIfValid(QuickCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, BakeAngleOffsetDegrees)));
 	AddPropertyIfValid(QuickCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, QualityPreset)));
 
 	QuickCategory.AddCustomRow(LOCTEXT("QuickActionsFilter", "Create Threshold Map Generate SDF File Import Assets Export Assets Export Files Overwrite Source Fill White Fill Black"))
