@@ -27,15 +27,6 @@ https://github.com/user-attachments/assets/7eec2890-be31-4cbc-9662-756b6e84c620
 | ![Quick SDF timeline controls and keyframes](docs/images/quick-sdf-timeline.png) | ![Generated SDF threshold texture preview](docs/images/quick-sdf-sdf-preview.png) |
 | Timeline は seek と keyframe 操作を分け、サムネイル、角度ラベル、編集ボタンを見える状態に保ちます。 | 生成された SDF threshold texture をトゥーンマテリアルの影位置制御に使います。 |
 
-
-基本ワークフローは次の通りです。
-
-```mermaid
-flowchart LR
-    A["ライト角度ごとに<br>マスクをペイント"] --> B["SDF<br>スレッショルドマップ生成"]
-    B --> C["トゥーンシェーダーの<br>影位置を制御"]
-```
-
 ## サポート対象機能
 
 - `Quick SDF` という専用 UE5 エディターモード。

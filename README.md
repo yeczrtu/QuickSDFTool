@@ -29,16 +29,6 @@ Current workflow screenshots:
 | ![Quick SDF timeline controls and keyframes](docs/images/quick-sdf-timeline.png) | ![Generated SDF threshold texture preview](docs/images/quick-sdf-sdf-preview.png) |
 | The timeline separates seek and keyframe interaction while keeping thumbnails, angle labels, and edit controls visible. | Generated SDF threshold textures drive toon-material shadow placement. |
 
-
-
-The intended workflow is:
-
-```mermaid
-flowchart LR
-    A["Paint masks<br>per light angle"] --> B["Generate SDF<br>threshold map"]
-    B --> C["Drive toon shader<br>shadow placement"]
-```
-
 ## Supported Features
 
 - Dedicated UE5 Editor Mode named `Quick SDF`.
