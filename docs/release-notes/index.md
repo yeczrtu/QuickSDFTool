@@ -9,6 +9,10 @@ permalink: /release-notes/
 Use the release notes to confirm tested Unreal Engine versions, upgrade notes, known limitations, and recommended release assets.
 
 <div class="release-grid">
+  <a class="release-card" href="{{ '/release-notes/v1.0.1/' | relative_url }}">
+    <strong>v1.0.1</strong>
+    <span>Patch release with Screen mode brush alignment/focus fixes and documentation cleanup.</span>
+  </a>
   <a class="release-card" href="{{ '/release-notes/v1.0.0/' | relative_url }}">
     <strong>v1.0.0</strong>
     <span>Stable UE 5.7.x baseline and packaged Win64 plugin release.</span>
