@@ -29,6 +29,8 @@ Current workflow screenshots:
 | ![Quick SDF timeline controls and keyframes](docs/images/quick-sdf-timeline.png) | ![Generated SDF threshold texture preview](docs/images/quick-sdf-sdf-preview.png) |
 | The timeline separates seek and keyframe interaction while keeping thumbnails, angle labels, and edit controls visible. | Generated SDF threshold textures drive toon-material shadow placement. |
 
+Screenshot character model credit: [真冬 Mafuyu / Original 3D Model](https://booth.pm/ja/items/5007531) by ぷらすわん. Character design and 3D modeling: 有坂みと.
+
 ## Supported Features
 
 - Dedicated UE5 Editor Mode named `Quick SDF`.

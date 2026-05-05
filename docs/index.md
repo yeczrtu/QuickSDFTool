@@ -32,6 +32,8 @@ The current documentation captures show the main v1.0 workflow from slot selecti
 | ![Quick SDF timeline controls and keyframes]({{ '/images/quick-sdf-timeline.png' | relative_url }}) | ![Generated SDF threshold texture preview]({{ '/images/quick-sdf-sdf-preview.png' | relative_url }}) |
 | Timeline thumbnails, angle labels, and keyframe controls stay visible while seeking or dragging keys. | The generated SDF threshold texture is the map consumed by toon materials. |
 
+Screenshot character model credit: [真冬 Mafuyu / Original 3D Model](https://booth.pm/ja/items/5007531) by ぷらすわん. Character design and 3D modeling: 有坂みと.
+
 ## Start Here
 
 <div class="doc-grid">
