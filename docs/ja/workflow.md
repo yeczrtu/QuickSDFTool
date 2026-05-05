@@ -1,0 +1,118 @@
+---
+title: Authoring Workflow
+description: QuickSDFTool の Select、Paint、Material Slots、Timeline、Symmetry、Monotonic Guard、SDF 生成ワークフロー。
+permalink: /ja/workflow/
+lang: ja
+alternate_url: /workflow/
+alternate_label: English
+---
+
+# Authoring Workflow
+
+QuickSDFTool は、1 つの material slot を選び、その slot 向けの明暗マスクを複数角度で作成し、最後にトゥーンシェーダー用の threshold texture を生成する流れを中心に設計しています。
+
+## ワークフロースクリーンショット
+
+| Select active slot | Screen mode での Paint |
+| --- | --- |
+| ![Select mode active material slot overlay]({{ '/images/quick-sdf-select-active-slot.png' | relative_url }}) | ![Paint mode with Screen projection brush preview]({{ '/images/quick-sdf-paint-screen-mode.png' | relative_url }}) |
+| Select mode はメッシュ全体を表示したまま、選択行と cyan viewport overlay で active material slot を示します。 | Paint mode は Screen projection、ブラシプレビュー、UV texture preview、active slot context を表示します。 |
+
+| Timeline | SDF output |
+| --- | --- |
+| ![Quick SDF timeline controls and keyframes]({{ '/images/quick-sdf-timeline.png' | relative_url }}) | ![Generated SDF threshold texture preview]({{ '/images/quick-sdf-sdf-preview.png' | relative_url }}) |
+| Timeline はサムネイル、角度ラベル、keyframe controls を表示したまま seek や key drag を扱います。 | 生成された SDF threshold texture がトゥーンマテリアルで使うマップです。 |
+
+スクリーンショット内キャラクターモデル: [真冬 Mafuyu / オリジナル3Dモデル](https://booth.pm/ja/items/5007531)（ぷらすわん）。キャラクターデザイン / 3Dモデリング: 有坂みと。
+
+## 操作方法
+
+| 入力 | アクション |
+| --- | --- |
+| `LMB Drag` | 白 / ライトをペイント |
+| `Shift + LMB Drag` | 黒 / 影をペイント |
+| Select mode の `Viewport Mesh / Material Click` | target mesh component とクリックした material slot を選択 |
+| `Start Paint` | 選択中の target mesh と material slot で Paint mode に入る |
+| Paint mode の `F` | 現在のブラシ位置へフォーカス。ブラシヒットがない場合は UE 標準の選択フォーカスへフォールバック |
+| `Ctrl + F`, マウス移動, クリック | マウスがビューポート上にあるときだけブラシサイズを変更 |
+| `Alt + T` | クイックトグルメニューを開く |
+| `Alt + 1` | Paint Target モードを切り替え |
+| `Alt + 2` - `Alt + 8` | Auto Light、Preview、UV overlay、Onion Skin、Quick Stroke、Symmetry、Monotonic Guard を切り替え |
+| `Left / Right Arrow` | 前 / 次のタイムラインフレームを選択 |
+| `Material Slot Row Click` | 編集する material slot / Texture Set を選択または補正 |
+| `Material Slot Bake Icon` | その slot だけを Bake |
+| `Timeline Seek Lane Click / Drag` | キーフレームを動かさずにプレビューライト角度をシーク |
+| `Timeline Key Click` | 角度を選択 |
+| `Timeline Key Drag` | ドラッグしきい値を超えたあとに角度を調整。シークカーソルとプレビューライトも追従 |
+| `Timeline Status Badge Hover` | 角度、テクスチャ、編集状態、Paint Target 範囲、Guard、上書き可否、警告内容を確認 |
+| `Timeline Add / Duplicate / Delete` | キーフレームを作成、コピー、削除 |
+| `Timeline 8 or 15 / Even` | 標準マスク数へ補完、または角度を均等配置 |
+| `Texture2D` アセットをタイムラインへドラッグ | 編集済みマスクをインポート |
+| `Ctrl + Z / Ctrl + Y` | Undo / Redo |
+
+## Select と Material Slots
+
+`Quick SDF > Material Slots` は、アーティストが 1 つの material slot を選んで編集する作業に合わせています。
+
+- Select mode は非破壊で開始し、メッシュ全体を表示したまま、選択なし入場時は古い target を消します。
+- ビューポート上のメッシュ面をクリックすると、target mesh component とヒットした material slot が同時に選択されます。
+- 行クリックで対応する Texture Set と paint / bake 対象を選択または補正できます。
+- Select mode では cyan viewport overlay で active slot を示し、対象外 slot を隠しません。
+- Paint mode は **Isolate Slot** が既定でオンの状態から始まります。オフにすると全体表示へ戻りますが、選択中 slot は引き続き paint target です。
+- ペイントのピックとストロークサンプリングは選択中 slot を編集フィルターとして使うため、非対象 slot が active slot のヒットを奪いません。
+- 各行には slot 番号、slot 名、material 名、`Selected` / `Baked` / `Empty` などのステータスを表示します。
+- 行右端のアクションはその slot だけを Bake し、元シェーディングマスクの bake scope として選択中 slot を使います。
+- 表示行は現在の mesh component から毎回再構築されるため、target 切り替え後に古い `Missing` 行が残りません。
+
+## Painting
+
+- Static Mesh / Skeletal Mesh component へ直接ペイントできます。PhysicsAsset がない Skeletal Mesh も選択対象です。
+- 既定の paint mode は Screen projection です。現在のカメラから顔や髪の影を直接作る用途に向いています。
+- Surface と UV 系の paint workflow も、mesh-space / texture-space の作業向けに利用できます。
+- 2D UV preview は texture-space の調整、UV guide、onion skinning に対応します。
+- Brush input は Lazy Radius、細かい stamp spacing、antialiased brush mask、tablet 向けの筆圧半径に対応します。
+- `F` は有効な brush hit がある場合に現在位置へフォーカスします。無効な場合は UE 標準の選択フォーカスへフォールバックします。
+
+## Timeline と Paint Target
+
+Timeline は、シーク操作と keyframe 操作の誤操作を減らすため、2 つの lane に分かれています。
+
+- 上段の seek lane だけがクリック / ドラッグによる preview angle のシークを処理します。
+- 下段の keyframe lane には thumbnails と key handles を配置します。keyframe はクリックで選択され、drag threshold を超えた場合だけ移動します。
+- keyframe をドラッグすると seek cursor と preview light も即時更新されます。
+- `Current`、`All`、`Before`、`After` の Paint Target 範囲ハイライトを表示します。表示範囲は隣接角度の中点から計算するため、実際に編集される mask 範囲と一致します。
+- key status badge は hit-test invisible で、選択、drag、import、seek の邪魔をしません。
+- `8` / `15` と `Even` は、標準 mask set の補完または角度の均等配置を行います。Symmetry mode では 8 masks、非 symmetry mode では 15 masks へ補完します。
+
+## Symmetry Modes
+
+QuickSDFTool の SDF 生成には 4 つのモードがあります。
+
+- `Auto`: 顔ペイント向けの既定モードです。対象 mesh、UV channel、material slot を解析し、Texture Flip または UV Island Channel Flip を選びます。
+- `Off`: 0-180 度の全範囲を通常通りペイントします。
+- `Texture Flip`: 0-90 度だけをペイントし、90-180 度側は texture 全体を反転して生成します。
+- `UV Island Channel Flip`: 0-90 度だけをペイントし、90-180 度側は UV island 単位で island-local mirror sampling により生成します。
+
+`UV Island Channel Flip` は、左右の UV island が別々でも形状として mirror 関係にある asset 向けです。位置、スケール、軽い形状差は normalized island-local 変換で吸収しますが、非線形の per-island warp は行いません。曖昧、未ペア、重なり、0-1 外 UV などは source 側の値コピーへフォールバックし、warning を残します。
+
+生成 texture は通常の 0-180 layout と同じ shader path で読めます。内部の combined field は `R/G/B/A` として扱い、最終出力時に R/A/B/G swizzle (`R <- R`, `G <- A`, `B <- B`, `A <- G`) を行います。
+
+## Monotonic Guard
+
+`Monotonic Guard` は、SDF threshold mask 向けの任意の paint-time safety check です。`R >= 127` を白、それ未満を黒として扱い、処理対象の角度列で `black -> white -> black` や `white -> black -> white` のような複数回反転が生まれないようにします。
+
+- quick toggle 上の表示名は `Guard`、shortcut は `Alt + 8` です。
+- `Clip Direction` の標準は `Auto` です。`0-90` 度では `White Expands`、`90-180` 度では `White Shrinks` として扱います。
+- 通常 brush と Quick Stroke は、Undo 差分が確定する前に silent に clip されます。
+- antialiased edge も stroke intent として扱うため、`127` の binary threshold をまたがない場合も clip 対象になります。
+- `Current / All / Before / After` は、どの mask へ stroke を書き込むかを決めます。
+- Import、rebake、SDF generation は自動修正されません。既存違反は validation または Guard 有効状態での SDF generation 時に warning として確認できます。
+
+## Mask I/O と SDF 生成
+
+- Mask import は file picker と timeline drag-and-drop に対応します。
+- Mask export により、外部編集やレビューができます。
+- 作業状態は非破壊の `UQuickSDFAsset` に保存され、必要に応じて mask texture も保存できます。
+- SDF generation は CPU 処理で、Monopolar / Bipolar 自動 packing、1x-8x upscaling、R/A/B/G output swizzling、half-float texture export に対応します。
+- 生成 map は既定で `/Game/QuickSDF_GENERATED/` に保存されます。
+- shader integration の詳細は [Material Setup]({{ '/material-setup/' | relative_url }}) を参照してください。

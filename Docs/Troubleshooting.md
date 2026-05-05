@@ -27,6 +27,21 @@ Brush size can appear inconsistent when UV density varies strongly across the me
 - Use the 2D UV preview for precise edits.
 - Avoid judging brush behavior on heavily stretched UV islands until the UV brush-size item is addressed.
 
+## Pen Display Or Tablet Strokes Connect From The Previous Hit
+
+On some pen displays and tablets, hover movement while the pen is lifted may not update the brush position. The next painted stroke can then start from the previous brush hit and create an unintended connecting segment.
+
+- Move the pen over the target area until the brush preview updates before starting a stroke.
+- Prefer Screen mode for camera-facing edits where the brush preview is easier to confirm.
+- If this reproduces consistently, include the tablet model, driver version, monitor DPI scale, and whether the issue happens in Screen, Surface, or UV mode when reporting it.
+
+## GPU JFA Generation Is Not Used In v1.0
+
+GPU JFA shader files exist in the repository, but the v1.0 user-facing generation flow uses the CPU `FSDFProcessor` path.
+
+- Use the CPU path for release-facing work.
+- Treat GPU JFA as future work until a release note explicitly enables it.
+
 ## UE 5.4 / 5.5 / 5.6 Build Issues
 
 QuickSDFTool v1.0 supports UE 5.7.x, with UE 5.7.4 as the required release verification target. Earlier versions may need source edits around editor tooling, modeling components, material baking, or shader module setup. UE 5.8+ is intended to be supported, but is not part of the v1.0 release verification matrix.

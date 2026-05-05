@@ -37,6 +37,10 @@ Screenshot character model credit: [真冬 Mafuyu / Original 3D Model](https://b
 ## Start Here
 
 <div class="doc-grid">
+  <a class="doc-card" href="{{ '/workflow/' | relative_url }}">
+    <strong>Authoring Workflow</strong>
+    <span>Learn Select, Paint, Material Slots, timeline, symmetry, Guard, import/export, and SDF generation.</span>
+  </a>
   <a class="doc-card" href="{{ '/material-setup/' | relative_url }}">
     <strong>Material Setup</strong>
     <span>Connect generated threshold maps to toon and cel-shading materials.</span>
@@ -48,6 +52,14 @@ Screenshot character model credit: [真冬 Mafuyu / Original 3D Model](https://b
   <a class="doc-card" href="{{ '/release-notes/' | relative_url }}">
     <strong>Release Notes</strong>
     <span>Review tested Unreal Engine versions, upgrade notes, and release assets.</span>
+  </a>
+  <a class="doc-card" href="{{ '/roadmap/' | relative_url }}">
+    <strong>Roadmap</strong>
+    <span>Review post-1.0 priorities and planned feature requirements.</span>
+  </a>
+  <a class="doc-card" href="{{ '/development/' | relative_url }}">
+    <strong>Development Notes</strong>
+    <span>Inspect architecture, verification, and repository maintenance notes.</span>
   </a>
 </div>
 
