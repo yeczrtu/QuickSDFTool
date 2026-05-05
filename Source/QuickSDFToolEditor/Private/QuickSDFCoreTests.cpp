@@ -1,6 +1,7 @@
 #include "QuickSDFAsset.h"
 #include "QuickSDFMaskImportModel.h"
 #include "QuickSDFPaintToolPrivate.h"
+#include "QuickSDFTextureSetSync.h"
 #include "QuickSDFToolProperties.h"
 #include "QuickSDFTimelineStatus.h"
 #include "SDFProcessor.h"
@@ -26,6 +27,18 @@ bool FQuickSDFDefaultAngleCountTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Compact toggle off selects full 0-180 painting"), static_cast<uint8>(DefaultProperties->SymmetryMode), static_cast<uint8>(EQuickSDFSymmetryMode::None180));
 	DefaultProperties->SetSymmetryEnabled(true);
 	TestEqual(TEXT("Compact toggle on returns to Auto"), static_cast<uint8>(DefaultProperties->SymmetryMode), static_cast<uint8>(EQuickSDFSymmetryMode::Auto));
+
+	TestEqual(TEXT("Zero bake offset preserves 0 degrees"), DefaultProperties->GetMaterialAngle(0.0f), 0.0f);
+	TestEqual(TEXT("Zero bake offset preserves 90 degrees"), DefaultProperties->GetMaterialAngle(90.0f), 90.0f);
+
+	DefaultProperties->BakeAngleOffsetDegrees = 20.0f;
+	TestTrue(TEXT("0-90 offset maps 0 degrees to negative offset"), FMath::IsNearlyEqual(DefaultProperties->GetMaterialAngle(0.0f), -20.0f));
+	TestTrue(TEXT("0-90 offset keeps 90 degrees fixed"), FMath::IsNearlyEqual(DefaultProperties->GetMaterialAngle(90.0f), 90.0f));
+
+	DefaultProperties->SetSymmetryEnabled(false);
+	TestTrue(TEXT("0-180 offset maps 0 degrees to negative offset"), FMath::IsNearlyEqual(DefaultProperties->GetMaterialAngle(0.0f), -20.0f));
+	TestTrue(TEXT("0-180 offset keeps 90 degrees fixed"), FMath::IsNearlyEqual(DefaultProperties->GetMaterialAngle(90.0f), 90.0f));
+	TestTrue(TEXT("0-180 offset expands 180 degrees above the authored range"), FMath::IsNearlyEqual(DefaultProperties->GetMaterialAngle(180.0f), 200.0f));
 	return true;
 }
 
@@ -392,6 +405,19 @@ bool FQuickSDFAssetMigrationTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Active texture set owns the UV channel"), Asset->GetActiveUVChannel(), 2);
 	TestEqual(TEXT("Active texture set owns the angle data"), Asset->GetActiveAngleDataList().Num(), 2);
 	TestEqual(TEXT("Legacy mirror remains available after migration"), Asset->AngleDataList.Num(), 2);
+	TestEqual(TEXT("Migrated texture set starts with zero bake angle offset"), Asset->TextureSets[0].BakeAngleOffsetDegrees, 0.0f);
+
+	Asset->TextureSets[0].BakeAngleOffsetDegrees = 15.0f;
+	UQuickSDFToolProperties* Properties = NewObject<UQuickSDFToolProperties>();
+	QuickSDFTextureSetSync::SyncPropertiesFromActiveAsset(Properties, Asset);
+	TestEqual(TEXT("Active texture set sync copies bake angle offset"), Properties->BakeAngleOffsetDegrees, 15.0f);
+
+	FQuickSDFTextureSetData& SecondTextureSet = Asset->TextureSets.AddDefaulted_GetRef();
+	SecondTextureSet.MaterialSlotIndex = 1;
+	SecondTextureSet.BakeAngleOffsetDegrees = 25.0f;
+	Asset->ActiveTextureSetIndex = 1;
+	QuickSDFTextureSetSync::SyncPropertiesFromActiveAsset(Properties, Asset);
+	TestEqual(TEXT("Texture set sync reads the selected slot offset"), Properties->BakeAngleOffsetDegrees, 25.0f);
 #if WITH_EDITORONLY_DATA
 	TestNull(TEXT("Migrated legacy asset has no intermediate texture until SDF is regenerated"), Asset->TextureSets[0].IntermediateSDFTexture);
 	TestEqual(TEXT("Intermediate metadata defaults to current schema"), Asset->TextureSets[0].IntermediateMetadata.SchemaVersion, 1);

@@ -2875,6 +2875,10 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 					// 譁ｰ縺励＞繧｢繧ｻ繝・ヨ縺ｮ蛟､繧旦I縺ｫ繝ｭ繝ｼ繝・
 					Properties->Resolution = ActiveAsset->GetActiveResolution();
 					Properties->UVChannel = ActiveAsset->GetActiveUVChannel();
+					if (const FQuickSDFTextureSetData* ActiveSet = ActiveAsset->GetActiveTextureSet())
+					{
+						Properties->BakeAngleOffsetDegrees = FMath::Clamp(ActiveSet->BakeAngleOffsetDegrees, 0.0f, 90.0f);
+					}
 					Properties->NumAngles = ActiveAsset->GetActiveAngleDataList().Num();
 					Properties->TargetAngles.SetNum(Properties->NumAngles);
 					Properties->TargetTextures.SetNum(Properties->NumAngles);
@@ -2971,6 +2975,20 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 				MarkMasksChanged();
 			}//TODO:蠕後°繧峨ユ繧ｯ繧ｹ繝√Ε繧定ｿｽ蜉縺吶ｋ蜃ｦ逅・ｒ螳溯｣・☆繧・
 			// 隗｣蜒丞ｺｦ縺ｮ蜷梧悄 窶・FIntPoint 縺ｮ繧ｵ繝悶・繝ｭ繝代ユ繧｣ (X, Y) 螟画峩繧よ､懷・縺吶ｋ縺溘ａ縲∝錐蜑阪〒縺ｯ縺ｪ縺丞､縺ｮ蟾ｮ蛻・〒蛻､螳・
+			if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, BakeAngleOffsetDegrees))
+			{
+				Properties->BakeAngleOffsetDegrees = FMath::Clamp(Properties->BakeAngleOffsetDegrees, 0.0f, 90.0f);
+				if (FQuickSDFTextureSetData* ActiveSet = ActiveAsset->GetActiveTextureSet())
+				{
+					ActiveAsset->Modify();
+					ActiveSet->BakeAngleOffsetDegrees = Properties->BakeAngleOffsetDegrees;
+					ActiveSet->bDirty = true;
+					ActiveAsset->MarkPackageDirty();
+				}
+				RefreshPreviewMaterial();
+				++MaskRevision;
+			}
+
 			if (ActiveAsset->GetActiveResolution() != Properties->Resolution)
 			{
 				Properties->Resolution.X = FMath::Max(Properties->Resolution.X, 1);

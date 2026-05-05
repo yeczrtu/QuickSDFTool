@@ -974,6 +974,8 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		]
 	];
 
+	AddPropertyIfValid(QuickCategory, DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, BakeAngleOffsetDegrees)));
+
 	QuickCategory.AddCustomRow(LOCTEXT("MeshPaintModeFilter", "Mesh Paint Mode UV Surface Screen"))
 	.WholeRowContent()
 	[

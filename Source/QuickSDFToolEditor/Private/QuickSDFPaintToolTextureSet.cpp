@@ -221,6 +221,7 @@ void UQuickSDFPaintTool::SyncActiveTextureSetFromProperties()
 	ActiveSet = Asset->GetActiveTextureSet();
 	if (ActiveSet)
 	{
+		ActiveSet->BakeAngleOffsetDegrees = FMath::Clamp(Properties->BakeAngleOffsetDegrees, 0.0f, 90.0f);
 		ActiveSet->bDirty = true;
 	}
 }

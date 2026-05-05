@@ -119,6 +119,25 @@ float UQuickSDFToolProperties::GetPaintMaxAngle() const
 	return UsesFrontHalfAngles() ? 90.0f : 180.0f;
 }
 
+float UQuickSDFToolProperties::GetMaterialAngle(float AuthoredAngle) const
+{
+	constexpr float PivotAngle = 90.0f;
+	const float SafeOffset = FMath::Clamp(BakeAngleOffsetDegrees, 0.0f, 90.0f);
+	if (FMath::IsNearlyZero(SafeOffset))
+	{
+		return AuthoredAngle;
+	}
+
+	if (UsesFrontHalfAngles() || AuthoredAngle <= PivotAngle)
+	{
+		const float Alpha = AuthoredAngle / PivotAngle;
+		return -SafeOffset + Alpha * (PivotAngle + SafeOffset);
+	}
+
+	const float Alpha = (AuthoredAngle - PivotAngle) / PivotAngle;
+	return PivotAngle + Alpha * (PivotAngle + SafeOffset);
+}
+
 void UQuickSDFToolProperties::SetSymmetryMode(EQuickSDFSymmetryMode NewMode)
 {
 	SymmetryMode = NewMode;

@@ -137,6 +137,9 @@ public:
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings")
 	bool bAutoSyncLight = true;
 
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Target Settings", meta = (DisplayName = "Bake Angle Offset", ClampMin = "0.0", ClampMax = "90.0", UIMin = "0.0", UIMax = "90.0"))
+	float BakeAngleOffsetDegrees = 0.0f;
+
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint Target Mode"))
 	EQuickSDFPaintTargetMode PaintTargetMode = EQuickSDFPaintTargetMode::CurrentOnly;
 
@@ -316,6 +319,7 @@ public:
 	bool UsesWholeTextureSymmetry() const;
 	bool UsesIslandChannelSymmetry() const;
 	float GetPaintMaxAngle() const;
+	float GetMaterialAngle(float AuthoredAngle) const;
 	void SetSymmetryMode(EQuickSDFSymmetryMode NewMode);
 	void SetSymmetryEnabled(bool bEnabled);
 	void SyncLegacySymmetryFlag();

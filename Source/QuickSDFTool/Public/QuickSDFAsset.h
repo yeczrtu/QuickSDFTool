@@ -142,6 +142,9 @@ struct FQuickSDFTextureSetData
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture Set")
 	FIntPoint Resolution = FIntPoint(1024, 1024);
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Bake Settings", meta = (DisplayName = "Bake Angle Offset", ClampMin = "0.0", ClampMax = "90.0", UIMin = "0.0", UIMax = "90.0"))
+	float BakeAngleOffsetDegrees = 0.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SDF Data")
 	TArray<FQuickSDFAngleData> AngleDataList;
 

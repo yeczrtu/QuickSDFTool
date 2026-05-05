@@ -93,7 +93,7 @@ float GetQuickSDFCurrentPreviewAngle(const UQuickSDFToolProperties* Properties)
 
 	if (Properties->TargetAngles.IsValidIndex(Properties->EditAngleIndex))
 	{
-		return Properties->TargetAngles[Properties->EditAngleIndex];
+		return Properties->GetMaterialAngle(Properties->TargetAngles[Properties->EditAngleIndex]);
 	}
 
 	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
@@ -107,7 +107,7 @@ float GetQuickSDFCurrentPreviewAngle(const UQuickSDFToolProperties* Properties)
 		? FMath::Clamp(Properties->EditAngleIndex, 0, Asset->GetActiveAngleDataList().Num() - 1)
 		: INDEX_NONE;
 	return Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex)
-		? Asset->GetActiveAngleDataList()[AngleIndex].Angle
+		? Properties->GetMaterialAngle(Asset->GetActiveAngleDataList()[AngleIndex].Angle)
 		: 0.0f;
 }
 

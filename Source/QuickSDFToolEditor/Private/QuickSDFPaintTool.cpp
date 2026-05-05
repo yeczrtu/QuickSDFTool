@@ -331,6 +331,10 @@ void UQuickSDFPaintTool::Setup()
 		Properties->TargetAsset = ActiveAsset;
 		Properties->Resolution = ActiveAsset->GetActiveResolution();
 		Properties->UVChannel = ActiveAsset->GetActiveUVChannel();
+		if (const FQuickSDFTextureSetData* ActiveSet = ActiveAsset->GetActiveTextureSet())
+		{
+			Properties->BakeAngleOffsetDegrees = FMath::Clamp(ActiveSet->BakeAngleOffsetDegrees, 0.0f, 90.0f);
+		}
 		Properties->NumAngles = ActiveAsset->GetActiveAngleDataList().Num();
 		
 		Properties->TargetAngles.SetNum(Properties->NumAngles);

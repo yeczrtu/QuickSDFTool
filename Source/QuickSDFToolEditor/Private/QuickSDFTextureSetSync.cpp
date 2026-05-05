@@ -254,6 +254,7 @@ void ResetPropertiesForNoTarget(UQuickSDFToolProperties* Properties)
 	Properties->TargetAsset = nullptr;
 	Properties->ActiveTextureSetIndex = INDEX_NONE;
 	Properties->TargetMaterialSlot = INDEX_NONE;
+	Properties->BakeAngleOffsetDegrees = 0.0f;
 	Properties->NumAngles = 0;
 	Properties->TargetAngles.Reset();
 	Properties->TargetTextures.Reset();
@@ -299,6 +300,7 @@ void SyncPropertiesFromActiveAsset(UQuickSDFToolProperties* Properties, UQuickSD
 		Properties->Resolution = Asset->Resolution;
 		Properties->UVChannel = Asset->UVChannel;
 		Properties->TargetMaterialSlot = INDEX_NONE;
+		Properties->BakeAngleOffsetDegrees = 0.0f;
 		Properties->NumAngles = 0;
 		Properties->TargetAngles.Reset();
 		Properties->TargetTextures.Reset();
@@ -309,6 +311,7 @@ void SyncPropertiesFromActiveAsset(UQuickSDFToolProperties* Properties, UQuickSD
 	Properties->Resolution = ActiveSet->Resolution;
 	Properties->UVChannel = ActiveSet->UVChannel;
 	Properties->TargetMaterialSlot = ActiveSet->MaterialSlotIndex;
+	Properties->BakeAngleOffsetDegrees = FMath::Clamp(ActiveSet->BakeAngleOffsetDegrees, 0.0f, 90.0f);
 	Properties->NumAngles = ActiveSet->AngleDataList.Num();
 	Properties->TargetAngles.SetNum(Properties->NumAngles);
 	Properties->TargetTextures.SetNum(Properties->NumAngles);
