@@ -299,7 +299,7 @@ EQuickSDFMeshPaintMode QuickSDFToolUI::GetMeshPaintMode(const UQuickSDFToolPrope
 {
 	if (!Properties)
 	{
-		return EQuickSDFMeshPaintMode::UVSpaceLegacy;
+		return EQuickSDFMeshPaintMode::ScreenProjection;
 	}
 
 	if (Properties->bUseSurfaceSpacePaint &&

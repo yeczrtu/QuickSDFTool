@@ -224,7 +224,7 @@ EQuickSDFMeshPaintMode UQuickSDFPaintTool::GetMeshPaintMode() const
 {
 	if (!Properties)
 	{
-		return EQuickSDFMeshPaintMode::UVSpaceLegacy;
+		return EQuickSDFMeshPaintMode::ScreenProjection;
 	}
 
 	if (Properties->bUseSurfaceSpacePaint &&

@@ -126,7 +126,7 @@ public:
 	bool bPaintThroughNonTargetGeometry = true;
 
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Mesh Paint Mode"))
-	EQuickSDFMeshPaintMode MeshPaintMode = EQuickSDFMeshPaintMode::UVSpaceLegacy;
+	EQuickSDFMeshPaintMode MeshPaintMode = EQuickSDFMeshPaintMode::ScreenProjection;
 
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Screen Projection Brush Radius Pixels", ClampMin = "1.0", UIMin = "1.0", UIMax = "256.0", EditCondition = "MeshPaintMode == EQuickSDFMeshPaintMode::ScreenProjection"))
 	float ScreenProjectionBrushRadiusPixels = 32.0f;
