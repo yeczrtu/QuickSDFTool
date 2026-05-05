@@ -13,7 +13,11 @@
 
 QuickSDFTool lets artists paint binary light/shadow masks on a mesh at multiple light angles, then composites those masks into a high-precision SDF threshold texture for toon and cel shading.
 
-https://github.com/user-attachments/assets/1eb770b6-b65d-44bb-b5a0-fbb78d998202
+
+
+https://github.com/user-attachments/assets/7eec2890-be31-4cbc-9662-756b6e84c620
+
+
 
 The intended workflow is:
 
