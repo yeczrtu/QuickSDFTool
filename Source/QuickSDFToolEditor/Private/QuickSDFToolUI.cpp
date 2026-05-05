@@ -876,16 +876,21 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeMeshPaintModeSelector(FGetPaintTool GetP
 					})
 					.Padding(FMargin(5.0f, 2.0f))
 					[
-						SNew(STextBlock)
-						.Text(GetMeshPaintModeShortLabel(Mode))
-						.Justification(ETextJustify::Center)
-						.Font(FAppStyle::GetFontStyle("SmallFont"))
-						.ColorAndOpacity_Lambda([Mode, GetPaintTool, FallbackProperties]()
-						{
-							return GetMeshPaintMode(GetProperties(GetPaintTool(), FallbackProperties)) == Mode
-								? FSlateColor(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
-								: FSlateColor(FLinearColor(0.62f, 0.62f, 0.62f, 1.0f));
-						})
+						SNew(SBox)
+						.HAlign(HAlign_Center)
+						.VAlign(VAlign_Center)
+						[
+							SNew(STextBlock)
+							.Text(GetMeshPaintModeShortLabel(Mode))
+							.Justification(ETextJustify::Center)
+							.Font(FAppStyle::GetFontStyle("SmallFont"))
+							.ColorAndOpacity_Lambda([Mode, GetPaintTool, FallbackProperties]()
+							{
+								return GetMeshPaintMode(GetProperties(GetPaintTool(), FallbackProperties)) == Mode
+									? FSlateColor(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
+									: FSlateColor(FLinearColor(0.62f, 0.62f, 0.62f, 1.0f));
+							})
+						]
 					]
 				]
 			];
@@ -1138,33 +1143,9 @@ TSharedRef<SWidget> QuickSDFToolUI::MakePaintToggleButton(EQuickSDFPaintToggle T
 		];
 }
 
-TSharedRef<SWidget> QuickSDFToolUI::MakePaintToggleBar(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties, bool bIncludeMeshPaintMode)
+TSharedRef<SWidget> QuickSDFToolUI::MakePaintToggleBar(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties)
 {
 	TSharedRef<SHorizontalBox> ToggleRow = SNew(SHorizontalBox);
-
-	if (bIncludeMeshPaintMode)
-	{
-		ToggleRow->AddSlot()
-		.AutoWidth()
-		.Padding(0.0f)
-		[
-			MakeMeshPaintModeSelector(GetPaintTool, FallbackProperties)
-		];
-
-		ToggleRow->AddSlot()
-		.AutoWidth()
-		.Padding(4.0f, 0.0f, 3.0f, 0.0f)
-		[
-			SNew(SBox)
-			.WidthOverride(1.0f)
-			.HeightOverride(18.0f)
-			[
-				SNew(SBorder)
-				.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-				.BorderBackgroundColor(FLinearColor(1.0f, 1.0f, 1.0f, 0.10f))
-			]
-		];
-	}
 
 	ToggleRow->AddSlot()
 	.AutoWidth()

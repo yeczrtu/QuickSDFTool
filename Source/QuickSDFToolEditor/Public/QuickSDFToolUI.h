@@ -67,7 +67,7 @@ TSharedRef<SWidget> MakeMeshPaintModeSelector(FGetPaintTool GetPaintTool, TWeakO
 TSharedRef<SWidget> MakePaintTargetModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
 TSharedRef<SWidget> MakeSymmetryModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
 TSharedRef<SWidget> MakePaintToggleButton(EQuickSDFPaintToggle Toggle, FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
-TSharedRef<SWidget> MakePaintToggleBar(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>(), bool bIncludeMeshPaintMode = true);
+TSharedRef<SWidget> MakePaintToggleBar(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties = TWeakObjectPtr<UQuickSDFToolProperties>());
 TSharedRef<SWidget> MakeQuickToggleMenu(FGetPaintTool GetPaintTool);
 void ShowQuickToggleMenu(TSharedRef<SWidget> ParentWidget, const FVector2D& ScreenPosition, FGetPaintTool GetPaintTool);
 }

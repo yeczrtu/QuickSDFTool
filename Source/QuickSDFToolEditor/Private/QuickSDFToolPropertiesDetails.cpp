@@ -844,7 +844,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 			QuickSDFToolUI::MakePaintToggleBar([]()
 			{
 				return QuickSDFToolUI::GetActivePaintTool();
-			}, WeakProperties, false)
+			}, WeakProperties)
 		]
 	];
 
