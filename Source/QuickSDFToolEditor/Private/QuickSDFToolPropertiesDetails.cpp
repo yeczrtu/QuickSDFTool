@@ -804,6 +804,28 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 		]
 	];
 
+	QuickCategory.AddCustomRow(LOCTEXT("MeshPaintModeFilter", "Mesh Paint Mode UV Surface Screen"))
+	.WholeRowContent()
+	[
+		SNew(SVerticalBox)
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, 4.0f, 0.0f, 2.0f)
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("MeshPaintModeLabel", "Mesh Paint Mode"))
+			.Font(FAppStyle::GetFontStyle("PropertyWindow.BoldFont"))
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			QuickSDFToolUI::MakeMeshPaintModeSelector([]()
+			{
+				return QuickSDFToolUI::GetActivePaintTool();
+			}, WeakProperties)
+		]
+	];
+
 	QuickCategory.AddCustomRow(LOCTEXT("PaintTogglesFilter", "Paint Toggles"))
 	.WholeRowContent()
 	[
@@ -822,7 +844,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 			QuickSDFToolUI::MakePaintToggleBar([]()
 			{
 				return QuickSDFToolUI::GetActivePaintTool();
-			}, WeakProperties)
+			}, WeakProperties, false)
 		]
 	];
 

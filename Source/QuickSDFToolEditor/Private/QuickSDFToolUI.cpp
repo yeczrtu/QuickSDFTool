@@ -1138,29 +1138,33 @@ TSharedRef<SWidget> QuickSDFToolUI::MakePaintToggleButton(EQuickSDFPaintToggle T
 		];
 }
 
-TSharedRef<SWidget> QuickSDFToolUI::MakePaintToggleBar(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties)
+TSharedRef<SWidget> QuickSDFToolUI::MakePaintToggleBar(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties, bool bIncludeMeshPaintMode)
 {
 	TSharedRef<SHorizontalBox> ToggleRow = SNew(SHorizontalBox);
-	ToggleRow->AddSlot()
-	.AutoWidth()
-	.Padding(0.0f)
-	[
-		MakeMeshPaintModeSelector(GetPaintTool, FallbackProperties)
-	];
 
-	ToggleRow->AddSlot()
-	.AutoWidth()
-	.Padding(4.0f, 0.0f, 3.0f, 0.0f)
-	[
-		SNew(SBox)
-		.WidthOverride(1.0f)
-		.HeightOverride(18.0f)
+	if (bIncludeMeshPaintMode)
+	{
+		ToggleRow->AddSlot()
+		.AutoWidth()
+		.Padding(0.0f)
 		[
-			SNew(SBorder)
-			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-			.BorderBackgroundColor(FLinearColor(1.0f, 1.0f, 1.0f, 0.10f))
-		]
-	];
+			MakeMeshPaintModeSelector(GetPaintTool, FallbackProperties)
+		];
+
+		ToggleRow->AddSlot()
+		.AutoWidth()
+		.Padding(4.0f, 0.0f, 3.0f, 0.0f)
+		[
+			SNew(SBox)
+			.WidthOverride(1.0f)
+			.HeightOverride(18.0f)
+			[
+				SNew(SBorder)
+				.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+				.BorderBackgroundColor(FLinearColor(1.0f, 1.0f, 1.0f, 0.10f))
+			]
+		];
+	}
 
 	ToggleRow->AddSlot()
 	.AutoWidth()
