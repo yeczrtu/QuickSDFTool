@@ -42,6 +42,7 @@ private:
 	void SelectRelativeFrame(int32 Direction);
 	static bool IsArrowNavigationKey(FKey Key);
 	static bool IsFrameNavigationKey(FKey Key);
+	bool FocusActiveBrush(FEditorViewportClient* ViewportClient, const class UQuickSDFPaintTool* PaintTool) const;
 	void CacheViewportViewState(FEditorViewportClient* ViewportClient, FViewport* Viewport);
 	void RestoreViewportViewState(FEditorViewportClient* ViewportClient);
 	void EndViewportNavigationSuppression();

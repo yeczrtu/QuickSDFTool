@@ -407,7 +407,8 @@ bool UQuickSDFEditorMode::InputKey(FEditorViewportClient* ViewportClient, FViewp
 		return true;
 	}
 
-	if (UQuickSDFPaintTool* PaintTool = Cast<UQuickSDFPaintTool>(GetToolManager()->GetActiveTool(EToolSide::Left)))
+	UQuickSDFPaintTool* PaintTool = Cast<UQuickSDFPaintTool>(GetToolManager()->GetActiveTool(EToolSide::Left));
+	if (PaintTool)
 	{
 		if (PaintTool->IsBrushResizeModeActive())
 		{
@@ -432,7 +433,8 @@ bool UQuickSDFEditorMode::InputKey(FEditorViewportClient* ViewportClient, FViewp
 
 			if (Key == EKeys::RightMouseButton ||
 				Key == EKeys::LeftMouseButton ||
-				Key == EKeys::Escape)
+				Key == EKeys::Escape ||
+				Key == EKeys::F)
 			{
 				return true;
 			}
@@ -446,6 +448,10 @@ bool UQuickSDFEditorMode::InputKey(FEditorViewportClient* ViewportClient, FViewp
 			ModifierKeys.IsControlDown() ||
 			(Viewport && (Viewport->KeyState(EKeys::LeftControl) || Viewport->KeyState(EKeys::RightControl)));
 		if (bCtrlDown && RequestBrushResizeFromHoveredViewport())
+		{
+			return true;
+		}
+		if (!bCtrlDown && FocusActiveBrush(ViewportClient, PaintTool))
 		{
 			return true;
 		}
@@ -485,6 +491,25 @@ bool UQuickSDFEditorMode::IsArrowNavigationKey(FKey Key)
 bool UQuickSDFEditorMode::IsFrameNavigationKey(FKey Key)
 {
 	return Key == EKeys::Left || Key == EKeys::Right;
+}
+
+bool UQuickSDFEditorMode::FocusActiveBrush(FEditorViewportClient* ViewportClient, const UQuickSDFPaintTool* PaintTool) const
+{
+	if (!ViewportClient || !PaintTool)
+	{
+		return false;
+	}
+
+	FVector BrushFocusPosition = FVector::ZeroVector;
+	float BrushFocusRadius = 0.0f;
+	if (!PaintTool->TryGetBrushFocusTarget(BrushFocusPosition, BrushFocusRadius))
+	{
+		return false;
+	}
+
+	const FVector Extent(BrushFocusRadius);
+	ViewportClient->FocusViewportOnBox(FBox(BrushFocusPosition - Extent, BrushFocusPosition + Extent));
+	return true;
 }
 
 void UQuickSDFEditorMode::CacheViewportViewState(FEditorViewportClient* ViewportClient, FViewport* Viewport)

@@ -248,6 +248,7 @@ public:
 	bool SelectTextureSet(int32 TextureSetIndex);
 	void RefreshTextureSetsForCurrentComponent();
 	class UMeshComponent* GetCurrentComponent() const { return CurrentComponent.Get(); }
+	bool TryGetBrushFocusTarget(FVector& OutWorldPosition, float& OutWorldRadius) const;
 	FText GetActiveTextureSetLabel() const;
 	FText GetTextureSetStatusText(int32 TextureSetIndex) const;
 	FText GetTextureSetStatusTooltip(int32 TextureSetIndex) const;

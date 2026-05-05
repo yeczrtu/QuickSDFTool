@@ -470,6 +470,26 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::LerpStrokeSample(const FQuickSDFStroke
 
 bool UQuickSDFPaintTool::IsPaintingShadow() const { return GetShiftToggle(); }
 
+bool UQuickSDFPaintTool::TryGetBrushFocusTarget(FVector& OutWorldPosition, float& OutWorldRadius) const
+{
+	if (!CurrentComponent.IsValid() ||
+		!CurrentComponent->IsRegistered() ||
+		!BrushStampIndicator ||
+		!BrushStampIndicator->bVisible ||
+		!LastBrushStamp.HitResult.bBlockingHit ||
+		LastBrushStamp.HitResult.Component.Get() != CurrentComponent.Get() ||
+		ShouldUseScreenProjectionPaint() ||
+		ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ||
+		PendingStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview)
+	{
+		return false;
+	}
+
+	OutWorldPosition = LastBrushStamp.WorldPosition;
+	OutWorldRadius = static_cast<float>(GetEffectiveBrushRadius());
+	return true;
+}
+
 void UQuickSDFPaintTool::UpdateBrushStampIndicator()
 {
 	if (BrushStampIndicator && BrushProperties)
