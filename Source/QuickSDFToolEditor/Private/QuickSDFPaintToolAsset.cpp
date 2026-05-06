@@ -2806,6 +2806,7 @@ void UQuickSDFPaintTool::MarkMasksChanged()
 {
 	SyncActiveTextureSetFromProperties();
 	++MaskRevision;
+	MarkLiveSDFPreviewDirty();
 }
 
 void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Property)
@@ -3102,6 +3103,13 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SymmetryMode) ||
 				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bSymmetryMode)))
 		{
+			if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex) ||
+				Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngles) ||
+				Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngleOffsetDeltas) ||
+				Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MaterialPreviewMode))
+			{
+				MarkLiveSDFPreviewDirty();
+			}
 			RefreshPreviewMaterial();
 		}
 

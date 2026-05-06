@@ -77,6 +77,7 @@ void FQuickSDFToolStyle::Initialize()
 	StyleSet->Set("QuickSDF.MaterialPreview.Painted", new IMAGE_BRUSH_SVG("Icons/QuickSDFPreviewPainted", Icon16x16));
 	StyleSet->Set("QuickSDF.MaterialPreview.PaintUV", new IMAGE_BRUSH_SVG("Icons/QuickSDFPreviewPaintUV", Icon16x16));
 	StyleSet->Set("QuickSDF.MaterialPreview.PaintShadow", new IMAGE_BRUSH_SVG("Icons/QuickSDFPreviewPaintShadow", Icon16x16));
+	StyleSet->Set("QuickSDF.MaterialPreview.LiveSDF", new IMAGE_BRUSH_SVG("Icons/QuickSDFLiveSDF", Icon16x16));
 
 	const float TimelineButtonRadius = 3.0f;
 	const FLinearColor TimelineBorderColor = FStyleColors::DropdownOutline.GetSpecifiedColor();

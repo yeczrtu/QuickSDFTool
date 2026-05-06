@@ -13,6 +13,7 @@
 #include "Engine/DirectionalLight.h"
 #include "CollisionQueryParams.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "Engine/Texture.h"
 #include "Engine/Texture2D.h"
 #include "BaseBehaviors/ClickDragBehavior.h"
 #include "TargetInterfaces/PrimitiveComponentBackedTarget.h"
@@ -78,6 +79,7 @@ float GetQuickSDFMaterialPreviewModeValue(EQuickSDFMaterialPreviewMode Mode)
 		return 2.0f;
 	case EQuickSDFMaterialPreviewMode::Mask:
 	case EQuickSDFMaterialPreviewMode::OriginalMaterial:
+	case EQuickSDFMaterialPreviewMode::LiveSDF:
 	case EQuickSDFMaterialPreviewMode::GeneratedSDF:
 	default:
 		return 0.0f;
@@ -331,6 +333,19 @@ FText UQuickSDFPaintTool::GetMaterialPreviewStatusText() const
 		}
 		return LOCTEXT("GeneratedSDFPreviewStatusMissing", "Generated SDF (missing)");
 	}
+	if (PreviewMode == EQuickSDFMaterialPreviewMode::LiveSDF)
+	{
+		if (LiveSDFPreviewRenderTarget)
+		{
+			return FText::Format(
+				LOCTEXT("LiveSDFPreviewStatusWithTexture", "Live SDF ({0}x{1})"),
+				FText::AsNumber(LiveSDFPreviewRenderTarget->SizeX),
+				FText::AsNumber(LiveSDFPreviewRenderTarget->SizeY));
+		}
+		return bLiveSDFPreviewRenderPending
+			? LOCTEXT("LiveSDFPreviewStatusPending", "Live SDF (pending)")
+			: LOCTEXT("LiveSDFPreviewStatusDirty", "Live SDF (dirty)");
+	}
 
 	switch (PreviewMode)
 	{
@@ -354,16 +369,25 @@ void UQuickSDFPaintTool::UpdateGeneratedSDFMaterialParameters()
 		return;
 	}
 
-	UTexture2D* FinalTexture = GetActiveFinalSDFTexture();
-	if (FinalTexture)
+	const bool bLivePreview = Properties->MaterialPreviewMode == EQuickSDFMaterialPreviewMode::LiveSDF;
+	UTexture2D* FinalTexture = bLivePreview ? nullptr : GetActiveFinalSDFTexture();
+	UTexture* ThresholdTexture = bLivePreview
+		? Cast<UTexture>(LiveSDFPreviewRenderTarget.Get())
+		: Cast<UTexture>(FinalTexture);
+	if (ThresholdTexture)
 	{
-		SDFToonPreviewMaterial->SetTextureParameterValue(TEXT("ThresholdMap"), FinalTexture);
-		SDFToonPreviewMaterial->SetTextureParameterValue(TEXT("ThresholdMapGray"), FinalTexture);
+		SDFToonPreviewMaterial->SetTextureParameterValue(TEXT("ThresholdMap"), ThresholdTexture);
+		SDFToonPreviewMaterial->SetTextureParameterValue(TEXT("ThresholdMapGray"), ThresholdTexture);
 	}
 
 	const FQuickSDFAutoSymmetryResult SymmetryResolution = ResolveEffectiveSymmetryMode(false);
-	const bool bSymmetryUV = SymmetryResolution.EffectiveMode == EQuickSDFSymmetryMode::WholeTextureFlip90;
-	const bool bUseGrayscaleTexture = FinalTexture &&
+	const EQuickSDFSymmetryMode PreviewSymmetryMode = bLivePreview
+		? (SymmetryResolution.EffectiveMode == EQuickSDFSymmetryMode::UVIslandChannelFlip90
+			? EQuickSDFSymmetryMode::UVIslandChannelFlip90
+			: EQuickSDFSymmetryMode::WholeTextureFlip90)
+		: SymmetryResolution.EffectiveMode;
+	const bool bSymmetryUV = PreviewSymmetryMode == EQuickSDFSymmetryMode::WholeTextureFlip90;
+	const bool bUseGrayscaleTexture = !bLivePreview && FinalTexture &&
 		FinalTexture->CompressionSettings == TC_Grayscale &&
 		SymmetryResolution.EffectiveMode != EQuickSDFSymmetryMode::UVIslandChannelFlip90;
 
@@ -375,7 +399,7 @@ void UQuickSDFPaintTool::UpdateGeneratedSDFMaterialParameters()
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("Angle"), Angle);
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("BakeForwardAngleOffset"), BakeBasis.ForwardAngleOffsetDegrees);
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("SymmetryUV"), bSymmetryUV ? 1.0f : 0.0f);
-	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("SymmetryMode"), static_cast<float>(static_cast<uint8>(SymmetryResolution.EffectiveMode)));
+	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("SymmetryMode"), static_cast<float>(static_cast<uint8>(PreviewSymmetryMode)));
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("UseGrayscaleTexture"), bUseGrayscaleTexture ? 1.0f : 0.0f);
 	SDFToonPreviewMaterial->SetVectorParameterValue(TEXT("ForwardVector"), FLinearColor(ForwardVector.X, ForwardVector.Y, ForwardVector.Z, 0.0f));
 }
@@ -389,7 +413,9 @@ void UQuickSDFPaintTool::RefreshPreviewMaterial()
 		Properties->MaterialPreviewMode = EQuickSDFMaterialPreviewMode::OriginalMaterial;
 	}
 
-	if (Properties && Properties->MaterialPreviewMode == EQuickSDFMaterialPreviewMode::GeneratedSDF)
+	if (Properties &&
+		(Properties->MaterialPreviewMode == EQuickSDFMaterialPreviewMode::GeneratedSDF ||
+		 Properties->MaterialPreviewMode == EQuickSDFMaterialPreviewMode::LiveSDF))
 	{
 		SyncQuickSDFPreviewLightToCurrentAngle(Properties);
 	}

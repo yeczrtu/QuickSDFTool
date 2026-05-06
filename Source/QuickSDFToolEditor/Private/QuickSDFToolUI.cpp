@@ -81,7 +81,15 @@ FText GetMeshPaintModeToolTip(UQuickSDFToolProperties* Properties, EQuickSDFMesh
 
 bool IsMaterialPreviewModeEnabled(UQuickSDFPaintTool* Tool, EQuickSDFMaterialPreviewMode Mode)
 {
-	return Mode != EQuickSDFMaterialPreviewMode::GeneratedSDF || (Tool && Tool->CanUseGeneratedSDFPreview());
+	if (Mode == EQuickSDFMaterialPreviewMode::GeneratedSDF)
+	{
+		return Tool && Tool->CanUseGeneratedSDFPreview();
+	}
+	if (Mode == EQuickSDFMaterialPreviewMode::LiveSDF)
+	{
+		return Tool && Tool->CanUseLiveSDFPreview();
+	}
+	return true;
 }
 
 FText GetMaterialPreviewModeToolTip(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties, EQuickSDFMaterialPreviewMode Mode)
@@ -89,6 +97,10 @@ FText GetMaterialPreviewModeToolTip(UQuickSDFPaintTool* Tool, UQuickSDFToolPrope
 	if (Mode == EQuickSDFMaterialPreviewMode::GeneratedSDF && Tool && !Tool->CanUseGeneratedSDFPreview())
 	{
 		return Tool->GetGeneratedSDFPreviewUnavailableText();
+	}
+	if (Mode == EQuickSDFMaterialPreviewMode::LiveSDF && (!Tool || !Tool->CanUseLiveSDFPreview()))
+	{
+		return LOCTEXT("LiveSDFPreviewUnavailable", "Live SDF preview is unavailable until a paint target is ready.");
 	}
 
 	const bool bSelected = QuickSDFToolUI::GetMaterialPreviewMode(Properties) == Mode;
@@ -122,6 +134,7 @@ const TArray<EQuickSDFMaterialPreviewMode>& QuickSDFToolUI::GetMaterialPreviewMo
 		EQuickSDFMaterialPreviewMode::Mask,
 		EQuickSDFMaterialPreviewMode::UV,
 		EQuickSDFMaterialPreviewMode::OriginalShadow,
+		EQuickSDFMaterialPreviewMode::LiveSDF,
 		EQuickSDFMaterialPreviewMode::GeneratedSDF,
 	};
 	return Modes;
@@ -204,6 +217,8 @@ FText QuickSDFToolUI::GetMaterialPreviewModeLabel(EQuickSDFMaterialPreviewMode M
 		return LOCTEXT("MaterialPreviewUVLabel", "Paint+UV");
 	case EQuickSDFMaterialPreviewMode::OriginalShadow:
 		return LOCTEXT("MaterialPreviewShadowLabel", "Paint+Shadow");
+	case EQuickSDFMaterialPreviewMode::LiveSDF:
+		return LOCTEXT("MaterialPreviewLiveSDFLabel", "Live SDF");
 	case EQuickSDFMaterialPreviewMode::GeneratedSDF:
 		return LOCTEXT("MaterialPreviewGeneratedSDFLabel", "SDF Result");
 	default:
@@ -223,6 +238,8 @@ FText QuickSDFToolUI::GetMaterialPreviewModeDescription(EQuickSDFMaterialPreview
 		return LOCTEXT("MaterialPreviewUVDesc", "Shows the active painted texture over the active UV channel with an opaque preview material.");
 	case EQuickSDFMaterialPreviewMode::OriginalShadow:
 		return LOCTEXT("MaterialPreviewShadowDesc", "Shows the active painted texture over the original baked shadow with an opaque preview material.");
+	case EQuickSDFMaterialPreviewMode::LiveSDF:
+		return LOCTEXT("MaterialPreviewLiveSDFDesc", "Shows a low-resolution GPU approximation of the SDF for fast shape checks.");
 	case EQuickSDFMaterialPreviewMode::GeneratedSDF:
 		return LOCTEXT("MaterialPreviewGeneratedSDFDesc", "Shows the generated SDF threshold map through M_SDFToon for the active texture set.");
 	default:
@@ -242,6 +259,8 @@ FName QuickSDFToolUI::GetMaterialPreviewModeIconName(EQuickSDFMaterialPreviewMod
 		return "QuickSDF.MaterialPreview.PaintUV";
 	case EQuickSDFMaterialPreviewMode::OriginalShadow:
 		return "QuickSDF.MaterialPreview.PaintShadow";
+	case EQuickSDFMaterialPreviewMode::LiveSDF:
+		return "QuickSDF.MaterialPreview.LiveSDF";
 	case EQuickSDFMaterialPreviewMode::GeneratedSDF:
 		return "QuickSDF.Action.CreateThresholdMap";
 	default:
@@ -257,6 +276,10 @@ void QuickSDFToolUI::SetMaterialPreviewMode(UQuickSDFPaintTool* Tool, UQuickSDFT
 	}
 
 	if (Mode == EQuickSDFMaterialPreviewMode::GeneratedSDF && (!Tool || !Tool->CanUseGeneratedSDFPreview()))
+	{
+		return;
+	}
+	if (Mode == EQuickSDFMaterialPreviewMode::LiveSDF && (!Tool || !Tool->CanUseLiveSDFPreview()))
 	{
 		return;
 	}

@@ -62,11 +62,12 @@ struct FQuickSDFAutoSymmetryResult
 UENUM(BlueprintType)
 enum class EQuickSDFMaterialPreviewMode : uint8
 {
-	OriginalMaterial UMETA(DisplayName = "Original + Painted"),
-	Mask UMETA(DisplayName = "Painted Texture"),
-	UV UMETA(DisplayName = "Painted + UV"),
-	OriginalShadow UMETA(DisplayName = "Painted + Shadow"),
-	GeneratedSDF UMETA(DisplayName = "Generated SDF")
+	OriginalMaterial = 0 UMETA(DisplayName = "Original + Painted"),
+	Mask = 1 UMETA(DisplayName = "Painted Texture"),
+	UV = 2 UMETA(DisplayName = "Painted + UV"),
+	OriginalShadow = 3 UMETA(DisplayName = "Painted + Shadow"),
+	GeneratedSDF = 4 UMETA(DisplayName = "Generated SDF"),
+	LiveSDF = 5 UMETA(DisplayName = "Live SDF")
 };
 
 UENUM(BlueprintType)

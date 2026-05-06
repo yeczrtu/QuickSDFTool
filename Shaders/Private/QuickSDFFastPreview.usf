@@ -1,0 +1,269 @@
+#include "/Engine/Public/Platform.ush"
+
+Texture2D<float4> SourceTexture;
+RWTexture2D<float4> OutputMask;
+int2 SourceSize;
+
+Texture2D<float4> InputMask;
+RWTexture2D<float4> OutputSeed;
+
+Texture2D<float4> InputSeed;
+RWTexture2D<float4> OutputJumpSeed;
+int JumpStepSize;
+
+Texture2D<float4> SeedTexture0;
+Texture2D<float4> SeedTexture1;
+Texture2D<float4> SeedTexture2;
+Texture2D<float4> SeedTexture3;
+Texture2D<float4> SeedTexture4;
+Texture2D<float4> SeedTexture5;
+Texture2D<float4> SeedTexture6;
+Texture2D<float4> SeedTexture7;
+RWTexture2D<float4> OutputPreview;
+float4 TargetT0;
+float4 TargetT1;
+float CurrentTargetT;
+int MaskCount;
+
+static bool IsValidSeed(float2 Seed)
+{
+	return Seed.x >= 0.0f && Seed.y >= 0.0f;
+}
+
+static float2 InvalidSeed()
+{
+	return float2(-1.0f, -1.0f);
+}
+
+[numthreads(8, 8, 1)]
+void DownsampleMaskMain(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 PixelPos = int2(DispatchThreadId.xy);
+
+	uint Width = 0;
+	uint Height = 0;
+	OutputMask.GetDimensions(Width, Height);
+	if (PixelPos.x >= (int)Width || PixelPos.y >= (int)Height)
+	{
+		return;
+	}
+
+	float2 SourceUV = (float2(PixelPos) + 0.5f) / float2(Width, Height);
+	int2 SourcePos = int2(SourceUV * float2(SourceSize));
+	SourcePos = clamp(SourcePos, int2(0, 0), SourceSize - int2(1, 1));
+
+	float4 SourceValue = SourceTexture.Load(int3(SourcePos, 0));
+	float Gray = SourceValue.r;
+	OutputMask[PixelPos] = float4(Gray, Gray, Gray, 1.0f);
+}
+
+[numthreads(8, 8, 1)]
+void FastSeedMain(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 PixelPos = int2(DispatchThreadId.xy);
+
+	uint Width = 0;
+	uint Height = 0;
+	OutputSeed.GetDimensions(Width, Height);
+	if (PixelPos.x >= (int)Width || PixelPos.y >= (int)Height)
+	{
+		return;
+	}
+
+	float MaskValue = InputMask.Load(int3(PixelPos, 0)).r;
+	bool bWhite = MaskValue >= 0.5f;
+	float2 SeedPos = float2(PixelPos);
+	OutputSeed[PixelPos] = bWhite
+		? float4(SeedPos, InvalidSeed())
+		: float4(InvalidSeed(), SeedPos);
+}
+
+static void PickBestSeed(inout float2 BestSeed, inout float BestDistanceSq, float2 CandidateSeed, float2 PixelPos)
+{
+	if (!IsValidSeed(CandidateSeed))
+	{
+		return;
+	}
+
+	float2 Delta = CandidateSeed - PixelPos;
+	float DistanceSq = dot(Delta, Delta);
+	if (!IsValidSeed(BestSeed) || DistanceSq < BestDistanceSq)
+	{
+		BestSeed = CandidateSeed;
+		BestDistanceSq = DistanceSq;
+	}
+}
+
+[numthreads(8, 8, 1)]
+void FastJumpFloodMain(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 PixelPos = int2(DispatchThreadId.xy);
+
+	uint Width = 0;
+	uint Height = 0;
+	OutputJumpSeed.GetDimensions(Width, Height);
+	if (PixelPos.x >= (int)Width || PixelPos.y >= (int)Height)
+	{
+		return;
+	}
+
+	float2 PixelFloat = float2(PixelPos);
+	float4 CurrentValue = InputSeed.Load(int3(PixelPos, 0));
+	float2 BestWhiteSeed = CurrentValue.xy;
+	float2 BestBlackSeed = CurrentValue.zw;
+	float BestWhiteDistanceSq = IsValidSeed(BestWhiteSeed) ? dot(BestWhiteSeed - PixelFloat, BestWhiteSeed - PixelFloat) : 3.402823e38f;
+	float BestBlackDistanceSq = IsValidSeed(BestBlackSeed) ? dot(BestBlackSeed - PixelFloat, BestBlackSeed - PixelFloat) : 3.402823e38f;
+
+	const int Step = max(JumpStepSize, 1);
+	for (int OffsetY = -1; OffsetY <= 1; ++OffsetY)
+	{
+		for (int OffsetX = -1; OffsetX <= 1; ++OffsetX)
+		{
+			int2 SamplePos = PixelPos + int2(OffsetX, OffsetY) * Step;
+			SamplePos = clamp(SamplePos, int2(0, 0), int2((int)Width - 1, (int)Height - 1));
+			float4 Neighbor = InputSeed.Load(int3(SamplePos, 0));
+			PickBestSeed(BestWhiteSeed, BestWhiteDistanceSq, Neighbor.xy, PixelFloat);
+			PickBestSeed(BestBlackSeed, BestBlackDistanceSq, Neighbor.zw, PixelFloat);
+		}
+	}
+
+	OutputJumpSeed[PixelPos] = float4(BestWhiteSeed, BestBlackSeed);
+}
+
+static float SignedDistanceFromSeed(Texture2D<float4> SeedTexture, int2 PixelPos)
+{
+	float4 SeedValue = SeedTexture.Load(int3(PixelPos, 0));
+	float2 PixelFloat = float2(PixelPos);
+	float WhiteDistance = IsValidSeed(SeedValue.xy) ? length(SeedValue.xy - PixelFloat) : 8192.0f;
+	float BlackDistance = IsValidSeed(SeedValue.zw) ? length(SeedValue.zw - PixelFloat) : 8192.0f;
+	return WhiteDistance - BlackDistance;
+}
+
+static float GetTargetT(int Index)
+{
+	if (Index == 0) return TargetT0.x;
+	if (Index == 1) return TargetT0.y;
+	if (Index == 2) return TargetT0.z;
+	if (Index == 3) return TargetT0.w;
+	if (Index == 4) return TargetT1.x;
+	if (Index == 5) return TargetT1.y;
+	if (Index == 6) return TargetT1.z;
+	return TargetT1.w;
+}
+
+static float GetSignedDistance(int Index, int2 PixelPos)
+{
+	if (Index == 0) return SignedDistanceFromSeed(SeedTexture0, PixelPos);
+	if (Index == 1) return SignedDistanceFromSeed(SeedTexture1, PixelPos);
+	if (Index == 2) return SignedDistanceFromSeed(SeedTexture2, PixelPos);
+	if (Index == 3) return SignedDistanceFromSeed(SeedTexture3, PixelPos);
+	if (Index == 4) return SignedDistanceFromSeed(SeedTexture4, PixelPos);
+	if (Index == 5) return SignedDistanceFromSeed(SeedTexture5, PixelPos);
+	if (Index == 6) return SignedDistanceFromSeed(SeedTexture6, PixelPos);
+	return SignedDistanceFromSeed(SeedTexture7, PixelPos);
+}
+
+static float InterpolateTargetT(float SDF0, float SDF1, float Target0, float Target1)
+{
+	float D0 = abs(SDF0);
+	float D1 = abs(SDF1);
+	float Ratio = D0 / max(D0 + D1, 0.0001f);
+	return lerp(Target0, Target1, Ratio);
+}
+
+static bool ResolveEnterValue(int2 PixelPos, out float Value)
+{
+	int SafeMaskCount = clamp(MaskCount, 0, 8);
+	Value = 1.0f;
+
+	[unroll]
+	for (int Index = 0; Index < 7; ++Index)
+	{
+		if (Index + 1 >= SafeMaskCount)
+		{
+			continue;
+		}
+
+		float SDF0 = GetSignedDistance(Index, PixelPos);
+		float SDF1 = GetSignedDistance(Index + 1, PixelPos);
+		bool bEntersLight = SDF0 > 0.0f && SDF1 <= 0.0f;
+		if (!bEntersLight)
+		{
+			continue;
+		}
+
+		float InterpT = InterpolateTargetT(SDF0, SDF1, GetTargetT(Index), GetTargetT(Index + 1));
+		Value = saturate(1.0f - InterpT);
+		return true;
+	}
+
+	if (SafeMaskCount > 0)
+	{
+		const float StartSDF = GetSignedDistance(0, PixelPos);
+		const float EndSDF = GetSignedDistance(SafeMaskCount - 1, PixelPos);
+		if (StartSDF > 0.0f || EndSDF > 0.0f)
+		{
+			Value = 0.0f;
+		}
+	}
+
+	return false;
+}
+
+static float ResolveExitValue(int2 PixelPos, bool bEnterHandled)
+{
+	int SafeMaskCount = clamp(MaskCount, 0, 8);
+	float Value = 1.0f;
+
+	[unroll]
+	for (int Index = 0; Index < 7; ++Index)
+	{
+		if (Index + 1 >= SafeMaskCount)
+		{
+			continue;
+		}
+
+		float SDF0 = GetSignedDistance(Index, PixelPos);
+		float SDF1 = GetSignedDistance(Index + 1, PixelPos);
+		bool bEntersShadow = SDF0 <= 0.0f && SDF1 > 0.0f;
+		if (!bEntersShadow)
+		{
+			continue;
+		}
+
+		float InterpT = InterpolateTargetT(SDF0, SDF1, GetTargetT(Index), GetTargetT(Index + 1));
+		return saturate(InterpT);
+	}
+
+	if (SafeMaskCount > 0 && (GetSignedDistance(0, PixelPos) > 0.0f || bEnterHandled))
+	{
+		Value = 0.0f;
+	}
+
+	return Value;
+}
+
+[numthreads(8, 8, 1)]
+void FastResolvePreviewMain(uint3 DispatchThreadId : SV_DispatchThreadID)
+{
+	int2 PixelPos = int2(DispatchThreadId.xy);
+
+	uint Width = 0;
+	uint Height = 0;
+	OutputPreview.GetDimensions(Width, Height);
+	if (PixelPos.x >= (int)Width || PixelPos.y >= (int)Height)
+	{
+		return;
+	}
+
+	float EnterValue = 1.0f;
+	bool bEnterHandled = ResolveEnterValue(PixelPos, EnterValue);
+	float ExitValue = ResolveExitValue(PixelPos, bEnterHandled);
+
+	const int2 MirrorPixelPos = int2((int)Width - 1 - PixelPos.x, PixelPos.y);
+	float MirrorEnterValue = 1.0f;
+	bool bMirrorEnterHandled = ResolveEnterValue(MirrorPixelPos, MirrorEnterValue);
+	float MirrorExitValue = ResolveExitValue(MirrorPixelPos, bMirrorEnterHandled);
+
+	OutputPreview[PixelPos] = float4(EnterValue, MirrorEnterValue, ExitValue, MirrorExitValue);
+}

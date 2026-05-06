@@ -769,6 +769,11 @@ void UQuickSDFPaintTool::StampQuickLineSurfaceSegment(const FQuickSDFStrokeSampl
 			AddStrokeDirtyRect(RT, DirtyRect);
 		}
 
+		if (DirtyRect.Width() > 0 && DirtyRect.Height() > 0)
+		{
+			MarkLiveSDFPreviewDirty();
+		}
+
 		if (!bStampingAllPaintTargets)
 		{
 			RefreshPreviewMaterial();
@@ -1902,6 +1907,11 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 			AddStrokeDirtyRect(RT, BatchDirtyRect);
 		}
 
+		if (bHasBatchDirtyRect)
+		{
+			MarkLiveSDFPreviewDirty();
+		}
+
 		if (!bStampingAllPaintTargets)
 		{
 			RefreshPreviewMaterial();
@@ -1940,6 +1950,11 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 	if (bStrokeTransactionActive && BatchDirtyRect.Width() > 0 && BatchDirtyRect.Height() > 0)
 	{
 		AddStrokeDirtyRect(RT, BatchDirtyRect);
+	}
+
+	if (BatchDirtyRect.Width() > 0 && BatchDirtyRect.Height() > 0)
+	{
+		MarkLiveSDFPreviewDirty();
 	}
 
 	if (!bStampingAllPaintTargets)

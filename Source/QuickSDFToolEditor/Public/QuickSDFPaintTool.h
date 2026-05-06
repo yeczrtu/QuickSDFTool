@@ -255,6 +255,7 @@ public:
 	FLinearColor GetTextureSetStatusColor(int32 TextureSetIndex) const;
 	class UTexture2D* GetActiveFinalSDFTexture() const;
 	bool CanUseGeneratedSDFPreview() const;
+	bool CanUseLiveSDFPreview() const;
 	void RefreshTimelinePreviewMaterial();
 	FText GetGeneratedSDFPreviewUnavailableText() const;
 	FText GetMaterialPreviewStatusText() const;
@@ -287,6 +288,12 @@ protected:
 	void UpdateGeneratedSDFMaterialParameters();
 	void ShowGeneratedSDFPreviewNotification(EQuickSDFMaterialPreviewMode PreviousMode, class UTexture2D* FinalTexture);
 	void ShowTextureSetWarningNotification(const FQuickSDFTextureSetData& TextureSet);
+	void MarkLiveSDFPreviewDirty();
+	void UpdateLiveSDFPreview();
+	bool QueueLiveSDFPreviewRender();
+	void OnLiveSDFPreviewRenderComplete(int32 CompletedRevision);
+	FIntPoint GetLiveSDFPreviewSize() const;
+	void ResetLiveSDFPreviewState();
 	void ApplyTargetMaterialSlotIsolation();
 	bool IsTriangleInTargetMaterialSlot(int32 TriangleID) const;
 	bool TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample);
@@ -434,6 +441,9 @@ protected:
 	TObjectPtr<UMaterialInstanceDynamic> SDFToonPreviewMaterial;
 
 	UPROPERTY(Transient)
+	TObjectPtr<UTextureRenderTarget2D> LiveSDFPreviewRenderTarget;
+
+	UPROPERTY(Transient)
 	class UTexture2D* BrushMaskTexture;
 
 	UPROPERTY(Transient)
@@ -477,6 +487,12 @@ protected:
 	bool bHasOriginalMaterialSlotOverlayMaterialState = false;
 	float OriginalOverlayMaterialMaxDrawDistance = 0.0f;
 	int32 MaskRevision = 0;
+	int32 LiveSDFSourceRevision = 0;
+	int32 LiveSDFPreviewRevision = INDEX_NONE;
+	int32 LiveSDFPreviewRequestedRevision = INDEX_NONE;
+	bool bLiveSDFPreviewDirty = true;
+	bool bLiveSDFPreviewRenderPending = false;
+	double LastLiveSDFPreviewRequestTime = -1000.0;
 	int32 CachedUVOverlayUVChannel = INDEX_NONE;
 	int32 CachedUVOverlayMaterialSlot = INDEX_NONE;
 	bool bCachedUVOverlayIsolateTargetMaterialSlot = false;

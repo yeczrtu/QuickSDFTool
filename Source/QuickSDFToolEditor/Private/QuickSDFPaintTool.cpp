@@ -398,6 +398,7 @@ void UQuickSDFPaintTool::OnTick(float DeltaTime)
 		ClearPreviewMaterialDirtyState();
 	}
 
+	UpdateLiveSDFPreview();
 	TryActivateQuickLine();
 }
 
@@ -530,12 +531,14 @@ void UQuickSDFPaintTool::ApplyMaterialPreviewMode()
 		}
 		break;
 
+	case EQuickSDFMaterialPreviewMode::LiveSDF:
 	case EQuickSDFMaterialPreviewMode::GeneratedSDF:
 		RestoreOriginalComponentMaterialSlotOverlayMaterials();
 		CurrentComponent->SetOverlayMaterial(nullptr);
 		CurrentComponent->SetOverlayMaterialMaxDrawDistance(0.0f);
 		RestoreOriginalComponentMaterialSlots();
-		if (SDFToonPreviewMaterial && CanUseGeneratedSDFPreview())
+		if (SDFToonPreviewMaterial &&
+			(PreviewMode == EQuickSDFMaterialPreviewMode::LiveSDF ? CanUseLiveSDFPreview() : CanUseGeneratedSDFPreview()))
 		{
 			const int32 TargetMaterialSlot = Properties ? Properties->TargetMaterialSlot : INDEX_NONE;
 			if (TargetMaterialSlot >= 0 && TargetMaterialSlot < CurrentComponent->GetNumMaterials())
@@ -584,6 +587,7 @@ void UQuickSDFPaintTool::ChangeTargetComponent(UMeshComponent* NewComponent)
 	PreviewOverlayBaseMaterial = nullptr;
 	SDFToonPreviewMaterial = nullptr;
 	SDFToonBaseMaterial = nullptr;
+	ResetLiveSDFPreviewState();
 	OriginalMaterials.Empty();
 	OriginalOverlayMaterial = nullptr;
 	OriginalMaterialSlotOverlayMaterials.Empty();
