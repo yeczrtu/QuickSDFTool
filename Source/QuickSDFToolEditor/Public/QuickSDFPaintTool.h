@@ -255,6 +255,7 @@ public:
 	FLinearColor GetTextureSetStatusColor(int32 TextureSetIndex) const;
 	class UTexture2D* GetActiveFinalSDFTexture() const;
 	bool CanUseGeneratedSDFPreview() const;
+	void RefreshTimelinePreviewMaterial();
 	FText GetGeneratedSDFPreviewUnavailableText() const;
 	FText GetMaterialPreviewStatusText() const;
 	FQuickSDFAutoSymmetryResult ResolveEffectiveSymmetryMode(bool bAllowExpensiveAnalysis = true);

@@ -34,7 +34,6 @@
 #include "Brushes/SlateImageBrush.h"
 #include "Widgets/Layout/SExpandableArea.h"
 #include "Widgets/Input/SCheckBox.h"
-#include "Widgets/Input/SNumericEntryBox.h"
 #include "Widgets/Layout/SScaleBox.h"
 
 #define LOCTEXT_NAMESPACE "SQuickSDFTimeline"
@@ -58,6 +57,11 @@ constexpr float QuickSDFTimelineAccentG = 0.82f;
 constexpr float QuickSDFTimelineAccentB = 1.0f;
 constexpr float QuickSDFTimelineBakeLaneY = QuickSDFTimelineSeekLaneHeight + 5.0f;
 constexpr float QuickSDFTimelineBakeTickHeight = 8.0f;
+constexpr float QuickSDFTimelineBakeHandleWidth = 10.0f;
+constexpr float QuickSDFTimelineBakeHandleHeight = 12.0f;
+constexpr float QuickSDFTimelineBakeHandleHitPadding = 2.0f;
+constexpr float QuickSDFTimelineBakeReadoutWidth = 86.0f;
+constexpr float QuickSDFTimelineBakeReadoutHeight = 14.0f;
 
 FLinearColor GetQuickSDFTimelineAccentColor(float Alpha = 1.0f)
 {
@@ -66,7 +70,7 @@ FLinearColor GetQuickSDFTimelineAccentColor(float Alpha = 1.0f)
 
 FLinearColor GetQuickSDFTimelineOffsetColor(float Alpha = 1.0f)
 {
-	return FLinearColor(1.0f, 0.62f, 0.16f, Alpha);
+	return FLinearColor(0.84f, 0.66f, 0.38f, Alpha);
 }
 
 float GetQuickSDFTimelineMaxAngle(const UQuickSDFToolProperties* Props)
@@ -434,95 +438,6 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 						]
 					]
 
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					.Padding(0.0f, 0.0f, 8.0f, 0.0f)
-					[
-						SNew(SBox)
-						.HeightOverride(QuickSDFTimelineButtonHeight)
-						.ToolTipText_Lambda([this]()
-						{
-							return FText::Format(
-								LOCTEXT("HeaderBakeShiftTooltip", "Bake angle shift for the selected image. Authored key stays fixed.\n{0}\n{1}"),
-								GetActiveAngleOffsetPreviewText(),
-								GetActiveAngleOffsetRangeText());
-						})
-						[
-							SNew(SHorizontalBox)
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.VAlign(VAlign_Center)
-							.Padding(0.0f, 0.0f, 4.0f, 0.0f)
-							[
-								SNew(STextBlock)
-								.Text(LOCTEXT("HeaderBakeShiftLabel", "Bake \u0394"))
-								.Font(FAppStyle::GetFontStyle("SmallFont"))
-								.ColorAndOpacity(GetQuickSDFTimelineOffsetColor(0.95f))
-							]
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.VAlign(VAlign_Center)
-							.Padding(0.0f, 0.0f, 3.0f, 0.0f)
-							[
-								SNew(SBox)
-								.WidthOverride(48.0f)
-								[
-									SNew(SNumericEntryBox<float>)
-									.AllowSpin(true)
-									.MinValue(-90.0f)
-									.MaxValue(90.0f)
-									.MinSliderValue(-30.0f)
-									.MaxSliderValue(30.0f)
-									.Delta(1.0f)
-									.Value(this, &SQuickSDFTimeline::GetActiveAngleOffsetDelta)
-									.OnValueChanged(this, &SQuickSDFTimeline::OnActiveAngleOffsetChanged)
-									.OnValueCommitted(this, &SQuickSDFTimeline::OnActiveAngleOffsetCommitted)
-									.OnBeginSliderMovement(this, &SQuickSDFTimeline::OnActiveAngleOffsetSliderBegin)
-									.OnEndSliderMovement(this, &SQuickSDFTimeline::OnActiveAngleOffsetSliderEnd)
-									.ToolTipText(LOCTEXT("HeaderBakeShiftInputTooltip", "Signed per-image bake angle shift in degrees. The authored key stays fixed; bake and preview evaluation are clamped between neighboring keys."))
-								]
-							]
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.VAlign(VAlign_Center)
-							.Padding(0.0f, 0.0f, 4.0f, 0.0f)
-							[
-								SNew(STextBlock)
-								.Text(LOCTEXT("HeaderBakeShiftDegreesSuffix", "deg"))
-								.Font(FAppStyle::GetFontStyle("SmallFont"))
-								.ColorAndOpacity(FLinearColor(0.55f, 0.57f, 0.58f, 1.0f))
-							]
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.VAlign(VAlign_Center)
-							[
-								SNew(SBox)
-								.WidthOverride(22.0f)
-								.HeightOverride(QuickSDFTimelineButtonHeight)
-								.IsEnabled(this, &SQuickSDFTimeline::IsActiveAngleOffsetResetEnabled)
-								[
-									SNew(SButton)
-									.ButtonStyle(FQuickSDFToolStyle::Get().Get(), "QuickSDF.Timeline.Button")
-									.HAlign(HAlign_Center)
-									.VAlign(VAlign_Center)
-									.ContentPadding(FMargin(0.0f))
-									.ToolTipText(LOCTEXT("ResetBakeShiftTooltip", "Reset the selected bake shift to zero."))
-									.OnClicked(FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnActiveAngleOffsetResetClicked))
-									[
-										SNew(SBox)
-										.WidthOverride(12.0f)
-										.HeightOverride(12.0f)
-										[
-											SNew(SImage)
-											.Image(FQuickSDFToolStyle::GetBrush("QuickSDF.Action.FillBlack"))
-										]
-									]
-								]
-							]
-						]
-					]
-
 					+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
 
 					// Controls (paint toggles, keyframe actions)
@@ -670,10 +585,16 @@ void SQuickSDFTimeline::Tick(const FGeometry& AllottedGeometry, const double InC
 	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
 	UQuickSDFPaintTool* Tool = GetActivePaintTool();
-	if (!Tool) return;
+	if (!Tool)
+	{
+		return;
+	}
 
 	UQuickSDFToolProperties* Props = Tool->Properties;
-	if (!Props) return;
+	if (!Props)
+	{
+		return;
+	}
 
 	if (Tool->ConsumeImportPanelRequest())
 	{
@@ -780,6 +701,13 @@ FReply SQuickSDFTimeline::OnDrop(const FGeometry& MyGeometry, const FDragDropEve
 FReply SQuickSDFTimeline::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
 	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton &&
+		IsBakeShiftHandleUnderCursor(MouseEvent.GetScreenSpacePosition()))
+	{
+		BeginBakeShiftDrag(MouseEvent.GetScreenSpacePosition());
+		return FReply::Handled().CaptureMouse(SharedThis(this));
+	}
+
+	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton &&
 		IsSeekLaneUnderCursor(MouseEvent.GetScreenSpacePosition()))
 	{
 		bSeekingTimeline = true;
@@ -792,6 +720,12 @@ FReply SQuickSDFTimeline::OnMouseButtonDown(const FGeometry& MyGeometry, const F
 
 FReply SQuickSDFTimeline::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
+	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bDraggingBakeShiftHandle)
+	{
+		EndBakeShiftDrag();
+		return FReply::Handled().ReleaseMouseCapture();
+	}
+
 	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bSeekingTimeline)
 	{
 		bSeekingTimeline = false;
@@ -801,10 +735,26 @@ FReply SQuickSDFTimeline::OnMouseButtonUp(const FGeometry& MyGeometry, const FPo
 	return SCompoundWidget::OnMouseButtonUp(MyGeometry, MouseEvent);
 }
 
+FReply SQuickSDFTimeline::OnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton &&
+		IsBakeShiftHandleUnderCursor(MouseEvent.GetScreenSpacePosition()))
+	{
+		EndBakeShiftDrag();
+		return OnActiveAngleOffsetResetClicked();
+	}
+
+	return SCompoundWidget::OnMouseButtonDoubleClick(MyGeometry, MouseEvent);
+}
+
 void SQuickSDFTimeline::OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent)
 {
 	bSeekingTimeline = false;
 	HoveredOffsetKeyIndex = INDEX_NONE;
+	if (bDraggingBakeShiftHandle)
+	{
+		EndBakeShiftDrag();
+	}
 	if (bTimelineDragTransactionOpen)
 	{
 		OnKeyframeDragEnded();
@@ -813,6 +763,12 @@ void SQuickSDFTimeline::OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostE
 
 FReply SQuickSDFTimeline::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
+	if (bDraggingBakeShiftHandle)
+	{
+		UpdateBakeShiftDrag(MouseEvent.GetScreenSpacePosition());
+		return FReply::Handled();
+	}
+
 	if (bSeekingTimeline)
 	{
 		SeekTimelineAtScreenPosition(MouseEvent.GetScreenSpacePosition());
@@ -820,6 +776,16 @@ FReply SQuickSDFTimeline::OnMouseMove(const FGeometry& MyGeometry, const FPointe
 	}
 
 	return SCompoundWidget::OnMouseMove(MyGeometry, MouseEvent);
+}
+
+FCursorReply SQuickSDFTimeline::OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const
+{
+	if (bDraggingBakeShiftHandle || IsBakeShiftHandleUnderCursor(CursorEvent.GetScreenSpacePosition()))
+	{
+		return FCursorReply::Cursor(EMouseCursor::ResizeLeftRight);
+	}
+
+	return SCompoundWidget::OnCursorQuery(MyGeometry, CursorEvent);
 }
 
 EVisibility SQuickSDFTimeline::GetRefineVisibility() const
@@ -953,6 +919,162 @@ bool SQuickSDFTimeline::IsActiveAngleOffsetResetEnabled() const
 	return CurrentValue.IsSet() && !FMath::IsNearlyZero(CurrentValue.GetValue(), 0.01f);
 }
 
+TOptional<FVector2D> SQuickSDFTimeline::GetActiveBakeShiftHandleCenter() const
+{
+	if (!TimelineTrackCanvas.IsValid())
+	{
+		return TOptional<FVector2D>();
+	}
+
+	const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	if (!Props || !Props->TargetAngles.IsValidIndex(Props->EditAngleIndex))
+	{
+		return TOptional<FVector2D>();
+	}
+
+	const float MaxAngle = GetQuickSDFTimelineMaxAngle(Props);
+	const float AuthoredAngle = Props->TargetAngles[Props->EditAngleIndex];
+	if (Props->UsesFrontHalfAngles() && AuthoredAngle > MaxAngle)
+	{
+		return TOptional<FVector2D>();
+	}
+
+	const float EffectiveBakeAngle = Props->GetMaterialAngleForKey(Props->EditAngleIndex);
+	return FVector2D(
+		GetQuickSDFTimelineAngleX(TimelineTrackCanvas, EffectiveBakeAngle, MaxAngle),
+		QuickSDFTimelineSeekLaneHeight + 9.0f);
+}
+
+FVector2D SQuickSDFTimeline::GetActiveBakeShiftHandlePosition() const
+{
+	const TOptional<FVector2D> Center = GetActiveBakeShiftHandleCenter();
+	if (!Center.IsSet())
+	{
+		return FVector2D(-1000.0f, -1000.0f);
+	}
+
+	return FVector2D(
+		Center.GetValue().X - (QuickSDFTimelineBakeHandleWidth * 0.5f),
+		Center.GetValue().Y - (QuickSDFTimelineBakeHandleHeight * 0.5f));
+}
+
+FVector2D SQuickSDFTimeline::GetActiveBakeShiftReadoutPosition() const
+{
+	const TOptional<FVector2D> Center = GetActiveBakeShiftHandleCenter();
+	if (!Center.IsSet() || !TimelineTrackCanvas.IsValid())
+	{
+		return FVector2D(-1000.0f, -1000.0f);
+	}
+
+	const float CanvasWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X;
+	const float DesiredX = Center.GetValue().X - (QuickSDFTimelineBakeReadoutWidth * 0.5f);
+	return FVector2D(
+		FMath::Clamp(DesiredX, 4.0f, FMath::Max(4.0f, CanvasWidth - QuickSDFTimelineBakeReadoutWidth - 4.0f)),
+		3.0f);
+}
+
+FSlateRect SQuickSDFTimeline::GetActiveBakeShiftHandleRect() const
+{
+	const TOptional<FVector2D> Center = GetActiveBakeShiftHandleCenter();
+	if (!Center.IsSet() || !TimelineTrackCanvas.IsValid())
+	{
+		return FSlateRect();
+	}
+
+	const FVector2D AbsoluteCenter = TimelineTrackCanvas->GetTickSpaceGeometry().LocalToAbsolute(Center.GetValue());
+	const float HitWidth = QuickSDFTimelineBakeHandleWidth + (QuickSDFTimelineBakeHandleHitPadding * 2.0f);
+	const float HitHeight = QuickSDFTimelineBakeHandleHeight + (QuickSDFTimelineBakeHandleHitPadding * 2.0f);
+	return FSlateRect(
+		AbsoluteCenter.X - (HitWidth * 0.5f),
+		AbsoluteCenter.Y - (HitHeight * 0.5f),
+		AbsoluteCenter.X + (HitWidth * 0.5f),
+		AbsoluteCenter.Y + (HitHeight * 0.5f));
+}
+
+bool SQuickSDFTimeline::IsBakeShiftHandleUnderCursor(const FVector2D& ScreenPosition) const
+{
+	const FSlateRect HandleRect = GetActiveBakeShiftHandleRect();
+	return HandleRect.Right > HandleRect.Left &&
+		HandleRect.Bottom > HandleRect.Top &&
+		ScreenPosition.X >= HandleRect.Left &&
+		ScreenPosition.X <= HandleRect.Right &&
+		ScreenPosition.Y >= HandleRect.Top &&
+		ScreenPosition.Y <= HandleRect.Bottom;
+}
+
+void SQuickSDFTimeline::BeginBakeShiftDrag(const FVector2D& ScreenPosition)
+{
+	const TOptional<FVector2D> HandleCenter = GetActiveBakeShiftHandleCenter();
+	if (!HandleCenter.IsSet() || !TimelineTrackCanvas.IsValid())
+	{
+		return;
+	}
+
+	const FGeometry TrackGeometry = TimelineTrackCanvas->GetTickSpaceGeometry();
+	const FVector2D LocalPosition = TrackGeometry.AbsoluteToLocal(ScreenPosition);
+	const float TrackWidth = FMath::Max(TrackGeometry.GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f), 1.0f);
+	const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	const float MaxAngle = GetQuickSDFTimelineMaxAngle(Props);
+	BakeShiftDragGrabOffsetDegrees = ((LocalPosition.X - HandleCenter.GetValue().X) / TrackWidth) * MaxAngle;
+
+	bDraggingBakeShiftHandle = true;
+	BeginAngleOffsetTransaction();
+}
+
+void SQuickSDFTimeline::UpdateBakeShiftDrag(const FVector2D& ScreenPosition)
+{
+	UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	if (!Props || !TimelineTrackCanvas.IsValid() || !Props->TargetAngles.IsValidIndex(Props->EditAngleIndex))
+	{
+		return;
+	}
+
+	const FGeometry TrackGeometry = TimelineTrackCanvas->GetTickSpaceGeometry();
+	const FVector2D LocalPosition = TrackGeometry.AbsoluteToLocal(ScreenPosition);
+	const float TrackWidth = FMath::Max(TrackGeometry.GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f), 1.0f);
+	const float MaxAngle = GetQuickSDFTimelineMaxAngle(Props);
+	const float CursorBakeAngle = ((LocalPosition.X - QuickSDFTimelineTrackPadding) / TrackWidth) * MaxAngle;
+	const float RequestedBakeAngle = FMath::Clamp(CursorBakeAngle - BakeShiftDragGrabOffsetDegrees, 0.0f, MaxAngle);
+	const float AuthoredAngle = Props->TargetAngles[Props->EditAngleIndex];
+	const float BaseBakeAngle = Props->GetMaterialAngle(AuthoredAngle);
+	ApplyActiveAngleOffsetDelta(RequestedBakeAngle - BaseBakeAngle, false);
+}
+
+void SQuickSDFTimeline::EndBakeShiftDrag()
+{
+	if (!bDraggingBakeShiftHandle)
+	{
+		return;
+	}
+
+	bDraggingBakeShiftHandle = false;
+	BakeShiftDragGrabOffsetDegrees = 0.0f;
+	const TOptional<float> CurrentDelta = GetActiveAngleOffsetDelta();
+	if (CurrentDelta.IsSet())
+	{
+		ApplyActiveAngleOffsetDelta(CurrentDelta.GetValue(), true);
+	}
+	EndAngleOffsetTransaction();
+}
+
+FText SQuickSDFTimeline::GetActiveBakeShiftDragReadoutText() const
+{
+	const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	if (!Props || !Props->TargetAngles.IsValidIndex(Props->EditAngleIndex))
+	{
+		return FText::GetEmpty();
+	}
+
+	const float Delta = Props->TargetAngleOffsetDeltas.IsValidIndex(Props->EditAngleIndex)
+		? Props->TargetAngleOffsetDeltas[Props->EditAngleIndex]
+		: 0.0f;
+	return FText::FromString(FString::Printf(TEXT("%.1f\u00B0  \u0394%+.1f\u00B0"), Props->GetMaterialAngleForKey(Props->EditAngleIndex), Delta));
+}
+
 void SQuickSDFTimeline::BeginAngleOffsetTransaction()
 {
 	if (bAngleOffsetTransactionOpen)
@@ -1008,7 +1130,7 @@ void SQuickSDFTimeline::SyncPreviewLightToActiveKey() const
 	}
 }
 
-void SQuickSDFTimeline::ApplyActiveAngleOffsetDelta(float RequestedDelta)
+void SQuickSDFTimeline::ApplyActiveAngleOffsetDelta(float RequestedDelta, bool bNotifyPropertyModified)
 {
 	UQuickSDFPaintTool* Tool = GetActivePaintTool();
 	UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
@@ -1020,9 +1142,27 @@ void SQuickSDFTimeline::ApplyActiveAngleOffsetDelta(float RequestedDelta)
 	BeginAngleOffsetTransaction();
 
 	Props->TargetAngleOffsetDeltas.SetNum(Props->TargetAngles.Num());
-	Props->TargetAngleOffsetDeltas[Props->EditAngleIndex] = RequestedDelta;
-	FProperty* Prop = Props->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngleOffsetDeltas));
-	Tool->OnPropertyModified(Props, Prop);
+	const float ClampedDelta = Props->GetClampedAngleOffsetDelta(Props->EditAngleIndex, RequestedDelta);
+	const bool bDeltaUnchanged = Props->TargetAngleOffsetDeltas.IsValidIndex(Props->EditAngleIndex) &&
+		FMath::IsNearlyEqual(Props->TargetAngleOffsetDeltas[Props->EditAngleIndex], ClampedDelta, 0.001f);
+	if (bDeltaUnchanged && !bNotifyPropertyModified)
+	{
+		return;
+	}
+
+	if (!bDeltaUnchanged)
+	{
+		Props->TargetAngleOffsetDeltas[Props->EditAngleIndex] = ClampedDelta;
+	}
+	if (bNotifyPropertyModified)
+	{
+		FProperty* Prop = Props->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngleOffsetDeltas));
+		Tool->OnPropertyModified(Props, Prop);
+	}
+	else
+	{
+		Tool->RefreshTimelinePreviewMaterial();
+	}
 
 	LastSeekAngle = Props->GetMaterialAngleForKey(Props->EditAngleIndex);
 	bHasSeekAngle = true;
@@ -1032,28 +1172,6 @@ void SQuickSDFTimeline::ApplyActiveAngleOffsetDelta(float RequestedDelta)
 	{
 		GEditor->RedrawAllViewports(false);
 	}
-}
-
-void SQuickSDFTimeline::OnActiveAngleOffsetChanged(float NewValue)
-{
-	ApplyActiveAngleOffsetDelta(NewValue);
-}
-
-void SQuickSDFTimeline::OnActiveAngleOffsetCommitted(float NewValue, ETextCommit::Type CommitType)
-{
-	ApplyActiveAngleOffsetDelta(NewValue);
-	EndAngleOffsetTransaction();
-}
-
-void SQuickSDFTimeline::OnActiveAngleOffsetSliderBegin()
-{
-	BeginAngleOffsetTransaction();
-}
-
-void SQuickSDFTimeline::OnActiveAngleOffsetSliderEnd(float NewValue)
-{
-	ApplyActiveAngleOffsetDelta(NewValue);
-	EndAngleOffsetTransaction();
 }
 
 FReply SQuickSDFTimeline::OnActiveAngleOffsetResetClicked()
@@ -1909,7 +2027,9 @@ void SQuickSDFTimeline::RebuildTimeline()
 			{
 				const UQuickSDFPaintTool* Tool = GetActivePaintTool();
 				const UQuickSDFToolProperties* P = Tool ? Tool->Properties : nullptr;
-				return P && P->TargetAngles.IsValidIndex(OffsetKeyIndex) && QuickSDFTimelineStatus::ShouldShowOffsetVisual(BuildTimelineKeyStatus(Tool, OffsetKeyIndex).AngleOffsetDelta)
+				return P && P->TargetAngles.IsValidIndex(OffsetKeyIndex) &&
+					P->EditAngleIndex != OffsetKeyIndex &&
+					QuickSDFTimelineStatus::ShouldShowOffsetVisual(BuildTimelineKeyStatus(Tool, OffsetKeyIndex).AngleOffsetDelta)
 					? EVisibility::HitTestInvisible
 					: EVisibility::Collapsed;
 			}))
@@ -2008,6 +2128,120 @@ void SQuickSDFTimeline::RebuildTimeline()
 	{
 		AddKeyframeToCanvas(Props->EditAngleIndex);
 	}
+
+	TimelineTrackCanvas->AddSlot()
+	.Position(TAttribute<FVector2D>::CreateSP(this, &SQuickSDFTimeline::GetActiveBakeShiftHandlePosition))
+	.Size(FVector2D(QuickSDFTimelineBakeHandleWidth, QuickSDFTimelineBakeHandleHeight))
+	[
+		SNew(SBorder)
+		.Visibility(TAttribute<EVisibility>::CreateLambda([this]()
+		{
+			return GetActiveBakeShiftHandleCenter().IsSet()
+				? EVisibility::Visible
+				: EVisibility::Collapsed;
+		}))
+		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+		.BorderBackgroundColor(FLinearColor::Transparent)
+		.Padding(FMargin(0.0f))
+		.ToolTipText_Lambda([this]()
+		{
+			return FText::Format(
+				LOCTEXT("BakeShiftHandleTooltip", "Drag left/right to set the selected image bake angle. Double-click to reset.\n{0}\n{1}"),
+				GetActiveAngleOffsetPreviewText(),
+				GetActiveAngleOffsetRangeText());
+		})
+		[
+			SNew(SOverlay)
+			.Visibility(EVisibility::HitTestInvisible)
+
+			+ SOverlay::Slot()
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Fill)
+			[
+				SNew(SBox)
+				.WidthOverride(4.0f)
+				[
+					SNew(SBorder)
+					.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+					.BorderBackgroundColor(FLinearColor(0.02f, 0.02f, 0.02f, 0.58f))
+				]
+			]
+
+			+ SOverlay::Slot()
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Fill)
+			[
+				SNew(SBox)
+				.WidthOverride(2.0f)
+				[
+					SNew(SBorder)
+					.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+					.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this]()
+					{
+						const bool bActiveShift = IsActiveAngleOffsetResetEnabled();
+						return FSlateColor(GetQuickSDFTimelineOffsetColor(bDraggingBakeShiftHandle ? 0.92f : (bActiveShift ? 0.78f : 0.46f)));
+					}))
+				]
+			]
+
+			+ SOverlay::Slot()
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Top)
+			[
+				SNew(SBox)
+				.WidthOverride(QuickSDFTimelineBakeHandleWidth)
+				.HeightOverride(2.0f)
+				[
+					SNew(SBorder)
+					.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+					.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this]()
+					{
+						const bool bActiveShift = IsActiveAngleOffsetResetEnabled();
+						return FSlateColor(GetQuickSDFTimelineOffsetColor(bDraggingBakeShiftHandle ? 0.88f : (bActiveShift ? 0.72f : 0.40f)));
+					}))
+				]
+			]
+
+			+ SOverlay::Slot()
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Bottom)
+			[
+				SNew(SBox)
+				.WidthOverride(8.0f)
+				.HeightOverride(2.0f)
+				[
+					SNew(SBorder)
+					.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+					.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this]()
+					{
+						const bool bActiveShift = IsActiveAngleOffsetResetEnabled();
+						return FSlateColor(GetQuickSDFTimelineOffsetColor(bDraggingBakeShiftHandle ? 0.74f : (bActiveShift ? 0.56f : 0.30f)));
+					}))
+				]
+			]
+		]
+	];
+
+	TimelineTrackCanvas->AddSlot()
+	.Position(TAttribute<FVector2D>::CreateSP(this, &SQuickSDFTimeline::GetActiveBakeShiftReadoutPosition))
+	.Size(FVector2D(QuickSDFTimelineBakeReadoutWidth, QuickSDFTimelineBakeReadoutHeight))
+	[
+		SNew(SBorder)
+		.Visibility(TAttribute<EVisibility>::CreateLambda([this]()
+		{
+			return bDraggingBakeShiftHandle ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+		}))
+		.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+		.BorderBackgroundColor(FLinearColor(0.030f, 0.032f, 0.034f, 0.92f))
+		.Padding(FMargin(4.0f, 0.0f))
+		[
+			SNew(STextBlock)
+			.Text(this, &SQuickSDFTimeline::GetActiveBakeShiftDragReadoutText)
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+			.ColorAndOpacity(FLinearColor(0.88f, 0.78f, 0.62f, 1.0f))
+			.Justification(ETextJustify::Center)
+		]
+	];
 
 	TimelineTrackCanvas->AddSlot()
 	.Position(TAttribute<FVector2D>::CreateLambda([this]() {

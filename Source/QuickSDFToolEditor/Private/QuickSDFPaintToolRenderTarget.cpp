@@ -401,6 +401,11 @@ void UQuickSDFPaintTool::RefreshPreviewMaterial()
 	ClearPreviewMaterialDirtyState();
 }
 
+void UQuickSDFPaintTool::RefreshTimelinePreviewMaterial()
+{
+	RefreshPreviewMaterial();
+}
+
 bool UQuickSDFPaintTool::CaptureRenderTargetPixels(UTextureRenderTarget2D* RenderTarget, TArray<FColor>& OutPixels) const
 {
 	if (!RenderTarget) return false;

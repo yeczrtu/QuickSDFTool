@@ -85,8 +85,10 @@ public:
 	virtual FReply OnDrop(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent) override;
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	virtual FReply OnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual void OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent) override;
+	virtual FCursorReply OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const override;
 
 public:
 	UQuickSDFPaintTool* GetActivePaintTool() const;
@@ -131,14 +133,19 @@ private:
 	FText GetActiveAngleOffsetPreviewText() const;
 	FText GetActiveAngleOffsetRangeText() const;
 	bool IsActiveAngleOffsetResetEnabled() const;
-	void OnActiveAngleOffsetChanged(float NewValue);
-	void OnActiveAngleOffsetCommitted(float NewValue, ETextCommit::Type CommitType);
-	void OnActiveAngleOffsetSliderBegin();
-	void OnActiveAngleOffsetSliderEnd(float NewValue);
 	FReply OnActiveAngleOffsetResetClicked();
+	FSlateRect GetActiveBakeShiftHandleRect() const;
+	bool IsBakeShiftHandleUnderCursor(const FVector2D& ScreenPosition) const;
+	void BeginBakeShiftDrag(const FVector2D& ScreenPosition);
+	void UpdateBakeShiftDrag(const FVector2D& ScreenPosition);
+	void EndBakeShiftDrag();
+	TOptional<FVector2D> GetActiveBakeShiftHandleCenter() const;
+	FVector2D GetActiveBakeShiftHandlePosition() const;
+	FVector2D GetActiveBakeShiftReadoutPosition() const;
+	FText GetActiveBakeShiftDragReadoutText() const;
 	void BeginAngleOffsetTransaction();
 	void EndAngleOffsetTransaction();
-	void ApplyActiveAngleOffsetDelta(float RequestedDelta);
+	void ApplyActiveAngleOffsetDelta(float RequestedDelta, bool bNotifyPropertyModified = true);
 	void SyncPreviewLightToActiveKey() const;
 
 	// Caching
@@ -152,9 +159,11 @@ private:
 	bool bSeekingTimeline = false;
 	bool bTimelineDragTransactionOpen = false;
 	bool bAngleOffsetTransactionOpen = false;
+	bool bDraggingBakeShiftHandle = false;
 	bool bHasSeekAngle = false;
 	bool bImportPanelOpen = false;
 	int32 HoveredOffsetKeyIndex = INDEX_NONE;
+	float BakeShiftDragGrabOffsetDegrees = 0.0f;
 	float LastSeekAngle = 0.0f;
 
 	// Widget refs
