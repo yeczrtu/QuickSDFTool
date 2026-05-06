@@ -682,7 +682,7 @@ void UQuickSDFEditorMode::SelectRelativeFrame(int32 Direction)
 
 	if (Properties->bAutoSyncLight && Properties->TargetAngles.IsValidIndex(NextIndex))
 	{
-		SetPreviewLightAngle(Properties->TargetAngles[NextIndex]);
+		SetPreviewLightAngle(Properties->GetMaterialAngleForKey(NextIndex));
 	}
 
 	if (GEditor)

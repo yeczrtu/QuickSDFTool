@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Input/DragAndDrop.h"
 #include "SQuickSDFMaskImportPanel.h"
+#include "Types/SlateEnums.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -17,6 +18,7 @@ public:
 	SLATE_BEGIN_ARGS(SQuickSDFTimelineKeyframe) {}
 		SLATE_ARGUMENT(int32, Index)
 		SLATE_ATTRIBUTE(float, Angle)
+		SLATE_ATTRIBUTE(float, AngleOffsetDelta)
 		SLATE_ATTRIBUTE(bool, bIsActive)
 		SLATE_ATTRIBUTE(bool, bSymmetryMode)
 		SLATE_ATTRIBUTE(bool, bAllowSourceTextureOverwrite)
@@ -43,6 +45,7 @@ public:
 private:
 	int32 Index = 0;
 	TAttribute<float> Angle;
+	TAttribute<float> AngleOffsetDelta;
 	TAttribute<bool> bIsActive;
 	TAttribute<bool> bSymmetryMode;
 	TAttribute<bool> bAllowSourceTextureOverwrite;
@@ -118,6 +121,20 @@ private:
 	FText GetCompactSummaryText() const;
 	FText GetCompleteMaskButtonText() const;
 	FText GetCompleteMaskTooltipText() const;
+	EVisibility GetAngleOffsetEditorVisibility() const;
+	TOptional<float> GetActiveAngleOffsetDelta() const;
+	FText GetActiveAngleOffsetPreviewText() const;
+	FText GetActiveAngleOffsetRangeText() const;
+	bool IsActiveAngleOffsetResetEnabled() const;
+	void OnActiveAngleOffsetChanged(float NewValue);
+	void OnActiveAngleOffsetCommitted(float NewValue, ETextCommit::Type CommitType);
+	void OnActiveAngleOffsetSliderBegin();
+	void OnActiveAngleOffsetSliderEnd(float NewValue);
+	FReply OnActiveAngleOffsetResetClicked();
+	void BeginAngleOffsetTransaction();
+	void EndAngleOffsetTransaction();
+	void ApplyActiveAngleOffsetDelta(float RequestedDelta);
+	void SyncPreviewLightToActiveKey() const;
 
 	// Caching
 	int32 CachedNumAngles = -1;
@@ -129,6 +146,7 @@ private:
 	int32 CachedMaskRevision = INDEX_NONE;
 	bool bSeekingTimeline = false;
 	bool bTimelineDragTransactionOpen = false;
+	bool bAngleOffsetTransactionOpen = false;
 	bool bHasSeekAngle = false;
 	bool bImportPanelOpen = false;
 	float LastSeekAngle = 0.0f;

@@ -98,7 +98,7 @@ void UQuickSDFPaintTool::FillOriginalShading(int32 AngleIndex)
 	UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(BaseMat, this);
 	const FQuickSDFMeshBakeBasis BakeBasis = MeshAdapter->GetBakeBasis();
 
-	MID->SetScalarParameterValue(TEXT("Angle"), Properties->GetMaterialAngle(Properties->TargetAngles[AngleIndex]));
+	MID->SetScalarParameterValue(TEXT("Angle"), Properties->GetMaterialAngleForKey(AngleIndex));
 	MID->SetScalarParameterValue(TEXT("BakeForwardAngleOffset"), BakeBasis.ForwardAngleOffsetDegrees);
 
 	FMaterialData MatData;

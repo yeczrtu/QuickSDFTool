@@ -34,6 +34,7 @@
 #include "Brushes/SlateImageBrush.h"
 #include "Widgets/Layout/SExpandableArea.h"
 #include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Input/SNumericEntryBox.h"
 #include "Widgets/Layout/SScaleBox.h"
 
 #define LOCTEXT_NAMESPACE "SQuickSDFTimeline"
@@ -280,6 +281,19 @@ FQuickSDFTimelineKeyStatus BuildTimelineKeyStatus(const UQuickSDFPaintTool* Tool
 	FQuickSDFTimelineKeyStatusInput Input;
 	Input.KeyIndex = KeyIndex;
 	Input.Angle = Props && Props->TargetAngles.IsValidIndex(KeyIndex) ? Props->TargetAngles[KeyIndex] : (AngleData ? AngleData->Angle : 0.0f);
+	Input.GlobalAngleOffset = Props ? Props->BakeAngleOffsetDegrees : 0.0f;
+	Input.AngleOffsetDelta = Props && Props->TargetAngleOffsetDeltas.IsValidIndex(KeyIndex)
+		? Props->TargetAngleOffsetDeltas[KeyIndex]
+		: (AngleData ? AngleData->AngleOffsetDeltaDegrees : 0.0f);
+	if (Props)
+	{
+		Props->GetAngleOffsetPreviewRange(KeyIndex, Input.MinPreviewAngle, Input.MaxPreviewAngle);
+		Input.EffectivePreviewAngle = Props->GetMaterialAngleForKey(KeyIndex);
+	}
+	else
+	{
+		Input.EffectivePreviewAngle = Input.Angle;
+	}
 	Input.bVisible = RangeStatus.FindSegmentByKeyIndex(KeyIndex) != nullptr;
 	Input.bIsActive = Props && Props->EditAngleIndex == KeyIndex;
 	Input.bInPaintTargetRange = RangeStatus.IsKeyInTargetRange(KeyIndex);
@@ -521,6 +535,94 @@ void SQuickSDFTimeline::Construct(const FArguments& InArgs)
 								+ SOverlay::Slot()
 								[
 									SAssignNew(TimelineTrackCanvas, SCanvas)
+								]
+							]
+						]
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(6.0f, 5.0f, 6.0f, 0.0f)
+						[
+							SNew(SBorder)
+							.Visibility(this, &SQuickSDFTimeline::GetAngleOffsetEditorVisibility)
+							.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
+							.Padding(FMargin(7.0f, 4.0f))
+							[
+								SNew(SHorizontalBox)
+								+ SHorizontalBox::Slot()
+								.AutoWidth()
+								.VAlign(VAlign_Center)
+								.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+								[
+									SNew(STextBlock)
+									.Text(LOCTEXT("KeyOffsetLabel", "Key Offset"))
+									.Font(FAppStyle::GetFontStyle("SmallFont"))
+									.ColorAndOpacity(FLinearColor(0.72f, 0.74f, 0.76f, 1.0f))
+								]
+								+ SHorizontalBox::Slot()
+								.AutoWidth()
+								.VAlign(VAlign_Center)
+								.Padding(0.0f, 0.0f, 7.0f, 0.0f)
+								[
+									SNew(SBox)
+									.WidthOverride(82.0f)
+									[
+										SNew(SNumericEntryBox<float>)
+										.AllowSpin(true)
+										.MinValue(-90.0f)
+										.MaxValue(90.0f)
+										.MinSliderValue(-30.0f)
+										.MaxSliderValue(30.0f)
+										.Delta(1.0f)
+										.Value(this, &SQuickSDFTimeline::GetActiveAngleOffsetDelta)
+										.OnValueChanged(this, &SQuickSDFTimeline::OnActiveAngleOffsetChanged)
+										.OnValueCommitted(this, &SQuickSDFTimeline::OnActiveAngleOffsetCommitted)
+										.OnBeginSliderMovement(this, &SQuickSDFTimeline::OnActiveAngleOffsetSliderBegin)
+										.OnEndSliderMovement(this, &SQuickSDFTimeline::OnActiveAngleOffsetSliderEnd)
+										.ToolTipText(LOCTEXT("KeyOffsetInputTooltip", "Per-image angle offset delta in degrees. The preview angle is clamped between neighboring keys."))
+									]
+								]
+								+ SHorizontalBox::Slot()
+								.AutoWidth()
+								.VAlign(VAlign_Center)
+								.Padding(0.0f, 0.0f, 8.0f, 0.0f)
+								[
+									SNew(STextBlock)
+									.Text(LOCTEXT("KeyOffsetDegreesSuffix", "deg"))
+									.Font(FAppStyle::GetFontStyle("SmallFont"))
+									.ColorAndOpacity(FLinearColor(0.55f, 0.57f, 0.58f, 1.0f))
+								]
+								+ SHorizontalBox::Slot()
+								.AutoWidth()
+								.VAlign(VAlign_Center)
+								.Padding(0.0f, 0.0f, 8.0f, 0.0f)
+								[
+									SNew(SBox)
+									.IsEnabled(this, &SQuickSDFTimeline::IsActiveAngleOffsetResetEnabled)
+									[
+										MakeTimelineIconButton(
+											"QuickSDF.Action.FillBlack",
+											LOCTEXT("ResetKeyOffsetTooltip", "Reset the selected key offset to zero."),
+											FOnClicked::CreateSP(this, &SQuickSDFTimeline::OnActiveAngleOffsetResetClicked))
+									]
+								]
+								+ SHorizontalBox::Slot()
+								.AutoWidth()
+								.VAlign(VAlign_Center)
+								.Padding(0.0f, 0.0f, 10.0f, 0.0f)
+								[
+									SNew(STextBlock)
+									.Text(this, &SQuickSDFTimeline::GetActiveAngleOffsetPreviewText)
+									.Font(FAppStyle::GetFontStyle("SmallFont"))
+									.ColorAndOpacity(FLinearColor(0.88f, 0.90f, 0.92f, 1.0f))
+								]
+								+ SHorizontalBox::Slot()
+								.FillWidth(1.0f)
+								.VAlign(VAlign_Center)
+								[
+									SNew(STextBlock)
+									.Text(this, &SQuickSDFTimeline::GetActiveAngleOffsetRangeText)
+									.Font(FAppStyle::GetFontStyle("SmallFont"))
+									.ColorAndOpacity(FLinearColor(0.58f, 0.62f, 0.65f, 1.0f))
 								]
 							]
 						]
@@ -768,6 +870,184 @@ FText SQuickSDFTimeline::GetCompleteMaskTooltipText() const
 		LOCTEXT("CompleteDefaultMasksTooltip", "Complete the mask set to {0} angles across 0-{1} degrees"),
 		FText::AsNumber(TargetCount),
 		FText::AsNumber(MaxAngle));
+}
+
+EVisibility SQuickSDFTimeline::GetAngleOffsetEditorVisibility() const
+{
+	const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	return Props && Props->TargetAngles.IsValidIndex(Props->EditAngleIndex)
+		? EVisibility::Visible
+		: EVisibility::Collapsed;
+}
+
+TOptional<float> SQuickSDFTimeline::GetActiveAngleOffsetDelta() const
+{
+	const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	if (!Props || !Props->TargetAngles.IsValidIndex(Props->EditAngleIndex))
+	{
+		return TOptional<float>();
+	}
+
+	if (Props->TargetAngleOffsetDeltas.IsValidIndex(Props->EditAngleIndex))
+	{
+		return Props->TargetAngleOffsetDeltas[Props->EditAngleIndex];
+	}
+
+	const UQuickSDFAsset* Asset = GetActiveTimelineAsset();
+	return Asset && Asset->GetActiveAngleDataList().IsValidIndex(Props->EditAngleIndex)
+		? Asset->GetActiveAngleDataList()[Props->EditAngleIndex].AngleOffsetDeltaDegrees
+		: 0.0f;
+}
+
+FText SQuickSDFTimeline::GetActiveAngleOffsetPreviewText() const
+{
+	const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	if (!Props || !Props->TargetAngles.IsValidIndex(Props->EditAngleIndex))
+	{
+		return FText::GetEmpty();
+	}
+
+	return FText::Format(
+		LOCTEXT("ActiveAngleOffsetPreview", "Preview: {0} deg"),
+		FText::AsNumber(FMath::RoundToFloat(Props->GetMaterialAngleForKey(Props->EditAngleIndex) * 10.0f) / 10.0f));
+}
+
+FText SQuickSDFTimeline::GetActiveAngleOffsetRangeText() const
+{
+	const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	if (!Props || !Props->TargetAngles.IsValidIndex(Props->EditAngleIndex))
+	{
+		return FText::GetEmpty();
+	}
+
+	float MinPreviewAngle = 0.0f;
+	float MaxPreviewAngle = Props->GetPaintMaxAngle();
+	Props->GetAngleOffsetPreviewRange(Props->EditAngleIndex, MinPreviewAngle, MaxPreviewAngle);
+	return FText::Format(
+		LOCTEXT("ActiveAngleOffsetRange", "Range: {0}..{1}"),
+		FText::AsNumber(FMath::RoundToFloat(MinPreviewAngle * 10.0f) / 10.0f),
+		FText::AsNumber(FMath::RoundToFloat(MaxPreviewAngle * 10.0f) / 10.0f));
+}
+
+bool SQuickSDFTimeline::IsActiveAngleOffsetResetEnabled() const
+{
+	const TOptional<float> CurrentValue = GetActiveAngleOffsetDelta();
+	return CurrentValue.IsSet() && !FMath::IsNearlyZero(CurrentValue.GetValue(), 0.01f);
+}
+
+void SQuickSDFTimeline::BeginAngleOffsetTransaction()
+{
+	if (bAngleOffsetTransactionOpen)
+	{
+		return;
+	}
+
+	UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	if (!Tool || !Tool->GetToolManager() || !Tool->Properties)
+	{
+		return;
+	}
+
+	Tool->GetToolManager()->BeginUndoTransaction(LOCTEXT("EditKeyAngleOffset", "Edit Quick SDF Key Angle Offset"));
+	bAngleOffsetTransactionOpen = true;
+	Tool->Properties->Modify();
+
+	if (UQuickSDFAsset* Asset = GetActiveTimelineAsset())
+	{
+		Asset->Modify();
+	}
+}
+
+void SQuickSDFTimeline::EndAngleOffsetTransaction()
+{
+	if (!bAngleOffsetTransactionOpen)
+	{
+		return;
+	}
+
+	if (UQuickSDFPaintTool* Tool = GetActivePaintTool())
+	{
+		if (Tool->GetToolManager())
+		{
+			Tool->GetToolManager()->EndUndoTransaction();
+		}
+	}
+	bAngleOffsetTransactionOpen = false;
+}
+
+void SQuickSDFTimeline::SyncPreviewLightToActiveKey() const
+{
+	const UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	if (!Props || !Props->bAutoSyncLight || !Props->TargetAngles.IsValidIndex(Props->EditAngleIndex))
+	{
+		return;
+	}
+
+	if (UQuickSDFEditorMode* Mode = Cast<UQuickSDFEditorMode>(GLevelEditorModeTools().GetActiveScriptableMode("EM_QuickSDFEditorMode")))
+	{
+		Mode->SetPreviewLightAngle(Props->GetMaterialAngleForKey(Props->EditAngleIndex));
+	}
+}
+
+void SQuickSDFTimeline::ApplyActiveAngleOffsetDelta(float RequestedDelta)
+{
+	UQuickSDFPaintTool* Tool = GetActivePaintTool();
+	UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
+	if (!Tool || !Props || !Props->TargetAngles.IsValidIndex(Props->EditAngleIndex))
+	{
+		return;
+	}
+
+	BeginAngleOffsetTransaction();
+
+	Props->TargetAngleOffsetDeltas.SetNum(Props->TargetAngles.Num());
+	Props->TargetAngleOffsetDeltas[Props->EditAngleIndex] = RequestedDelta;
+	FProperty* Prop = Props->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngleOffsetDeltas));
+	Tool->OnPropertyModified(Props, Prop);
+
+	LastSeekAngle = Props->GetMaterialAngleForKey(Props->EditAngleIndex);
+	bHasSeekAngle = true;
+	SyncPreviewLightToActiveKey();
+	Invalidate(EInvalidateWidgetReason::PaintAndVolatility);
+	if (GEditor)
+	{
+		GEditor->RedrawAllViewports(false);
+	}
+}
+
+void SQuickSDFTimeline::OnActiveAngleOffsetChanged(float NewValue)
+{
+	ApplyActiveAngleOffsetDelta(NewValue);
+}
+
+void SQuickSDFTimeline::OnActiveAngleOffsetCommitted(float NewValue, ETextCommit::Type CommitType)
+{
+	ApplyActiveAngleOffsetDelta(NewValue);
+	EndAngleOffsetTransaction();
+}
+
+void SQuickSDFTimeline::OnActiveAngleOffsetSliderBegin()
+{
+	BeginAngleOffsetTransaction();
+}
+
+void SQuickSDFTimeline::OnActiveAngleOffsetSliderEnd(float NewValue)
+{
+	ApplyActiveAngleOffsetDelta(NewValue);
+	EndAngleOffsetTransaction();
+}
+
+FReply SQuickSDFTimeline::OnActiveAngleOffsetResetClicked()
+{
+	BeginAngleOffsetTransaction();
+	ApplyActiveAngleOffsetDelta(0.0f);
+	EndAngleOffsetTransaction();
+	return FReply::Handled();
 }
 
 ECheckBoxState SQuickSDFTimeline::IsSymmetryModeEnabled() const
@@ -1532,6 +1812,20 @@ void SQuickSDFTimeline::RebuildTimeline()
 					return ActiveTool->Properties->TargetAngles[i];
 				return 0.0f;
 			}))
+			.AngleOffsetDelta(TAttribute<float>::CreateLambda([this, i]() {
+				UQuickSDFPaintTool* ActiveTool = this->GetActivePaintTool();
+				if (ActiveTool && ActiveTool->Properties && ActiveTool->Properties->TargetAngleOffsetDeltas.IsValidIndex(i))
+				{
+					return ActiveTool->Properties->TargetAngleOffsetDeltas[i];
+				}
+				if (const UQuickSDFAsset* Asset = GetActiveTimelineAsset())
+				{
+					return Asset->GetActiveAngleDataList().IsValidIndex(i)
+						? Asset->GetActiveAngleDataList()[i].AngleOffsetDeltaDegrees
+						: 0.0f;
+				}
+				return 0.0f;
+			}))
 			.bIsActive(TAttribute<bool>::CreateLambda([this, i]() {
 				UQuickSDFPaintTool* ActiveTool = this->GetActivePaintTool();
 				return ActiveTool && ActiveTool->Properties && ActiveTool->Properties->EditAngleIndex == i;
@@ -1697,7 +1991,7 @@ void SQuickSDFTimeline::OnKeyframeClicked(int32 Index)
 
 			if (Props->bAutoSyncLight)
 			{
-				OnSyncLightClicked();
+				SyncPreviewLightToActiveKey();
 			}
 
 			Invalidate(EInvalidateWidgetReason::PaintAndVolatility);
@@ -1720,7 +2014,7 @@ FReply SQuickSDFTimeline::OnSyncLightClicked()
 	int32 Index = Tool->Properties->EditAngleIndex;
 	if (Tool->Properties->TargetAngles.IsValidIndex(Index))
 	{
-		const float TargetAngle = Tool->Properties->TargetAngles[Index];
+		const float TargetAngle = Tool->Properties->GetMaterialAngleForKey(Index);
 		LastSeekAngle = TargetAngle;
 		bHasSeekAngle = true;
 		Mode->SetPreviewLightAngle(TargetAngle);
@@ -1741,8 +2035,6 @@ void SQuickSDFTimeline::OnKeyframeAngleChanged(float NewAngle, int32 Index)
 				const float MaxAngle = GetQuickSDFTimelineMaxAngle(Props);
 				const float ClampedAngle = FMath::Clamp(NewAngle, 0.0f, MaxAngle);
 				Props->TargetAngles[Index] = ClampedAngle;
-				LastSeekAngle = ClampedAngle;
-				bHasSeekAngle = true;
 
 				UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
 				if (Subsystem && Subsystem->GetActiveSDFAsset())
@@ -1756,12 +2048,11 @@ void SQuickSDFTimeline::OnKeyframeAngleChanged(float NewAngle, int32 Index)
 				// Fire property modified to update the preview light
 				FProperty* Prop = Props->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngles));
 				Tool->OnPropertyModified(Props, Prop);
+				LastSeekAngle = Props->GetMaterialAngleForKey(Index);
+				bHasSeekAngle = true;
 				if (Props->bAutoSyncLight)
 				{
-					if (UQuickSDFEditorMode* Mode = Cast<UQuickSDFEditorMode>(GLevelEditorModeTools().GetActiveScriptableMode("EM_QuickSDFEditorMode")))
-					{
-						Mode->SetPreviewLightAngle(ClampedAngle);
-					}
+					SyncPreviewLightToActiveKey();
 				}
 				Invalidate(EInvalidateWidgetReason::PaintAndVolatility);
 				if (GEditor)

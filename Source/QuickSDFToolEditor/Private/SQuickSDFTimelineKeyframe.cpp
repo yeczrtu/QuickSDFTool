@@ -56,6 +56,7 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 {
 	Index = InArgs._Index;
 	Angle = InArgs._Angle;
+	AngleOffsetDelta = InArgs._AngleOffsetDelta;
 	bIsActive = InArgs._bIsActive;
 	bSymmetryMode = InArgs._bSymmetryMode;
 	bAllowSourceTextureOverwrite = InArgs._bAllowSourceTextureOverwrite;
@@ -220,6 +221,39 @@ void SQuickSDFTimelineKeyframe::Construct(const FArguments& InArgs)
 						return bHasUnbakedVectorLayer.Get() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
 					}),
 					TAttribute<FSlateColor>(FLinearColor(0.82f, 0.42f, 1.0f, 0.80f)))
+			]
+		]
+
+		// Image-specific angle offset marker.
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Right)
+		.VAlign(VAlign_Top)
+		.Padding(0.0f, 0.0f, 2.0f, 0.0f)
+		[
+			SNew(SBox)
+			.WidthOverride(16.0f)
+			.HeightOverride(10.0f)
+			.Visibility(TAttribute<EVisibility>::CreateLambda([this]()
+			{
+				return FMath::IsNearlyZero(AngleOffsetDelta.Get(), 0.01f)
+					? EVisibility::Collapsed
+					: EVisibility::HitTestInvisible;
+			}))
+			[
+				SNew(SBorder)
+				.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+				.BorderBackgroundColor(FLinearColor(1.0f, 0.62f, 0.16f, 0.92f))
+				.Padding(FMargin(1.0f, 0.0f))
+				[
+					SNew(STextBlock)
+					.Text(TAttribute<FText>::CreateLambda([this]()
+					{
+						return FText::FromString(AngleOffsetDelta.Get() > 0.0f ? TEXT("+") : TEXT("-"));
+					}))
+					.Justification(ETextJustify::Center)
+					.ColorAndOpacity(FLinearColor(0.04f, 0.035f, 0.025f, 1.0f))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 6))
+				]
 			]
 		]
 	];

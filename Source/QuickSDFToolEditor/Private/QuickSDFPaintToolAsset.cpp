@@ -1804,10 +1804,12 @@ bool UQuickSDFPaintTool::AssignMaskTextureToAngle(int32 AngleIndex, UTexture2D* 
 
 	Properties->TargetTextures.SetNum(Asset->GetActiveAngleDataList().Num());
 	Properties->TargetAngles.SetNum(Asset->GetActiveAngleDataList().Num());
+	Properties->TargetAngleOffsetDeltas.SetNum(Asset->GetActiveAngleDataList().Num());
 	Properties->NumAngles = Asset->GetActiveAngleDataList().Num();
 	for (int32 Index = 0; Index < Asset->GetActiveAngleDataList().Num(); ++Index)
 	{
 		Properties->TargetAngles[Index] = Asset->GetActiveAngleDataList()[Index].Angle;
+		Properties->TargetAngleOffsetDeltas[Index] = Asset->GetActiveAngleDataList()[Index].AngleOffsetDeltaDegrees;
 		Properties->TargetTextures[Index] = Asset->GetActiveAngleDataList()[Index].TextureMask;
 	}
 	Properties->EditAngleIndex = FMath::Clamp(AngleIndex, 0, Asset->GetActiveAngleDataList().Num() - 1);
@@ -2109,16 +2111,19 @@ bool UQuickSDFPaintTool::ImportEditedMasksFromTextures(const TArray<UTexture2D*>
 	Asset->GetActiveAngleDataList().SetNum(Items.Num());
 	Properties->NumAngles = Items.Num();
 	Properties->TargetAngles.SetNum(Items.Num());
+	Properties->TargetAngleOffsetDeltas.SetNum(Items.Num());
 	Properties->TargetTextures.SetNum(Items.Num());
 
 	for (int32 Index = 0; Index < Items.Num(); ++Index)
 	{
 		Asset->GetActiveAngleDataList()[Index].Angle = Items[Index].Angle;
+		Asset->GetActiveAngleDataList()[Index].AngleOffsetDeltaDegrees = 0.0f;
 		Asset->GetActiveAngleDataList()[Index].MaskGuid = FGuid::NewGuid();
 		Asset->GetActiveAngleDataList()[Index].TextureMask = Items[Index].Texture;
 		Asset->GetActiveAngleDataList()[Index].bAllowSourceTextureOverwrite = false;
 		Asset->GetActiveAngleDataList()[Index].PaintRenderTarget = nullptr;
 		Properties->TargetAngles[Index] = Items[Index].Angle;
+		Properties->TargetAngleOffsetDeltas[Index] = 0.0f;
 		Properties->TargetTextures[Index] = Items[Index].Texture;
 	}
 
@@ -2227,16 +2232,19 @@ bool UQuickSDFPaintTool::ImportEditedMasksFromTexturesWithAngles(const TArray<UT
 	Asset->GetActiveAngleDataList().SetNum(Items.Num());
 	Properties->NumAngles = Items.Num();
 	Properties->TargetAngles.SetNum(Items.Num());
+	Properties->TargetAngleOffsetDeltas.SetNum(Items.Num());
 	Properties->TargetTextures.SetNum(Items.Num());
 
 	for (int32 Index = 0; Index < Items.Num(); ++Index)
 	{
 		Asset->GetActiveAngleDataList()[Index].Angle = Items[Index].Angle;
+		Asset->GetActiveAngleDataList()[Index].AngleOffsetDeltaDegrees = 0.0f;
 		Asset->GetActiveAngleDataList()[Index].MaskGuid = FGuid::NewGuid();
 		Asset->GetActiveAngleDataList()[Index].TextureMask = Items[Index].Texture;
 		Asset->GetActiveAngleDataList()[Index].bAllowSourceTextureOverwrite = false;
 		Asset->GetActiveAngleDataList()[Index].PaintRenderTarget = nullptr;
 		Properties->TargetAngles[Index] = Items[Index].Angle;
+		Properties->TargetAngleOffsetDeltas[Index] = 0.0f;
 		Properties->TargetTextures[Index] = Items[Index].Texture;
 	}
 
@@ -2331,6 +2339,7 @@ void UQuickSDFPaintTool::SaveQuickSDFAsset()
 		FQuickSDFAngleData& SavedData = SavedAsset->GetActiveAngleDataList()[AngleIndex];
 
 		SavedData.Angle = SourceData.Angle;
+		SavedData.AngleOffsetDeltaDegrees = SourceData.AngleOffsetDeltaDegrees;
 		SavedData.MaskGuid = SourceData.MaskGuid.IsValid() ? SourceData.MaskGuid : FGuid::NewGuid();
 		SavedData.bAllowSourceTextureOverwrite = SourceData.bAllowSourceTextureOverwrite;
 		if (SavedAsset != ActiveAsset)
@@ -2489,11 +2498,13 @@ void UQuickSDFPaintTool::EnsureInitialMasksReady()
 
 	Properties->NumAngles = Asset->GetActiveAngleDataList().Num();
 	Properties->TargetAngles.SetNum(Properties->NumAngles);
+	Properties->TargetAngleOffsetDeltas.SetNum(Properties->NumAngles);
 	Properties->TargetTextures.SetNum(Properties->NumAngles);
 
 	for (int32 Index = 0; Index < Asset->GetActiveAngleDataList().Num(); ++Index)
 	{
 		Properties->TargetAngles[Index] = Asset->GetActiveAngleDataList()[Index].Angle;
+		Properties->TargetAngleOffsetDeltas[Index] = Asset->GetActiveAngleDataList()[Index].AngleOffsetDeltaDegrees;
 		Properties->TargetTextures[Index] = Asset->GetActiveAngleDataList()[Index].TextureMask;
 	}
 
@@ -2577,10 +2588,11 @@ void UQuickSDFPaintTool::CompleteToEightMasks()
 	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
 	TArray<FGuid> BeforeGuids;
 	TArray<float> BeforeAngles;
+	TArray<float> BeforeAngleOffsetDeltas;
 	TArray<UTexture2D*> BeforeTextures;
 	TArray<bool> BeforeAllowSourceTextureOverwrites;
 	TArray<TArray<FColor>> BeforePixelsByMask;
-	CaptureMaskState(*this, Asset, BeforeGuids, BeforeAngles, BeforeTextures, BeforeAllowSourceTextureOverwrites, BeforePixelsByMask);
+	CaptureMaskState(*this, Asset, BeforeGuids, BeforeAngles, BeforeAngleOffsetDeltas, BeforeTextures, BeforeAllowSourceTextureOverwrites, BeforePixelsByMask);
 
 	GetToolManager()->BeginUndoTransaction(LOCTEXT("CompleteToDefaultMasks", "Complete Quick SDF Masks"));
 	Asset->Modify();
@@ -2667,10 +2679,11 @@ void UQuickSDFPaintTool::CompleteToEightMasks()
 	TUniquePtr<FQuickSDFMaskStateChange> Change = MakeUnique<FQuickSDFMaskStateChange>();
 	Change->BeforeGuids = MoveTemp(BeforeGuids);
 	Change->BeforeAngles = MoveTemp(BeforeAngles);
+	Change->BeforeAngleOffsetDeltas = MoveTemp(BeforeAngleOffsetDeltas);
 	Change->BeforeTextures = MoveTemp(BeforeTextures);
 	Change->BeforeAllowSourceTextureOverwrites = MoveTemp(BeforeAllowSourceTextureOverwrites);
 	Change->BeforePixelsByMask = MoveTemp(BeforePixelsByMask);
-	CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterAngles, Change->AfterTextures, Change->AfterAllowSourceTextureOverwrites, Change->AfterPixelsByMask);
+	CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterAngles, Change->AfterAngleOffsetDeltas, Change->AfterTextures, Change->AfterAllowSourceTextureOverwrites, Change->AfterPixelsByMask);
 	GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("CompleteDefaultMaskState", "Restore Quick SDF Complete Mask State"));
 
 	GetToolManager()->EndUndoTransaction();
@@ -2881,10 +2894,12 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 					}
 					Properties->NumAngles = ActiveAsset->GetActiveAngleDataList().Num();
 					Properties->TargetAngles.SetNum(Properties->NumAngles);
+					Properties->TargetAngleOffsetDeltas.SetNum(Properties->NumAngles);
 					Properties->TargetTextures.SetNum(Properties->NumAngles);
 					for (int32 i = 0; i < Properties->NumAngles; ++i)
 					{
 						Properties->TargetAngles[i] = ActiveAsset->GetActiveAngleDataList()[i].Angle;
+						Properties->TargetAngleOffsetDeltas[i] = ActiveAsset->GetActiveAngleDataList()[i].AngleOffsetDeltaDegrees;
 						Properties->TargetTextures[i] = ActiveAsset->GetActiveAngleDataList()[i].TextureMask;
 					}
 					RefreshPreviewMaterial();
@@ -2914,6 +2929,36 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 				{
 					ActiveAsset->GetActiveAngleDataList()[i].Angle = Properties->TargetAngles[i];
 				}
+				Properties->TargetAngleOffsetDeltas.SetNum(ActiveAsset->GetActiveAngleDataList().Num());
+				for (int32 i = 0; i < ActiveAsset->GetActiveAngleDataList().Num(); ++i)
+				{
+					const float ClampedDelta = Properties->GetClampedAngleOffsetDelta(i, Properties->TargetAngleOffsetDeltas[i]);
+					Properties->TargetAngleOffsetDeltas[i] = ClampedDelta;
+					ActiveAsset->GetActiveAngleDataList()[i].AngleOffsetDeltaDegrees = ClampedDelta;
+				}
+				ActiveAsset->SyncLegacyFromActiveTextureSet();
+			}
+			if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngleOffsetDeltas))
+			{
+				Properties->TargetAngleOffsetDeltas.SetNum(ActiveAsset->GetActiveAngleDataList().Num());
+				ActiveAsset->Modify();
+				for (int32 i = 0; i < ActiveAsset->GetActiveAngleDataList().Num(); ++i)
+				{
+					const float RequestedDelta = Properties->TargetAngleOffsetDeltas.IsValidIndex(i)
+						? Properties->TargetAngleOffsetDeltas[i]
+						: 0.0f;
+					const float ClampedDelta = Properties->GetClampedAngleOffsetDelta(i, RequestedDelta);
+					Properties->TargetAngleOffsetDeltas[i] = ClampedDelta;
+					ActiveAsset->GetActiveAngleDataList()[i].AngleOffsetDeltaDegrees = ClampedDelta;
+				}
+				if (FQuickSDFTextureSetData* ActiveSet = ActiveAsset->GetActiveTextureSet())
+				{
+					ActiveSet->bDirty = true;
+				}
+				ActiveAsset->SyncLegacyFromActiveTextureSet();
+				ActiveAsset->MarkPackageDirty();
+				RefreshPreviewMaterial();
+				++MaskRevision;
 			}
 			// 謇句虚縺ｧ縲後ユ繧ｯ繧ｹ繝√Ε繧ｹ繝ｭ繝・ヨ縲阪↓逕ｻ蜒上′繧｢繧ｵ繧､繝ｳ・医∪縺溘・蜑企勁・峨＆繧後◆蝣ｴ蜷・
 			if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetTextures))
@@ -2982,7 +3027,15 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 				{
 					ActiveAsset->Modify();
 					ActiveSet->BakeAngleOffsetDegrees = Properties->BakeAngleOffsetDegrees;
+					Properties->TargetAngleOffsetDeltas.SetNum(ActiveAsset->GetActiveAngleDataList().Num());
+					for (int32 i = 0; i < ActiveAsset->GetActiveAngleDataList().Num(); ++i)
+					{
+						const float ClampedDelta = Properties->GetClampedAngleOffsetDelta(i, Properties->TargetAngleOffsetDeltas[i]);
+						Properties->TargetAngleOffsetDeltas[i] = ClampedDelta;
+						ActiveAsset->GetActiveAngleDataList()[i].AngleOffsetDeltaDegrees = ClampedDelta;
+					}
 					ActiveSet->bDirty = true;
+					ActiveAsset->SyncLegacyFromActiveTextureSet();
 					ActiveAsset->MarkPackageDirty();
 				}
 				RefreshPreviewMaterial();
@@ -3044,6 +3097,7 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 
 		if (Property && (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex) ||
 				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngles) ||
+				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngleOffsetDeltas) ||
 				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MaterialPreviewMode) ||
 				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, SymmetryMode) ||
 				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bSymmetryMode)))
@@ -3096,10 +3150,10 @@ void UQuickSDFPaintTool::DuplicateKeyframeAtAngle(float Angle)
 		return;
 	}
 
-	AddKeyframeInternal(Angle, true, &SourcePixels);
+	AddKeyframeInternal(Angle, true, &SourcePixels, Asset->GetActiveAngleDataList()[SourceIndex].AngleOffsetDeltaDegrees);
 }
 
-void UQuickSDFPaintTool::AddKeyframeInternal(float RequestedAngle, bool bUseRequestedAngle, const TArray<FColor>* SourcePixels)
+void UQuickSDFPaintTool::AddKeyframeInternal(float RequestedAngle, bool bUseRequestedAngle, const TArray<FColor>* SourcePixels, float InitialAngleOffsetDeltaDegrees)
 {
 	if (!Properties) return;
 	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
@@ -3110,10 +3164,11 @@ void UQuickSDFPaintTool::AddKeyframeInternal(float RequestedAngle, bool bUseRequ
 	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
 	TArray<FGuid> BeforeGuids;
 	TArray<float> BeforeAngles;
+	TArray<float> BeforeAngleOffsetDeltas;
 	TArray<UTexture2D*> BeforeTextures;
 	TArray<bool> BeforeAllowSourceTextureOverwrites;
 	TArray<TArray<FColor>> BeforePixelsByMask;
-	CaptureMaskState(*this, Asset, BeforeGuids, BeforeAngles, BeforeTextures, BeforeAllowSourceTextureOverwrites, BeforePixelsByMask);
+	CaptureMaskState(*this, Asset, BeforeGuids, BeforeAngles, BeforeAngleOffsetDeltas, BeforeTextures, BeforeAllowSourceTextureOverwrites, BeforePixelsByMask);
 
 	const bool bDuplicateKeyframe = SourcePixels && SourcePixels->Num() > 0;
 	GetToolManager()->BeginUndoTransaction(bDuplicateKeyframe
@@ -3188,12 +3243,17 @@ void UQuickSDFPaintTool::AddKeyframeInternal(float RequestedAngle, bool bUseRequ
 
 	FQuickSDFAngleData NewData;
 	NewData.Angle = NewAngle;
+	NewData.AngleOffsetDeltaDegrees = FMath::Clamp(InitialAngleOffsetDeltaDegrees, -90.0f, 90.0f);
 	NewData.MaskGuid = FGuid::NewGuid();
 	
 	Asset->GetActiveAngleDataList().Insert(NewData, InsertIndex);
 	Properties->TargetAngles.Insert(NewAngle, InsertIndex);
+	Properties->TargetAngleOffsetDeltas.Insert(NewData.AngleOffsetDeltaDegrees, InsertIndex);
 	Properties->TargetTextures.Insert(nullptr, InsertIndex);
 	Properties->NumAngles = Asset->GetActiveAngleDataList().Num();
+	NewData.AngleOffsetDeltaDegrees = Properties->GetClampedAngleOffsetDelta(InsertIndex, NewData.AngleOffsetDeltaDegrees);
+	Properties->TargetAngleOffsetDeltas[InsertIndex] = NewData.AngleOffsetDeltaDegrees;
+	Asset->GetActiveAngleDataList()[InsertIndex].AngleOffsetDeltaDegrees = NewData.AngleOffsetDeltaDegrees;
 
 	Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
 	
@@ -3227,10 +3287,11 @@ void UQuickSDFPaintTool::AddKeyframeInternal(float RequestedAngle, bool bUseRequ
 	TUniquePtr<FQuickSDFMaskStateChange> Change = MakeUnique<FQuickSDFMaskStateChange>();
 	Change->BeforeGuids = MoveTemp(BeforeGuids);
 	Change->BeforeAngles = MoveTemp(BeforeAngles);
+	Change->BeforeAngleOffsetDeltas = MoveTemp(BeforeAngleOffsetDeltas);
 	Change->BeforeTextures = MoveTemp(BeforeTextures);
 	Change->BeforeAllowSourceTextureOverwrites = MoveTemp(BeforeAllowSourceTextureOverwrites);
 	Change->BeforePixelsByMask = MoveTemp(BeforePixelsByMask);
-	CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterAngles, Change->AfterTextures, Change->AfterAllowSourceTextureOverwrites, Change->AfterPixelsByMask);
+	CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterAngles, Change->AfterAngleOffsetDeltas, Change->AfterTextures, Change->AfterAllowSourceTextureOverwrites, Change->AfterPixelsByMask);
 	GetToolManager()->EmitObjectChange(this, MoveTemp(Change), bDuplicateKeyframe
 		? LOCTEXT("DuplicateKeyframeMaskState", "Restore Quick SDF Duplicated Keyframe Mask State")
 		: LOCTEXT("AddKeyframeMaskState", "Restore Quick SDF Added Keyframe Mask State"));
@@ -3252,10 +3313,11 @@ void UQuickSDFPaintTool::RemoveKeyframe(int32 Index)
 		Asset->InitializeRenderTargets(GetToolManager()->GetContextQueriesAPI()->GetCurrentEditingWorld());
 		TArray<FGuid> BeforeGuids;
 		TArray<float> BeforeAngles;
+		TArray<float> BeforeAngleOffsetDeltas;
 		TArray<UTexture2D*> BeforeTextures;
 		TArray<bool> BeforeAllowSourceTextureOverwrites;
 		TArray<TArray<FColor>> BeforePixelsByMask;
-		CaptureMaskState(*this, Asset, BeforeGuids, BeforeAngles, BeforeTextures, BeforeAllowSourceTextureOverwrites, BeforePixelsByMask);
+		CaptureMaskState(*this, Asset, BeforeGuids, BeforeAngles, BeforeAngleOffsetDeltas, BeforeTextures, BeforeAllowSourceTextureOverwrites, BeforePixelsByMask);
 
 		GetToolManager()->BeginUndoTransaction(LOCTEXT("RemoveKeyframe", "Remove Timeline Keyframe"));
 		Asset->Modify();
@@ -3263,6 +3325,10 @@ void UQuickSDFPaintTool::RemoveKeyframe(int32 Index)
 
 		Asset->GetActiveAngleDataList().RemoveAt(Index);
 		Properties->TargetAngles.RemoveAt(Index);
+		if (Properties->TargetAngleOffsetDeltas.IsValidIndex(Index))
+		{
+			Properties->TargetAngleOffsetDeltas.RemoveAt(Index);
+		}
 		Properties->TargetTextures.RemoveAt(Index);
 		Properties->NumAngles = Asset->GetActiveAngleDataList().Num();
 		
@@ -3276,10 +3342,11 @@ void UQuickSDFPaintTool::RemoveKeyframe(int32 Index)
 		TUniquePtr<FQuickSDFMaskStateChange> Change = MakeUnique<FQuickSDFMaskStateChange>();
 		Change->BeforeGuids = MoveTemp(BeforeGuids);
 		Change->BeforeAngles = MoveTemp(BeforeAngles);
+		Change->BeforeAngleOffsetDeltas = MoveTemp(BeforeAngleOffsetDeltas);
 		Change->BeforeTextures = MoveTemp(BeforeTextures);
 		Change->BeforeAllowSourceTextureOverwrites = MoveTemp(BeforeAllowSourceTextureOverwrites);
 		Change->BeforePixelsByMask = MoveTemp(BeforePixelsByMask);
-		CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterAngles, Change->AfterTextures, Change->AfterAllowSourceTextureOverwrites, Change->AfterPixelsByMask);
+		CaptureMaskState(*this, Asset, Change->AfterGuids, Change->AfterAngles, Change->AfterAngleOffsetDeltas, Change->AfterTextures, Change->AfterAllowSourceTextureOverwrites, Change->AfterPixelsByMask);
 		GetToolManager()->EmitObjectChange(this, MoveTemp(Change), LOCTEXT("RemoveKeyframeMaskState", "Restore Quick SDF Removed Keyframe Mask State"));
 
 		GetToolManager()->EndUndoTransaction();

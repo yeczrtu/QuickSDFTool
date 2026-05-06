@@ -155,12 +155,14 @@ void CaptureMaskState(
 	UQuickSDFAsset* Asset,
 	TArray<FGuid>& OutGuids,
 	TArray<float>& OutAngles,
+	TArray<float>& OutAngleOffsetDeltas,
 	TArray<UTexture2D*>& OutTextures,
 	TArray<bool>& OutAllowSourceTextureOverwrites,
 	TArray<TArray<FColor>>& OutPixelsByMask)
 {
 	OutGuids.Reset();
 	OutAngles.Reset();
+	OutAngleOffsetDeltas.Reset();
 	OutTextures.Reset();
 	OutAllowSourceTextureOverwrites.Reset();
 	OutPixelsByMask.Reset();
@@ -174,6 +176,7 @@ void CaptureMaskState(
 	{
 		OutGuids.Add(AngleData.MaskGuid);
 		OutAngles.Add(AngleData.Angle);
+		OutAngleOffsetDeltas.Add(AngleData.AngleOffsetDeltaDegrees);
 		OutTextures.Add(AngleData.TextureMask);
 		OutAllowSourceTextureOverwrites.Add(AngleData.bAllowSourceTextureOverwrite);
 
@@ -189,6 +192,7 @@ void RestoreMaskStateOnNextTick(
 	UQuickSDFPaintTool* Tool,
 	const TArray<FGuid>& MaskGuids,
 	const TArray<float>& Angles,
+	const TArray<float>& AngleOffsetDeltas,
 	const TArray<UTexture2D*>& Textures,
 	const TArray<bool>& AllowSourceTextureOverwrites,
 	const TArray<TArray<FColor>>& PixelsByMask)
@@ -198,20 +202,21 @@ void RestoreMaskStateOnNextTick(
 		return;
 	}
 
-	Tool->RestoreMaskStateByGuid(MaskGuids, Angles, Textures, AllowSourceTextureOverwrites, PixelsByMask);
+	Tool->RestoreMaskStateByGuid(MaskGuids, Angles, AngleOffsetDeltas, Textures, AllowSourceTextureOverwrites, PixelsByMask);
 
 	TWeakObjectPtr<UQuickSDFPaintTool> WeakTool(Tool);
 	TArray<FGuid> DeferredGuids = MaskGuids;
 	TArray<float> DeferredAngles = Angles;
+	TArray<float> DeferredAngleOffsetDeltas = AngleOffsetDeltas;
 	TArray<UTexture2D*> DeferredTextures = Textures;
 	TArray<bool> DeferredAllowSourceTextureOverwrites = AllowSourceTextureOverwrites;
 	TArray<TArray<FColor>> DeferredPixelsByMask = PixelsByMask;
 	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
-		[WeakTool, DeferredGuids = MoveTemp(DeferredGuids), DeferredAngles = MoveTemp(DeferredAngles), DeferredTextures = MoveTemp(DeferredTextures), DeferredAllowSourceTextureOverwrites = MoveTemp(DeferredAllowSourceTextureOverwrites), DeferredPixelsByMask = MoveTemp(DeferredPixelsByMask)](float)
+		[WeakTool, DeferredGuids = MoveTemp(DeferredGuids), DeferredAngles = MoveTemp(DeferredAngles), DeferredAngleOffsetDeltas = MoveTemp(DeferredAngleOffsetDeltas), DeferredTextures = MoveTemp(DeferredTextures), DeferredAllowSourceTextureOverwrites = MoveTemp(DeferredAllowSourceTextureOverwrites), DeferredPixelsByMask = MoveTemp(DeferredPixelsByMask)](float)
 		{
 			if (WeakTool.IsValid())
 			{
-				WeakTool->RestoreMaskStateByGuid(DeferredGuids, DeferredAngles, DeferredTextures, DeferredAllowSourceTextureOverwrites, DeferredPixelsByMask);
+				WeakTool->RestoreMaskStateByGuid(DeferredGuids, DeferredAngles, DeferredAngleOffsetDeltas, DeferredTextures, DeferredAllowSourceTextureOverwrites, DeferredPixelsByMask);
 			}
 			return false;
 		}));

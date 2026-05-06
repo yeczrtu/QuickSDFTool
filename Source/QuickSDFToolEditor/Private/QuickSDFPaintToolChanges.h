@@ -56,11 +56,13 @@ class FQuickSDFMaskStateChange : public FToolCommandChange
 public:
 	TArray<FGuid> BeforeGuids;
 	TArray<float> BeforeAngles;
+	TArray<float> BeforeAngleOffsetDeltas;
 	TArray<UTexture2D*> BeforeTextures;
 	TArray<bool> BeforeAllowSourceTextureOverwrites;
 	TArray<TArray<FColor>> BeforePixelsByMask;
 	TArray<FGuid> AfterGuids;
 	TArray<float> AfterAngles;
+	TArray<float> AfterAngleOffsetDeltas;
 	TArray<UTexture2D*> AfterTextures;
 	TArray<bool> AfterAllowSourceTextureOverwrites;
 	TArray<TArray<FColor>> AfterPixelsByMask;

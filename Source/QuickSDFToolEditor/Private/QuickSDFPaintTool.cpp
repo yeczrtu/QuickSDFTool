@@ -338,10 +338,12 @@ void UQuickSDFPaintTool::Setup()
 		Properties->NumAngles = ActiveAsset->GetActiveAngleDataList().Num();
 		
 		Properties->TargetAngles.SetNum(Properties->NumAngles);
+		Properties->TargetAngleOffsetDeltas.SetNum(Properties->NumAngles);
 		Properties->TargetTextures.SetNum(Properties->NumAngles);
 		for (int32 i = 0; i < Properties->NumAngles; ++i)
 		{
 			Properties->TargetAngles[i] = ActiveAsset->GetActiveAngleDataList()[i].Angle;
+			Properties->TargetAngleOffsetDeltas[i] = ActiveAsset->GetActiveAngleDataList()[i].AngleOffsetDeltaDegrees;
 			Properties->TargetTextures[i] = ActiveAsset->GetActiveAngleDataList()[i].TextureMask;
 		}
 		ChangeTargetComponent(Subsystem->GetTargetMeshComponent());

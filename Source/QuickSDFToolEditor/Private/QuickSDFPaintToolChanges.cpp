@@ -99,7 +99,7 @@ void FQuickSDFMaskStateChange::Apply(UObject* Object)
 {
 	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
 	{
-		RestoreMaskStateOnNextTick(Tool, AfterGuids, AfterAngles, AfterTextures, AfterAllowSourceTextureOverwrites, AfterPixelsByMask);
+		RestoreMaskStateOnNextTick(Tool, AfterGuids, AfterAngles, AfterAngleOffsetDeltas, AfterTextures, AfterAllowSourceTextureOverwrites, AfterPixelsByMask);
 	}
 }
 
@@ -107,7 +107,7 @@ void FQuickSDFMaskStateChange::Revert(UObject* Object)
 {
 	if (UQuickSDFPaintTool* Tool = Cast<UQuickSDFPaintTool>(Object))
 	{
-		RestoreMaskStateOnNextTick(Tool, BeforeGuids, BeforeAngles, BeforeTextures, BeforeAllowSourceTextureOverwrites, BeforePixelsByMask);
+		RestoreMaskStateOnNextTick(Tool, BeforeGuids, BeforeAngles, BeforeAngleOffsetDeltas, BeforeTextures, BeforeAllowSourceTextureOverwrites, BeforePixelsByMask);
 	}
 }
 }

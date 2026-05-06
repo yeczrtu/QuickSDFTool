@@ -209,6 +209,9 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (UIMin = "0.0", UIMax = "180.0"))
 	TArray<float> TargetAngles;
 
+	UPROPERTY(EditAnywhere, Category = "Paint Settings", meta = (HideInDetailPanel))
+	TArray<float> TargetAngleOffsetDeltas;
+
 	UPROPERTY(EditAnywhere, Category = "Paint Settings")
 	TArray<UTexture2D*> TargetTextures;
 
@@ -320,6 +323,10 @@ public:
 	bool UsesIslandChannelSymmetry() const;
 	float GetPaintMaxAngle() const;
 	float GetMaterialAngle(float AuthoredAngle) const;
+	float GetMaterialAngle(float AuthoredAngle, float AngleOffsetDeltaDegrees) const;
+	float GetMaterialAngleForKey(int32 AngleIndex) const;
+	float GetClampedAngleOffsetDelta(int32 AngleIndex, float RequestedDeltaDegrees) const;
+	void GetAngleOffsetPreviewRange(int32 AngleIndex, float& OutMinPreviewAngle, float& OutMaxPreviewAngle) const;
 	void SetSymmetryMode(EQuickSDFSymmetryMode NewMode);
 	void SetSymmetryEnabled(bool bEnabled);
 	void SyncLegacySymmetryFlag();

@@ -390,12 +390,14 @@ void SyncPropertiesFromTextureSet(UQuickSDFToolProperties* Properties, const UQu
 	Properties->TargetMaterialSlot = ActiveSet ? ActiveSet->MaterialSlotIndex : INDEX_NONE;
 	Properties->NumAngles = Asset->GetActiveAngleDataList().Num();
 	Properties->TargetAngles.SetNum(Properties->NumAngles);
+	Properties->TargetAngleOffsetDeltas.SetNum(Properties->NumAngles);
 	Properties->TargetTextures.SetNum(Properties->NumAngles);
 
 	for (int32 Index = 0; Index < Properties->NumAngles; ++Index)
 	{
 		const FQuickSDFAngleData& AngleData = Asset->GetActiveAngleDataList()[Index];
 		Properties->TargetAngles[Index] = AngleData.Angle;
+		Properties->TargetAngleOffsetDeltas[Index] = AngleData.AngleOffsetDeltaDegrees;
 		Properties->TargetTextures[Index] = AngleData.TextureMask;
 	}
 }
@@ -861,6 +863,7 @@ void FQuickSDFToolPropertiesDetails::CustomizeDetails(IDetailLayoutBuilder& Deta
 	DetailBuilder.HideCategory(FName(TEXT("Actions")));
 	DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetTextures)));
 	DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngles)));
+	DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngleOffsetDeltas)));
 	DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, ActiveTextureSetIndex)));
 
 	IDetailCategoryBuilder& QuickCategory = DetailBuilder.EditCategory(FName(TEXT("Quick SDF")), LOCTEXT("QuickSDFCategory", "Quick SDF"), ECategoryPriority::Important);

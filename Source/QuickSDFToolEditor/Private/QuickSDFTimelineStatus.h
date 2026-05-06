@@ -33,6 +33,11 @@ struct FQuickSDFTimelineKeyStatusInput
 {
 	int32 KeyIndex = INDEX_NONE;
 	float Angle = 0.0f;
+	float GlobalAngleOffset = 0.0f;
+	float AngleOffsetDelta = 0.0f;
+	float EffectivePreviewAngle = 0.0f;
+	float MinPreviewAngle = 0.0f;
+	float MaxPreviewAngle = 180.0f;
 	bool bVisible = true;
 	bool bIsActive = false;
 	bool bInPaintTargetRange = false;
@@ -48,6 +53,11 @@ struct FQuickSDFTimelineKeyStatus
 {
 	int32 KeyIndex = INDEX_NONE;
 	float Angle = 0.0f;
+	float GlobalAngleOffset = 0.0f;
+	float AngleOffsetDelta = 0.0f;
+	float EffectivePreviewAngle = 0.0f;
+	float MinPreviewAngle = 0.0f;
+	float MaxPreviewAngle = 180.0f;
 	bool bVisible = true;
 	bool bIsActive = false;
 	bool bInPaintTargetRange = false;

@@ -213,7 +213,7 @@ public:
 	bool ApplyRenderTargetPixelsInRect(int32 AngleIndex, const FIntRect& Rect, const TArray<FColor>& Pixels);
 	bool ApplyRenderTargetPixelsInRectByGuid(const FGuid& AngleGuid, int32 FallbackIndex, const FIntRect& Rect, const TArray<FColor>& Pixels);
 	bool ApplyTextureSlotChange(const FGuid& AngleGuid, int32 FallbackIndex, class UTexture2D* Texture, bool bAllowSourceTextureOverwrite, const TArray<FColor>& Pixels);
-	void RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, const TArray<float>& Angles, const TArray<class UTexture2D*>& Textures, const TArray<bool>& AllowSourceTextureOverwrites, const TArray<TArray<FColor>>& PixelsByMask);
+	void RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, const TArray<float>& Angles, const TArray<float>& AngleOffsetDeltas, const TArray<class UTexture2D*>& Textures, const TArray<bool>& AllowSourceTextureOverwrites, const TArray<TArray<FColor>>& PixelsByMask);
 	
 	void GenerateSDF();
 	void GenerateSDFToFile();
@@ -358,7 +358,7 @@ protected:
 	class UTexture2D* CreateTransientTextureFromPixels(const TArray<FColor>& Pixels, int32 Width, int32 Height) const;
 	bool ApplyPixelsWithUndo(int32 AngleIndex, const TArray<FColor>& Pixels, const FText& ChangeDescription);
 	bool CopyNearestMaskToAngle(int32 DestinationIndex);
-	void AddKeyframeInternal(float RequestedAngle, bool bUseRequestedAngle, const TArray<FColor>* SourcePixels = nullptr);
+	void AddKeyframeInternal(float RequestedAngle, bool bUseRequestedAngle, const TArray<FColor>* SourcePixels = nullptr, float InitialAngleOffsetDeltaDegrees = 0.0f);
 	void SyncPropertiesFromActiveAsset();
 	void SyncActiveTextureSetFromProperties();
 	void InitializeDefaultAngleData(TArray<FQuickSDFAngleData>& AngleData, bool bResetExisting) const;

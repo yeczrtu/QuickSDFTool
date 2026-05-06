@@ -257,6 +257,7 @@ void ResetPropertiesForNoTarget(UQuickSDFToolProperties* Properties)
 	Properties->BakeAngleOffsetDegrees = 0.0f;
 	Properties->NumAngles = 0;
 	Properties->TargetAngles.Reset();
+	Properties->TargetAngleOffsetDeltas.Reset();
 	Properties->TargetTextures.Reset();
 }
 
@@ -303,6 +304,7 @@ void SyncPropertiesFromActiveAsset(UQuickSDFToolProperties* Properties, UQuickSD
 		Properties->BakeAngleOffsetDegrees = 0.0f;
 		Properties->NumAngles = 0;
 		Properties->TargetAngles.Reset();
+		Properties->TargetAngleOffsetDeltas.Reset();
 		Properties->TargetTextures.Reset();
 		return;
 	}
@@ -314,11 +316,13 @@ void SyncPropertiesFromActiveAsset(UQuickSDFToolProperties* Properties, UQuickSD
 	Properties->BakeAngleOffsetDegrees = FMath::Clamp(ActiveSet->BakeAngleOffsetDegrees, 0.0f, 90.0f);
 	Properties->NumAngles = ActiveSet->AngleDataList.Num();
 	Properties->TargetAngles.SetNum(Properties->NumAngles);
+	Properties->TargetAngleOffsetDeltas.SetNum(Properties->NumAngles);
 	Properties->TargetTextures.SetNum(Properties->NumAngles);
 
 	for (int32 Index = 0; Index < Properties->NumAngles; ++Index)
 	{
 		Properties->TargetAngles[Index] = ActiveSet->AngleDataList[Index].Angle;
+		Properties->TargetAngleOffsetDeltas[Index] = ActiveSet->AngleDataList[Index].AngleOffsetDeltaDegrees;
 		Properties->TargetTextures[Index] = ActiveSet->AngleDataList[Index].TextureMask;
 	}
 }

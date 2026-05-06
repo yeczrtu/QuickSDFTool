@@ -39,6 +39,21 @@ bool FQuickSDFDefaultAngleCountTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("0-180 offset maps 0 degrees to negative offset"), FMath::IsNearlyEqual(DefaultProperties->GetMaterialAngle(0.0f), -20.0f));
 	TestTrue(TEXT("0-180 offset keeps 90 degrees fixed"), FMath::IsNearlyEqual(DefaultProperties->GetMaterialAngle(90.0f), 90.0f));
 	TestTrue(TEXT("0-180 offset expands 180 degrees above the authored range"), FMath::IsNearlyEqual(DefaultProperties->GetMaterialAngle(180.0f), 200.0f));
+
+	DefaultProperties->SetSymmetryEnabled(true);
+	DefaultProperties->BakeAngleOffsetDegrees = 20.0f;
+	TestTrue(TEXT("Image delta is added to the global bake offset"), FMath::IsNearlyEqual(DefaultProperties->GetMaterialAngle(45.0f, 5.0f), 32.5f));
+
+	DefaultProperties->BakeAngleOffsetDegrees = 0.0f;
+	DefaultProperties->TargetAngles = { 13.0f, 26.0f, 39.0f };
+	DefaultProperties->TargetAngleOffsetDeltas = { 0.0f, 30.0f, 0.0f };
+	const float ClampedMiddleDelta = DefaultProperties->GetClampedAngleOffsetDelta(1, 30.0f);
+	DefaultProperties->TargetAngleOffsetDeltas[1] = ClampedMiddleDelta;
+	float MinPreviewAngle = 0.0f;
+	float MaxPreviewAngle = 90.0f;
+	DefaultProperties->GetAngleOffsetPreviewRange(1, MinPreviewAngle, MaxPreviewAngle);
+	TestTrue(TEXT("Per-image offset preview is clamped above previous key"), DefaultProperties->GetMaterialAngleForKey(1) >= MinPreviewAngle - KINDA_SMALL_NUMBER);
+	TestTrue(TEXT("Per-image offset preview is clamped below next key"), DefaultProperties->GetMaterialAngleForKey(1) <= MaxPreviewAngle + KINDA_SMALL_NUMBER);
 	return true;
 }
 
@@ -411,6 +426,7 @@ bool FQuickSDFAssetMigrationTest::RunTest(const FString& Parameters)
 	UQuickSDFToolProperties* Properties = NewObject<UQuickSDFToolProperties>();
 	QuickSDFTextureSetSync::SyncPropertiesFromActiveAsset(Properties, Asset);
 	TestEqual(TEXT("Active texture set sync copies bake angle offset"), Properties->BakeAngleOffsetDegrees, 15.0f);
+	TestEqual(TEXT("Active texture set sync copies image angle offset delta"), Properties->TargetAngleOffsetDeltas[0], Asset->TextureSets[0].AngleDataList[0].AngleOffsetDeltaDegrees);
 
 	FQuickSDFTextureSetData& SecondTextureSet = Asset->TextureSets.AddDefaulted_GetRef();
 	SecondTextureSet.MaterialSlotIndex = 1;
@@ -525,6 +541,11 @@ bool FQuickSDFTimelineKeyStatusTest::RunTest(const FString& Parameters)
 	FQuickSDFTimelineKeyStatusInput Input;
 	Input.KeyIndex = 1;
 	Input.Angle = 45.0f;
+	Input.GlobalAngleOffset = 10.0f;
+	Input.AngleOffsetDelta = 2.5f;
+	Input.EffectivePreviewAngle = 38.75f;
+	Input.MinPreviewAngle = 20.0f;
+	Input.MaxPreviewAngle = 60.0f;
 	Input.bIsActive = true;
 	Input.bInPaintTargetRange = true;
 	Input.bHasPaintRenderTarget = true;
@@ -535,7 +556,9 @@ bool FQuickSDFTimelineKeyStatusTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Guard state is preserved"), Status.bGuardEnabled);
 
 	const FString Tooltip = QuickSDFTimelineStatus::BuildKeyTooltip(Status).ToString();
-	TestTrue(TEXT("Tooltip contains angle"), Tooltip.Contains(TEXT("Angle: 45 deg")));
+	TestTrue(TEXT("Tooltip contains authored angle"), Tooltip.Contains(TEXT("Authored Angle: 45 deg")));
+	TestTrue(TEXT("Tooltip contains image delta"), Tooltip.Contains(TEXT("Image Delta: +2.5 deg")));
+	TestTrue(TEXT("Tooltip contains preview range"), Tooltip.Contains(TEXT("Allowed Preview Range: 20.0..60.0 deg")));
 	TestTrue(TEXT("Tooltip reports included paint target range"), Tooltip.Contains(TEXT("Paint Target: Included")));
 
 	Input.bHasPaintRenderTarget = false;

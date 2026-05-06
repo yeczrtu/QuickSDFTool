@@ -93,7 +93,7 @@ float GetQuickSDFCurrentPreviewAngle(const UQuickSDFToolProperties* Properties)
 
 	if (Properties->TargetAngles.IsValidIndex(Properties->EditAngleIndex))
 	{
-		return Properties->GetMaterialAngle(Properties->TargetAngles[Properties->EditAngleIndex]);
+		return Properties->GetMaterialAngleForKey(Properties->EditAngleIndex);
 	}
 
 	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
@@ -106,9 +106,13 @@ float GetQuickSDFCurrentPreviewAngle(const UQuickSDFToolProperties* Properties)
 	const int32 AngleIndex = Asset->GetActiveAngleDataList().Num() > 0
 		? FMath::Clamp(Properties->EditAngleIndex, 0, Asset->GetActiveAngleDataList().Num() - 1)
 		: INDEX_NONE;
-	return Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex)
-		? Properties->GetMaterialAngle(Asset->GetActiveAngleDataList()[AngleIndex].Angle)
-		: 0.0f;
+	if (!Asset->GetActiveAngleDataList().IsValidIndex(AngleIndex))
+	{
+		return 0.0f;
+	}
+
+	const FQuickSDFAngleData& AngleData = Asset->GetActiveAngleDataList()[AngleIndex];
+	return Properties->GetMaterialAngle(AngleData.Angle, AngleData.AngleOffsetDeltaDegrees);
 }
 
 void SyncQuickSDFPreviewLightToCurrentAngle(const UQuickSDFToolProperties* Properties)
@@ -127,7 +131,7 @@ void SyncQuickSDFPreviewLightToCurrentAngle(const UQuickSDFToolProperties* Prope
 		return;
 	}
 
-	Mode->SetPreviewLightAngle(Properties->TargetAngles[Properties->EditAngleIndex]);
+	Mode->SetPreviewLightAngle(Properties->GetMaterialAngleForKey(Properties->EditAngleIndex));
 }
 
 bool CaptureRenderTargetPixelsInRect(UTextureRenderTarget2D* RenderTarget, const FIntRect& Rect, TArray<FColor>& OutPixels)
@@ -698,7 +702,7 @@ bool UQuickSDFPaintTool::ApplyTextureSlotChange(const FGuid& AngleGuid, int32 Fa
 	return bRestored;
 }
 
-void UQuickSDFPaintTool::RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, const TArray<float>& Angles, const TArray<UTexture2D*>& Textures, const TArray<bool>& AllowSourceTextureOverwrites, const TArray<TArray<FColor>>& PixelsByMask)
+void UQuickSDFPaintTool::RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, const TArray<float>& Angles, const TArray<float>& AngleOffsetDeltas, const TArray<UTexture2D*>& Textures, const TArray<bool>& AllowSourceTextureOverwrites, const TArray<TArray<FColor>>& PixelsByMask)
 {
 	if (!Properties)
 	{
@@ -717,6 +721,7 @@ void UQuickSDFPaintTool::RestoreMaskStateByGuid(const TArray<FGuid>& MaskGuids, 
 	{
 		FQuickSDFAngleData& AngleData = Asset->GetActiveAngleDataList()[SnapshotIndex];
 		AngleData.Angle = Angles.IsValidIndex(SnapshotIndex) ? Angles[SnapshotIndex] : 0.0f;
+		AngleData.AngleOffsetDeltaDegrees = AngleOffsetDeltas.IsValidIndex(SnapshotIndex) ? AngleOffsetDeltas[SnapshotIndex] : 0.0f;
 		AngleData.MaskGuid = MaskGuids[SnapshotIndex].IsValid() ? MaskGuids[SnapshotIndex] : FGuid::NewGuid();
 		AngleData.TextureMask = Textures.IsValidIndex(SnapshotIndex) ? Textures[SnapshotIndex] : nullptr;
 		AngleData.bAllowSourceTextureOverwrite = AllowSourceTextureOverwrites.IsValidIndex(SnapshotIndex) ? AllowSourceTextureOverwrites[SnapshotIndex] : false;

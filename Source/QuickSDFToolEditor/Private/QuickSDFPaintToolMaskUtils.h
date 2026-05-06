@@ -61,6 +61,7 @@ void CaptureMaskState(
 	UQuickSDFAsset* Asset,
 	TArray<FGuid>& OutGuids,
 	TArray<float>& OutAngles,
+	TArray<float>& OutAngleOffsetDeltas,
 	TArray<UTexture2D*>& OutTextures,
 	TArray<bool>& OutAllowSourceTextureOverwrites,
 	TArray<TArray<FColor>>& OutPixelsByMask);
@@ -68,6 +69,7 @@ void RestoreMaskStateOnNextTick(
 	UQuickSDFPaintTool* Tool,
 	const TArray<FGuid>& MaskGuids,
 	const TArray<float>& Angles,
+	const TArray<float>& AngleOffsetDeltas,
 	const TArray<UTexture2D*>& Textures,
 	const TArray<bool>& AllowSourceTextureOverwrites,
 	const TArray<TArray<FColor>>& PixelsByMask);
