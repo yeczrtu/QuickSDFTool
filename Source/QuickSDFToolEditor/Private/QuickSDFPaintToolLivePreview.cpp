@@ -12,8 +12,8 @@
 
 namespace
 {
-constexpr float QuickSDFLivePreviewScale = 0.5f;
-constexpr int32 QuickSDFLivePreviewMaxSize = 512;
+constexpr int32 QuickSDFLivePreviewDefaultResolution = 512;
+constexpr int32 QuickSDFLivePreviewMaxResolution = 1024;
 constexpr int32 QuickSDFLivePreviewMinSize = 16;
 constexpr double QuickSDFLivePreviewStrokeInterval = 0.1;
 
@@ -97,6 +97,27 @@ bool TryGetRenderTargetOutputTextures(
 	OutShaderTexture = Resource->TextureRHI.IsValid() ? Resource->TextureRHI : OutRenderTargetTexture;
 	return OutRenderTargetTexture.IsValid();
 }
+
+int32 GetLiveSDFPreviewRequestedResolution(const UQuickSDFToolProperties* Properties)
+{
+	if (!Properties)
+	{
+		return QuickSDFLivePreviewDefaultResolution;
+	}
+
+	switch (Properties->LiveSDFPreviewResolution)
+	{
+	case EQuickSDFLivePreviewResolution::Preview128:
+		return 128;
+	case EQuickSDFLivePreviewResolution::Preview256:
+		return 256;
+	case EQuickSDFLivePreviewResolution::Preview1024:
+		return 1024;
+	case EQuickSDFLivePreviewResolution::Preview512:
+	default:
+		return 512;
+	}
+}
 }
 
 void UQuickSDFPaintTool::ResetLiveSDFPreviewState()
@@ -148,9 +169,15 @@ FIntPoint UQuickSDFPaintTool::GetLiveSDFPreviewSize() const
 		SourceSize = Asset->GetActiveResolution();
 	}
 
+	const int32 RequestedResolution = FMath::Clamp(
+		GetLiveSDFPreviewRequestedResolution(Properties),
+		QuickSDFLivePreviewMinSize,
+		QuickSDFLivePreviewMaxResolution);
+	const int32 SourceMaxDim = FMath::Max(FMath::Max(SourceSize.X, SourceSize.Y), 1);
+	const float PreviewScale = static_cast<float>(RequestedResolution) / static_cast<float>(SourceMaxDim);
 	return FIntPoint(
-		FMath::Clamp(FMath::CeilToInt(static_cast<float>(FMath::Max(SourceSize.X, 1)) * QuickSDFLivePreviewScale), QuickSDFLivePreviewMinSize, QuickSDFLivePreviewMaxSize),
-		FMath::Clamp(FMath::CeilToInt(static_cast<float>(FMath::Max(SourceSize.Y, 1)) * QuickSDFLivePreviewScale), QuickSDFLivePreviewMinSize, QuickSDFLivePreviewMaxSize));
+		FMath::Clamp(FMath::RoundToInt(static_cast<float>(FMath::Max(SourceSize.X, 1)) * PreviewScale), QuickSDFLivePreviewMinSize, QuickSDFLivePreviewMaxResolution),
+		FMath::Clamp(FMath::RoundToInt(static_cast<float>(FMath::Max(SourceSize.Y, 1)) * PreviewScale), QuickSDFLivePreviewMinSize, QuickSDFLivePreviewMaxResolution));
 }
 
 void UQuickSDFPaintTool::UpdateLiveSDFPreview()

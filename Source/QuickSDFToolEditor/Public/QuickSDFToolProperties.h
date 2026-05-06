@@ -71,6 +71,15 @@ enum class EQuickSDFMaterialPreviewMode : uint8
 };
 
 UENUM(BlueprintType)
+enum class EQuickSDFLivePreviewResolution : uint8
+{
+	Preview128 UMETA(DisplayName = "128 px"),
+	Preview256 UMETA(DisplayName = "256 px"),
+	Preview512 UMETA(DisplayName = "512 px"),
+	Preview1024 UMETA(DisplayName = "1024 px")
+};
+
+UENUM(BlueprintType)
 enum class EQuickSDFMaskFileNameMode : uint8
 {
 	Alphabetic UMETA(DisplayName = "Alphabetic (a, b, c)"),
@@ -170,6 +179,9 @@ public:
 
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Brush Edge AA Width", ClampMin = "0.25", UIMin = "0.25", UIMax = "3.0", EditCondition = "bEnableBrushAntialiasing"))
 	float BrushAntialiasingWidth = 1.25f;
+
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Live SDF Preview Resolution"))
+	EQuickSDFLivePreviewResolution LiveSDFPreviewResolution = EQuickSDFLivePreviewResolution::Preview512;
 
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings")
 	bool bEnableOnionSkin = false;

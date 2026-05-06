@@ -3113,6 +3113,12 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 			RefreshPreviewMaterial();
 		}
 
+		if (Property && Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, LiveSDFPreviewResolution))
+		{
+			ResetLiveSDFPreviewState();
+			RefreshPreviewMaterial();
+		}
+
 		if (Property && (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetMaterialSlot) ||
 				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bIsolateTargetMaterialSlot)))
 		{
