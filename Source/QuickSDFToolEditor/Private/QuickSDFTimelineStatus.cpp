@@ -47,6 +47,33 @@ TArray<int32> MakeVisibleSortedKeyIndices(const TArray<float>& Angles, bool bSym
 	return Indices;
 }
 
+float NormalizeAngleToTimelinePercent(float Angle, float MaxAngle)
+{
+	if (MaxAngle <= KINDA_SMALL_NUMBER)
+	{
+		return 0.0f;
+	}
+
+	return FMath::Clamp(Angle / MaxAngle, 0.0f, 1.0f);
+}
+
+bool ShouldShowOffsetVisual(float AngleOffsetDelta)
+{
+	return !FMath::IsNearlyZero(AngleOffsetDelta, 0.01f);
+}
+
+FQuickSDFTimelineOffsetVisual BuildOffsetVisual(float AuthoredAngle, float EffectivePreviewAngle, float AngleOffsetDelta, float MaxAngle)
+{
+	FQuickSDFTimelineOffsetVisual Visual;
+	Visual.AuthoredPercent = NormalizeAngleToTimelinePercent(AuthoredAngle, MaxAngle);
+	Visual.EffectivePercent = NormalizeAngleToTimelinePercent(EffectivePreviewAngle, MaxAngle);
+	Visual.LeftPercent = FMath::Min(Visual.AuthoredPercent, Visual.EffectivePercent);
+	Visual.WidthPercent = FMath::Abs(Visual.EffectivePercent - Visual.AuthoredPercent);
+	Visual.bVisible = ShouldShowOffsetVisual(AngleOffsetDelta);
+	Visual.bMovesForward = Visual.EffectivePercent >= Visual.AuthoredPercent;
+	return Visual;
+}
+
 FQuickSDFTimelineRangeStatus BuildRangeStatus(
 	const TArray<float>& Angles,
 	int32 ActiveKeyIndex,

@@ -68,10 +68,23 @@ struct FQuickSDFTimelineKeyStatus
 	FString TextureName;
 };
 
+struct FQuickSDFTimelineOffsetVisual
+{
+	float AuthoredPercent = 0.0f;
+	float EffectivePercent = 0.0f;
+	float LeftPercent = 0.0f;
+	float WidthPercent = 0.0f;
+	bool bVisible = false;
+	bool bMovesForward = false;
+};
+
 namespace QuickSDFTimelineStatus
 {
 EQuickSDFPaintTargetMode ResolvePaintTargetMode(EQuickSDFPaintTargetMode PaintTargetMode, bool bPaintAllAngles);
 TArray<int32> MakeVisibleSortedKeyIndices(const TArray<float>& Angles, bool bSymmetryMode);
+float NormalizeAngleToTimelinePercent(float Angle, float MaxAngle);
+bool ShouldShowOffsetVisual(float AngleOffsetDelta);
+FQuickSDFTimelineOffsetVisual BuildOffsetVisual(float AuthoredAngle, float EffectivePreviewAngle, float AngleOffsetDelta, float MaxAngle);
 FQuickSDFTimelineRangeStatus BuildRangeStatus(
 	const TArray<float>& Angles,
 	int32 ActiveKeyIndex,

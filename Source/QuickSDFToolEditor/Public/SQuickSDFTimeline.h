@@ -18,7 +18,6 @@ public:
 	SLATE_BEGIN_ARGS(SQuickSDFTimelineKeyframe) {}
 		SLATE_ARGUMENT(int32, Index)
 		SLATE_ATTRIBUTE(float, Angle)
-		SLATE_ATTRIBUTE(float, AngleOffsetDelta)
 		SLATE_ATTRIBUTE(bool, bIsActive)
 		SLATE_ATTRIBUTE(bool, bSymmetryMode)
 		SLATE_ATTRIBUTE(bool, bAllowSourceTextureOverwrite)
@@ -30,6 +29,8 @@ public:
 		SLATE_ATTRIBUTE(FSlateBrush*, TextureBrush)
 		SLATE_EVENT(FOnKeyframeAngleChanged, OnAngleChanged)
 		SLATE_EVENT(FSimpleDelegate, OnClicked)
+		SLATE_EVENT(FSimpleDelegate, OnHoverStarted)
+		SLATE_EVENT(FSimpleDelegate, OnHoverEnded)
 		SLATE_EVENT(FSimpleDelegate, OnDragStarted)
 		SLATE_EVENT(FSimpleDelegate, OnDragEnded)
 	SLATE_END_ARGS()
@@ -40,12 +41,13 @@ public:
 	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual FReply OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual void OnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent) override;
+	virtual void OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+	virtual void OnMouseLeave(const FPointerEvent& MouseEvent) override;
 	virtual FCursorReply OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const override;
 
 private:
 	int32 Index = 0;
 	TAttribute<float> Angle;
-	TAttribute<float> AngleOffsetDelta;
 	TAttribute<bool> bIsActive;
 	TAttribute<bool> bSymmetryMode;
 	TAttribute<bool> bAllowSourceTextureOverwrite;
@@ -60,6 +62,8 @@ private:
 	FVector2D MouseDownScreenPosition = FVector2D::ZeroVector;
 	FOnKeyframeAngleChanged OnAngleChanged;
 	FSimpleDelegate OnClicked;
+	FSimpleDelegate OnHoverStarted;
+	FSimpleDelegate OnHoverEnded;
 	FSimpleDelegate OnDragStarted;
 	FSimpleDelegate OnDragEnded;
 };
@@ -101,6 +105,8 @@ private:
 	FReply OnCompleteToEightClicked();
 	FReply OnRedistributeEvenlyClicked();
 	void OnKeyframeClicked(int32 Index);
+	void OnKeyframeHovered(int32 Index);
+	void OnKeyframeUnhovered(int32 Index);
 	FReply OnSyncLightClicked();
 	void OnKeyframeAngleChanged(float NewAngle, int32 Index);
 	void OnKeyframeDragStarted();
@@ -149,6 +155,7 @@ private:
 	bool bAngleOffsetTransactionOpen = false;
 	bool bHasSeekAngle = false;
 	bool bImportPanelOpen = false;
+	int32 HoveredOffsetKeyIndex = INDEX_NONE;
 	float LastSeekAngle = 0.0f;
 
 	// Widget refs

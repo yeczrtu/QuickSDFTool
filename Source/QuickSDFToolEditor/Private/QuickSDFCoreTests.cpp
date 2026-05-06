@@ -54,6 +54,23 @@ bool FQuickSDFDefaultAngleCountTest::RunTest(const FString& Parameters)
 	DefaultProperties->GetAngleOffsetPreviewRange(1, MinPreviewAngle, MaxPreviewAngle);
 	TestTrue(TEXT("Per-image offset preview is clamped above previous key"), DefaultProperties->GetMaterialAngleForKey(1) >= MinPreviewAngle - KINDA_SMALL_NUMBER);
 	TestTrue(TEXT("Per-image offset preview is clamped below next key"), DefaultProperties->GetMaterialAngleForKey(1) <= MaxPreviewAngle + KINDA_SMALL_NUMBER);
+
+	const FQuickSDFTimelineOffsetVisual MiddleVisual = QuickSDFTimelineStatus::BuildOffsetVisual(
+		DefaultProperties->TargetAngles[1],
+		DefaultProperties->GetMaterialAngleForKey(1),
+		ClampedMiddleDelta,
+		90.0f);
+	TestTrue(TEXT("Non-zero delta produces a visible offset vector"), MiddleVisual.bVisible);
+	TestTrue(TEXT("Offset vector preserves authored/effective coordinate order"), MiddleVisual.AuthoredPercent > MiddleVisual.EffectivePercent);
+	TestTrue(TEXT("Offset vector width is positive when effective differs from authored"), MiddleVisual.WidthPercent > 0.0f);
+
+	TestFalse(TEXT("Zero delta hides the offset visual"), QuickSDFTimelineStatus::ShouldShowOffsetVisual(0.0f));
+	TestTrue(TEXT("Positive delta shows the offset visual"), QuickSDFTimelineStatus::ShouldShowOffsetVisual(2.0f));
+	TestTrue(TEXT("Negative delta shows the offset visual"), QuickSDFTimelineStatus::ShouldShowOffsetVisual(-2.0f));
+	TestTrue(TEXT("0-90 timeline percent normalizes midpoint"), FMath::IsNearlyEqual(QuickSDFTimelineStatus::NormalizeAngleToTimelinePercent(45.0f, 90.0f), 0.5f));
+	TestTrue(TEXT("0-180 timeline percent normalizes midpoint"), FMath::IsNearlyEqual(QuickSDFTimelineStatus::NormalizeAngleToTimelinePercent(90.0f, 180.0f), 0.5f));
+	TestEqual(TEXT("Timeline percent clamps below zero"), QuickSDFTimelineStatus::NormalizeAngleToTimelinePercent(-5.0f, 90.0f), 0.0f);
+	TestEqual(TEXT("Timeline percent clamps above max"), QuickSDFTimelineStatus::NormalizeAngleToTimelinePercent(270.0f, 180.0f), 1.0f);
 	return true;
 }
 
