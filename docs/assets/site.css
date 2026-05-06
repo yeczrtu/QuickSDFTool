@@ -94,8 +94,8 @@ a:focus-visible {
 .page-shell {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
-  gap: 44px;
-  width: min(1280px, calc(100% - 48px));
+  gap: 40px;
+  width: min(1180px, calc(100% - 48px));
   margin: 0 auto;
   padding: 36px 0 56px;
 }
@@ -113,7 +113,7 @@ a:focus-visible {
 
 .content {
   min-width: 0;
-  max-width: 980px;
+  max-width: 880px;
 }
 
 .content > :first-child {
@@ -245,9 +245,9 @@ li {
 
 .screenshot-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
-  gap: 18px;
-  margin: 24px 0 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 22px 0 18px;
 }
 
 .screenshot-card {
@@ -258,33 +258,41 @@ li {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
+  box-shadow: 0 8px 24px rgba(23, 32, 42, 0.06);
 }
 
 .screenshot-card img {
   display: block;
   width: 100%;
-  height: clamp(240px, 32vw, 430px);
-  object-fit: contain;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  object-position: left top;
   background: #121820;
+  border-bottom: 1px solid var(--line);
 }
 
 .screenshot-card.compact img {
-  height: clamp(150px, 20vw, 240px);
-  padding: 24px 16px;
+  height: auto;
+  padding: 18px;
+  object-fit: contain;
+  object-position: center;
   background: #1a222c;
 }
 
 .screenshot-card figcaption {
-  padding: 14px 16px 16px;
+  flex: 1;
+  padding: 12px 14px 14px;
   color: var(--muted);
-  font-size: 15px;
+  font-size: 14px;
+  line-height: 1.55;
 }
 
 .screenshot-card figcaption strong {
-  display: block;
+  display: block !important;
   margin-bottom: 4px;
   color: var(--ink);
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .media-credit {
@@ -338,7 +346,7 @@ th {
 }
 
 .site-footer {
-  width: min(1280px, calc(100% - 48px));
+  width: min(1180px, calc(100% - 48px));
   margin: 0 auto;
   padding: 22px 0 34px;
   border-top: 1px solid var(--line);
@@ -377,11 +385,7 @@ th {
     font-size: 31px;
   }
 
-  .screenshot-card img {
-    height: clamp(210px, 58vw, 320px);
-  }
-
-  .screenshot-card.compact img {
-    height: clamp(140px, 42vw, 210px);
+  .screenshot-grid {
+    grid-template-columns: 1fr;
   }
 }
