@@ -23,7 +23,7 @@ QuickSDFTool is an Unreal Engine 5.7.x editor-mode plugin for painting toon-shad
 <div class="doc-grid">
   <a class="doc-card" href="{{ '/workflow/' | relative_url }}">
     <strong>Authoring Workflow</strong>
-    <span>Learn Select, Paint, Material Slots, timeline, symmetry, Guard, import/export, and SDF generation.</span>
+    <span>Learn Select, Paint, Material Slots, timeline, Live SDF preview, symmetry, Guard, import/export, and SDF generation.</span>
   </a>
   <a class="doc-card" href="{{ '/material-setup/' | relative_url }}">
     <strong>Material Setup</strong>
@@ -93,9 +93,10 @@ The current documentation captures show the main v1.0 workflow from slot selecti
 5. Confirm the active slot in **Material Slots**. The selected row and cyan viewport overlay show the active material slot; row clicks can correct the viewport pick.
 6. Click **Start Paint**. Paint mode isolates the active slot by default; turn off **Isolate Slot** if you need full-mesh visibility.
 7. Paint white with `LMB`; paint black/shadow with `Shift + LMB`.
-8. Use the timeline to seek light angle, add or duplicate keyframes, and choose a paint target mode.
-9. Click **Generate Selected SDF** or **Generate SDF Threshold Map**.
-10. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
+8. Use **Live SDF** material preview when you want a fast GPU JFA approximation before generating the final texture.
+9. Use the timeline to seek light angle, add or duplicate keyframes, and choose a paint target mode.
+10. Click **Generate Selected SDF** or **Generate SDF Threshold Map**.
+11. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
 
 ## Compatibility
 

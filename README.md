@@ -31,6 +31,7 @@ Screenshot character model credit: [真冬 Mafuyu / Original 3D Model](https://b
 - Angle timeline with seek/keyframe lanes, thumbnails, snapping, keyframe drag/seek synchronization, and paint-target range highlights.
 - Symmetry workflows for `Auto`, `Texture Flip`, `UV Island Channel Flip`, and full 0-180 painting.
 - Monotonic Guard validation and clipping for stable threshold-map transitions.
+- `Live SDF` material preview using a GPU JFA approximation for responsive in-editor feedback before the final bake.
 - Mask import/export, non-destructive `UQuickSDFAsset` storage, UE undo/redo, and CPU SDF generation with half-float texture output.
 
 ## Quick Start
@@ -42,8 +43,9 @@ Screenshot character model credit: [真冬 Mafuyu / Original 3D Model](https://b
 5. Confirm the active slot in **Material Slots**. The selected row and cyan viewport overlay show the active material slot.
 6. Click **Start Paint**. Paint mode isolates the active slot by default; turn off **Isolate Slot** if you need the full mesh visible.
 7. Paint white with `LMB`; paint black/shadow with `Shift + LMB`.
-8. Use the timeline to seek light angle, add masks, choose a paint target range, and generate the SDF threshold map.
-9. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
+8. Optionally switch **Material Preview** to **Live SDF** for a fast GPU JFA preview while painting. The preview resolution is selected from `128 px`, `256 px`, `512 px`, or `1024 px` in **Advanced**.
+9. Use the timeline to seek light angle, add masks, choose a paint target range, and generate the final SDF threshold map.
+10. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
 
 See [Authoring Workflow](./docs/workflow.md), [Material Setup](./docs/material-setup.md), and [Troubleshooting](./docs/troubleshooting.md) for the full workflow.
 

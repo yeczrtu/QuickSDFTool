@@ -22,6 +22,7 @@ QuickSDFTool/
 |-- Shaders/
 |   |-- Private/
 |       |-- JumpFloodingCS.usf
+|       |-- QuickSDFFastPreview.usf
 |-- Source/
     |-- QuickSDFTool/              # Runtime module and UQuickSDFAsset
     |-- QuickSDFToolEditor/        # Editor Mode, paint tool, timeline, processor
@@ -38,6 +39,7 @@ QuickSDFTool/
 
 - `UQuickSDFAsset` uses the active `FQuickSDFTextureSetData` as the primary source for editable masks, resolution, UV channel, and final SDF texture data. Legacy top-level fields are migrated on load on a best-effort basis.
 - `UQuickSDFPaintTool` is the Interactive Tools Framework facade for lifecycle, input routing, and UI commands. Paint state, undo changes, mask utilities, SDF helpers, asset selection, and render target support live in focused private helpers.
+- Live SDF preview is isolated in `QuickSDFPaintToolLivePreview.cpp` and renders through `QuickSDFFastPreviewRendering`. It owns only transient render targets and never replaces the saved final SDF texture.
 - Timeline keyframe rendering is split from the main timeline widget. Timeline range/key status calculations live in `QuickSDFTimelineStatus` so range highlighting, badges, and tooltips can be tested without Slate.
 - Mask import validation is handled by a Slate-independent import model so the UI and import rules can evolve independently.
 - Developer automation tests cover default angles, angle-name parsing, SDF edge cases, channel packing, UV-island mirror application, asset migration, mask import model validation, `TimelineRangeStatus`, `TimelineKeyStatus`, and Monotonic Guard behavior.
@@ -52,6 +54,8 @@ QuickSDFTool/
    - **Bipolar:** asymmetric shadow enter/exit values are generated in the legacy combined field, then exported with an R/A/B/G swizzle so the final texture keeps the expected shader layout and the B channel remains the 0-90-side value.
    - **UV Island Channel Flip:** starts from the 0-90 combined field, fills the 90-180 channels by island-local mirrored sampling, and exports the result as the same RGBA16F / HDR texture format used by normal 0-180 maps.
 5. **Export:** save the final threshold map as a 16-bit half-float texture.
+
+`Live SDF` is a preview-only branch: paint masks are downsampled to the selected transient preview resolution, GPU JFA produces an approximate threshold map, and the preview material consumes that render target. Final generation remains on the CPU path so saved textures keep the high-quality output behavior.
 
 ## Development Verification
 

@@ -105,6 +105,17 @@ The timeline separates seeking from keyframe editing to reduce accidental change
 - Key status badges are hit-test invisible and do not interfere with selecting, dragging, importing, or seeking.
 - The `8` / `15` and `Even` controls complete the default mask set or redistribute angles. Symmetry mode completes to 8 masks; non-symmetry mode completes to 15 masks.
 
+## Live SDF Preview
+
+`Live SDF` is a material preview mode for fast shape feedback while painting. It is intentionally separate from the saved `Generated SDF` texture.
+
+- Enable it from **Material Preview** only when you need live feedback. No GPU preview work is generated while another material preview mode is selected.
+- The preview uses the GPU Jump Flooding Algorithm path to approximate the threshold map from the editable paint render targets.
+- Live preview resolution is selected in **Advanced > Live SDF Preview Resolution** with `128 px`, `256 px`, `512 px`, and `1024 px` presets. The selected value becomes the long edge of the transient preview render target.
+- Higher values improve edge stability and small detail readability, but increase GPU cost. `512 px` is the default balance.
+- JFA passes are completed inside a single preview update. They are throttled during strokes, but the individual JFA steps are not spread across multiple frames.
+- The final saved SDF still uses the CPU generation path, including full-resolution processing, upscaling, UV island mirror output, and final export packing.
+
 ## Symmetry Modes
 
 QuickSDFTool supports four SDF generation modes:
@@ -135,5 +146,6 @@ The generated texture remains shader-compatible with the regular 0-180 layout. I
 - Mask export allows external editing and review.
 - Work is stored non-destructively in `UQuickSDFAsset`; mask textures can be saved with the asset when needed.
 - SDF generation uses CPU processing with automatic Monopolar/Bipolar packing, optional 1x-8x upscaling, R/A/B/G output swizzling, and half-float texture export.
+- `Generated SDF` displays the saved final texture. `Live SDF` displays the transient GPU JFA approximation and is not saved as the final output.
 - Generated maps are saved under `/Game/QuickSDF_GENERATED/` by default.
 - Use [Material Setup]({{ '/material-setup/' | relative_url }}) for shader integration details.

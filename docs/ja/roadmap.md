@@ -21,7 +21,8 @@ alternate_label: English
 
 ## P1: パフォーマンスと互換性
 
-- [ ] GPU JFA SDF 経路をユーザー向け生成フローで有効化する。
+- [x] `Live SDF` material preview 向けに preview-only GPU JFA 経路を有効化する。
+- [ ] CPU 出力と同等の品質 / packing 挙動を満たせる場合のみ、GPU JFA の最終保存生成対応を検討する。
 - [ ] 1K、2K、4K のマスクワークフローをベンチマークする。
 - [ ] UE 5.8+ 互換性を検証し、テスト済みエンジンバージョンを追加するタイミングでリリースノートを更新する。
 

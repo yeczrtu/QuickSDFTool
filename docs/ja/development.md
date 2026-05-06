@@ -22,6 +22,7 @@ QuickSDFTool/
 |-- Shaders/
 |   |-- Private/
 |       |-- JumpFloodingCS.usf
+|       |-- QuickSDFFastPreview.usf
 |-- Source/
     |-- QuickSDFTool/              # Runtime module と UQuickSDFAsset
     |-- QuickSDFToolEditor/        # Editor Mode、paint tool、timeline、processor
@@ -38,6 +39,7 @@ QuickSDFTool/
 
 - `UQuickSDFAsset` は、編集中の mask、resolution、UV channel、final SDF texture の主データ源として active `FQuickSDFTextureSetData` を使います。旧 top-level fields は保存済み asset 互換のため load 時に best-effort で移行します。
 - `UQuickSDFPaintTool` は Interactive Tools Framework の lifecycle、input routing、UI commands を担当する facade です。Paint state、Undo changes、mask utilities、SDF helpers、asset selection、render target support は責務別 private helper に分かれています。
+- Live SDF preview は `QuickSDFPaintToolLivePreview.cpp` に分離され、`QuickSDFFastPreviewRendering` 経由で描画します。transient render target だけを持ち、保存済み final SDF texture は置き換えません。
 - Timeline keyframe rendering は main timeline widget から分離されています。range / key status calculation は `QuickSDFTimelineStatus` にあり、range highlight、badge、tooltip を Slate なしで test できます。
 - Mask import validation は Slate に依存しない import model 側で扱うため、UI と取り込み rule を個別に保守できます。
 - 開発用 Automation Test では、default angles、angle-name parsing、SDF edge cases、channel packing、UV-island mirror application、asset migration、mask import model validation、`TimelineRangeStatus`、`TimelineKeyStatus`、Monotonic Guard を確認します。
@@ -52,6 +54,8 @@ QuickSDFTool/
    - **Bipolar:** 非対称な影向け。内部の combined field で生成した値を、出力時に R/A/B/G へ並べ替えます。
    - **UV Island Channel Flip:** 0-90 側の combined field から開始し、90-180 側を UV island 単位の mirrored sampling で埋め、通常の 0-180 map と同じ RGBA16F / HDR texture として出力します。
 5. **Export:** final threshold map を 16-bit half-float texture として保存します。
+
+`Live SDF` は preview-only branch です。paint mask を選択中の transient preview resolution へ downsample し、GPU JFA で近似 threshold map を作り、preview material がその render target を参照します。保存用の final generation は CPU 経路のままです。
 
 ## 開発時の検証
 

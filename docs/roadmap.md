@@ -21,7 +21,8 @@ alternate_label: 日本語
 
 ## P1: Improve Performance and Compatibility
 
-- [ ] Enable the GPU JFA SDF path in the user-facing generation flow.
+- [x] Enable a preview-only GPU JFA path for `Live SDF` material feedback.
+- [ ] Evaluate whether GPU JFA should support final saved generation after it can match CPU output quality and packing behavior.
 - [ ] Benchmark 1K, 2K, and 4K mask workflows.
 - [ ] Verify UE 5.8+ compatibility and update release notes when a tested engine version is added.
 

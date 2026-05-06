@@ -31,6 +31,7 @@ https://github.com/user-attachments/assets/7eec2890-be31-4cbc-9662-756b6e84c620
 - シーク / キーフレームレーンを分けた角度タイムライン。サムネイル、スナップ、キー移動とシーク同期、Paint Target 範囲表示に対応します。
 - `Auto`、`Texture Flip`、`UV Island Channel Flip`、0-180 通常ペイントのシンメトリーワークフロー。
 - 安定した threshold map 遷移のための Monotonic Guard 検証とクリッピング。
+- 最終ベイク前に形状を確認できる、GPU JFA 近似の `Live SDF` material preview。
 - マスク import/export、非破壊の `UQuickSDFAsset` 保存、UE undo/redo、half-float テクスチャ出力の CPU SDF 生成。
 
 ## クイックスタート
@@ -42,8 +43,9 @@ https://github.com/user-attachments/assets/7eec2890-be31-4cbc-9662-756b6e84c620
 5. **Material Slots** で active slot を確認します。選択行と cyan viewport overlay が現在の material slot を示します。
 6. **Start Paint** を押します。Paint mode では active slot が既定で isolate されます。全体表示のまま塗りたい場合は **Isolate Slot** をオフにします。
 7. `LMB` で白 / ライト、`Shift + LMB` で黒 / 影をペイントします。
-8. タイムラインでライト角度、マスク追加、Paint Target 範囲を調整し、SDF threshold map を生成します。
-9. `/Game/QuickSDF_GENERATED/` に生成されたテクスチャをトゥーンマテリアルで使います。
+8. 必要に応じて **Material Preview** を **Live SDF** に切り替え、ペイント中に GPU JFA preview を確認します。解像度は **Advanced** の `Live SDF Preview Resolution` で `128 px`、`256 px`、`512 px`、`1024 px` から選びます。
+9. タイムラインでライト角度、マスク追加、Paint Target 範囲を調整し、最終 SDF threshold map を生成します。
+10. `/Game/QuickSDF_GENERATED/` に生成されたテクスチャをトゥーンマテリアルで使います。
 
 詳しい流れは [Authoring Workflow](./docs/ja/workflow.md)、[Material Setup](./docs/material-setup.md)、[Troubleshooting](./docs/troubleshooting.md) を参照してください。
 

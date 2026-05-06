@@ -35,12 +35,13 @@ On some pen displays and tablets, hover movement while the pen is lifted may not
 - Prefer Screen mode for camera-facing edits where the brush preview is easier to confirm.
 - If this reproduces consistently, include the tablet model, driver version, monitor DPI scale, and whether the issue happens in Screen, Surface, or UV mode when reporting it.
 
-## GPU JFA Generation Is Not Used In v1.0
+## GPU JFA Is Only Used For Live SDF Preview
 
-GPU JFA shader files exist in the repository, but the v1.0 user-facing generation flow uses the CPU `FSDFProcessor` path.
+`Live SDF` uses a GPU JFA approximation for responsive in-editor feedback. The saved `Generated SDF` output still uses the CPU `FSDFProcessor` path.
 
-- Use the CPU path for release-facing work.
-- Treat GPU JFA as future work until a release note explicitly enables it.
+- Use `Live SDF` to check shape while painting.
+- Use `Generated SDF` or the saved texture when validating final output quality, channel packing, UV island mirror behavior, lilToon-compatible output, or upscaled output.
+- If the live preview looks too coarse, increase **Advanced > Live SDF Preview Resolution** from `512 px` to `1024 px`. Lower it to `256 px` or `128 px` if editor input becomes less responsive.
 
 ## UE 5.4 / 5.5 / 5.6 Build Issues
 
