@@ -175,9 +175,10 @@ FText BuildKeyTooltip(const FQuickSDFTimelineKeyStatus& Status)
 	TArray<FString> Lines;
 	Lines.Add(FString::Printf(TEXT("Authored Angle: %.0f deg"), Status.Angle));
 	Lines.Add(FString::Printf(TEXT("Global Offset: %.1f deg"), Status.GlobalAngleOffset));
-	Lines.Add(FString::Printf(TEXT("Image Delta: %+.1f deg"), Status.AngleOffsetDelta));
-	Lines.Add(FString::Printf(TEXT("Preview Angle: %.1f deg"), Status.EffectivePreviewAngle));
-	Lines.Add(FString::Printf(TEXT("Allowed Preview Range: %.1f..%.1f deg"), Status.MinPreviewAngle, Status.MaxPreviewAngle));
+	Lines.Add(FString::Printf(TEXT("Bake Shift: %+.1f deg"), Status.AngleOffsetDelta));
+	Lines.Add(FString::Printf(TEXT("Resolved Bake/Preview Angle: %.1f deg"), Status.EffectivePreviewAngle));
+	Lines.Add(FString::Printf(TEXT("Allowed Bake Range: %.1f..%.1f deg"), Status.MinPreviewAngle, Status.MaxPreviewAngle));
+	Lines.Add(TEXT("Authored key stays fixed; only bake and preview evaluation angle shifts."));
 	Lines.Add(FString::Printf(TEXT("Texture: %s"), Status.TextureName.IsEmpty() ? TEXT("Missing") : *Status.TextureName));
 	Lines.Add(FString::Printf(TEXT("Mask: %s"), Status.bHasMask ? TEXT("Ready") : TEXT("Missing")));
 	Lines.Add(FString::Printf(TEXT("Edit State: %s"), Status.bIsActive ? TEXT("Current key") : TEXT("Inactive key")));

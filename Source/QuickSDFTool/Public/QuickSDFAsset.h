@@ -108,7 +108,7 @@ struct FQuickSDFAngleData
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SDF")
 	float Angle = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SDF", meta = (DisplayName = "Image Angle Offset Delta", ClampMin = "-90.0", ClampMax = "90.0", UIMin = "-30.0", UIMax = "30.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SDF", meta = (DisplayName = "Image Bake Angle Shift", ClampMin = "-90.0", ClampMax = "90.0", UIMin = "-30.0", UIMax = "30.0"))
 	float AngleOffsetDeltaDegrees = 0.0f;
 
 	UPROPERTY()

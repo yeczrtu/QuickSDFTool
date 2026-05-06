@@ -42,27 +42,37 @@ bool FQuickSDFDefaultAngleCountTest::RunTest(const FString& Parameters)
 
 	DefaultProperties->SetSymmetryEnabled(true);
 	DefaultProperties->BakeAngleOffsetDegrees = 20.0f;
-	TestTrue(TEXT("Image delta is added to the global bake offset"), FMath::IsNearlyEqual(DefaultProperties->GetMaterialAngle(45.0f, 5.0f), 32.5f));
+	TestTrue(TEXT("Image bake shift is added after the global bake offset logic"), FMath::IsNearlyEqual(DefaultProperties->GetMaterialAngle(45.0f, 5.0f), 40.0f));
 
 	DefaultProperties->BakeAngleOffsetDegrees = 0.0f;
 	DefaultProperties->TargetAngles = { 13.0f, 26.0f, 39.0f };
-	DefaultProperties->TargetAngleOffsetDeltas = { 0.0f, 30.0f, 0.0f };
-	const float ClampedMiddleDelta = DefaultProperties->GetClampedAngleOffsetDelta(1, 30.0f);
-	DefaultProperties->TargetAngleOffsetDeltas[1] = ClampedMiddleDelta;
+	DefaultProperties->TargetAngleOffsetDeltas = { 0.0f, -30.0f, 0.0f };
+	const float ClampedNegativeMiddleShift = DefaultProperties->GetClampedAngleOffsetDelta(1, -30.0f);
+	DefaultProperties->TargetAngleOffsetDeltas[1] = ClampedNegativeMiddleShift;
 	float MinPreviewAngle = 0.0f;
 	float MaxPreviewAngle = 90.0f;
 	DefaultProperties->GetAngleOffsetPreviewRange(1, MinPreviewAngle, MaxPreviewAngle);
 	TestTrue(TEXT("Per-image offset preview is clamped above previous key"), DefaultProperties->GetMaterialAngleForKey(1) >= MinPreviewAngle - KINDA_SMALL_NUMBER);
 	TestTrue(TEXT("Per-image offset preview is clamped below next key"), DefaultProperties->GetMaterialAngleForKey(1) <= MaxPreviewAngle + KINDA_SMALL_NUMBER);
+	TestTrue(TEXT("Negative image bake shift moves the resolved preview angle left"), DefaultProperties->GetMaterialAngleForKey(1) < DefaultProperties->TargetAngles[1]);
 
-	const FQuickSDFTimelineOffsetVisual MiddleVisual = QuickSDFTimelineStatus::BuildOffsetVisual(
+	const FQuickSDFTimelineOffsetVisual NegativeMiddleVisual = QuickSDFTimelineStatus::BuildOffsetVisual(
 		DefaultProperties->TargetAngles[1],
 		DefaultProperties->GetMaterialAngleForKey(1),
-		ClampedMiddleDelta,
+		ClampedNegativeMiddleShift,
 		90.0f);
-	TestTrue(TEXT("Non-zero delta produces a visible offset vector"), MiddleVisual.bVisible);
-	TestTrue(TEXT("Offset vector preserves authored/effective coordinate order"), MiddleVisual.AuthoredPercent > MiddleVisual.EffectivePercent);
-	TestTrue(TEXT("Offset vector width is positive when effective differs from authored"), MiddleVisual.WidthPercent > 0.0f);
+	TestTrue(TEXT("Non-zero delta produces a visible offset vector"), NegativeMiddleVisual.bVisible);
+	TestTrue(TEXT("Negative offset vector places effective coordinate left of authored"), NegativeMiddleVisual.AuthoredPercent > NegativeMiddleVisual.EffectivePercent);
+	TestTrue(TEXT("Offset vector width is positive when effective differs from authored"), NegativeMiddleVisual.WidthPercent > 0.0f);
+
+	DefaultProperties->TargetAngleOffsetDeltas[1] = DefaultProperties->GetClampedAngleOffsetDelta(1, 30.0f);
+	TestTrue(TEXT("Positive image bake shift moves the resolved preview angle right"), DefaultProperties->GetMaterialAngleForKey(1) > DefaultProperties->TargetAngles[1]);
+	const FQuickSDFTimelineOffsetVisual PositiveMiddleVisual = QuickSDFTimelineStatus::BuildOffsetVisual(
+		DefaultProperties->TargetAngles[1],
+		DefaultProperties->GetMaterialAngleForKey(1),
+		DefaultProperties->TargetAngleOffsetDeltas[1],
+		90.0f);
+	TestTrue(TEXT("Positive offset vector places effective coordinate right of authored"), PositiveMiddleVisual.EffectivePercent > PositiveMiddleVisual.AuthoredPercent);
 
 	TestFalse(TEXT("Zero delta hides the offset visual"), QuickSDFTimelineStatus::ShouldShowOffsetVisual(0.0f));
 	TestTrue(TEXT("Positive delta shows the offset visual"), QuickSDFTimelineStatus::ShouldShowOffsetVisual(2.0f));
@@ -443,7 +453,7 @@ bool FQuickSDFAssetMigrationTest::RunTest(const FString& Parameters)
 	UQuickSDFToolProperties* Properties = NewObject<UQuickSDFToolProperties>();
 	QuickSDFTextureSetSync::SyncPropertiesFromActiveAsset(Properties, Asset);
 	TestEqual(TEXT("Active texture set sync copies bake angle offset"), Properties->BakeAngleOffsetDegrees, 15.0f);
-	TestEqual(TEXT("Active texture set sync copies image angle offset delta"), Properties->TargetAngleOffsetDeltas[0], Asset->TextureSets[0].AngleDataList[0].AngleOffsetDeltaDegrees);
+	TestEqual(TEXT("Active texture set sync copies image bake angle shift"), Properties->TargetAngleOffsetDeltas[0], Asset->TextureSets[0].AngleDataList[0].AngleOffsetDeltaDegrees);
 
 	FQuickSDFTextureSetData& SecondTextureSet = Asset->TextureSets.AddDefaulted_GetRef();
 	SecondTextureSet.MaterialSlotIndex = 1;
@@ -574,8 +584,9 @@ bool FQuickSDFTimelineKeyStatusTest::RunTest(const FString& Parameters)
 
 	const FString Tooltip = QuickSDFTimelineStatus::BuildKeyTooltip(Status).ToString();
 	TestTrue(TEXT("Tooltip contains authored angle"), Tooltip.Contains(TEXT("Authored Angle: 45 deg")));
-	TestTrue(TEXT("Tooltip contains image delta"), Tooltip.Contains(TEXT("Image Delta: +2.5 deg")));
-	TestTrue(TEXT("Tooltip contains preview range"), Tooltip.Contains(TEXT("Allowed Preview Range: 20.0..60.0 deg")));
+	TestTrue(TEXT("Tooltip contains bake shift"), Tooltip.Contains(TEXT("Bake Shift: +2.5 deg")));
+	TestTrue(TEXT("Tooltip contains bake range"), Tooltip.Contains(TEXT("Allowed Bake Range: 20.0..60.0 deg")));
+	TestTrue(TEXT("Tooltip explains authored key stays fixed"), Tooltip.Contains(TEXT("Authored key stays fixed")));
 	TestTrue(TEXT("Tooltip reports included paint target range"), Tooltip.Contains(TEXT("Paint Target: Included")));
 
 	Input.bHasPaintRenderTarget = false;

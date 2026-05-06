@@ -101,27 +101,6 @@ float GetQuickSDFMaterialAngleForEffectiveOffset(float AuthoredAngle, float Effe
 	return PivotAngle + Alpha * (PivotAngle + SafeOffset);
 }
 
-float GetQuickSDFEffectiveOffsetForMaterialAngle(float AuthoredAngle, float MaterialAngle, bool bUsesFrontHalfAngles)
-{
-	constexpr float PivotAngle = 90.0f;
-	float Coefficient = 0.0f;
-	if (bUsesFrontHalfAngles || AuthoredAngle <= PivotAngle)
-	{
-		Coefficient = (AuthoredAngle / PivotAngle) - 1.0f;
-	}
-	else
-	{
-		Coefficient = (AuthoredAngle - PivotAngle) / PivotAngle;
-	}
-
-	if (FMath::IsNearlyZero(Coefficient))
-	{
-		return 0.0f;
-	}
-
-	return FMath::Clamp((MaterialAngle - AuthoredAngle) / Coefficient, 0.0f, 90.0f);
-}
-
 float GetQuickSDFAngleDeltaAtIndex(const TArray<float>& Deltas, int32 Index)
 {
 	return Deltas.IsValidIndex(Index) ? Deltas[Index] : 0.0f;
@@ -175,8 +154,9 @@ float UQuickSDFToolProperties::GetMaterialAngle(float AuthoredAngle) const
 
 float UQuickSDFToolProperties::GetMaterialAngle(float AuthoredAngle, float AngleOffsetDeltaDegrees) const
 {
-	const float EffectiveOffset = FMath::Clamp(BakeAngleOffsetDegrees + AngleOffsetDeltaDegrees, 0.0f, 90.0f);
-	return GetQuickSDFMaterialAngleForEffectiveOffset(AuthoredAngle, EffectiveOffset, UsesFrontHalfAngles());
+	const float BaseBakeAngle = GetMaterialAngle(AuthoredAngle);
+	const float ImageBakeShift = FMath::Clamp(AngleOffsetDeltaDegrees, QuickSDFAngleOffsetMinDegrees, QuickSDFAngleOffsetMaxDegrees);
+	return BaseBakeAngle + ImageBakeShift;
 }
 
 float UQuickSDFToolProperties::GetMaterialAngleForKey(int32 AngleIndex) const
@@ -223,8 +203,8 @@ float UQuickSDFToolProperties::GetClampedAngleOffsetDelta(int32 AngleIndex, floa
 		return RequestedDelta;
 	}
 
-	const float EffectiveOffset = GetQuickSDFEffectiveOffsetForMaterialAngle(AuthoredAngle, ClampedPreviewAngle, UsesFrontHalfAngles());
-	return FMath::Clamp(EffectiveOffset - FMath::Clamp(BakeAngleOffsetDegrees, 0.0f, 90.0f), QuickSDFAngleOffsetMinDegrees, QuickSDFAngleOffsetMaxDegrees);
+	const float BaseBakeAngle = GetMaterialAngle(AuthoredAngle);
+	return FMath::Clamp(ClampedPreviewAngle - BaseBakeAngle, QuickSDFAngleOffsetMinDegrees, QuickSDFAngleOffsetMaxDegrees);
 }
 
 void UQuickSDFToolProperties::GetAngleOffsetPreviewRange(int32 AngleIndex, float& OutMinPreviewAngle, float& OutMaxPreviewAngle) const

@@ -127,7 +127,6 @@ private:
 	FText GetCompactSummaryText() const;
 	FText GetCompleteMaskButtonText() const;
 	FText GetCompleteMaskTooltipText() const;
-	EVisibility GetAngleOffsetEditorVisibility() const;
 	TOptional<float> GetActiveAngleOffsetDelta() const;
 	FText GetActiveAngleOffsetPreviewText() const;
 	FText GetActiveAngleOffsetRangeText() const;
