@@ -93,9 +93,9 @@ a:focus-visible {
 
 .page-shell {
   display: grid;
-  grid-template-columns: 220px minmax(0, 860px);
-  gap: 36px;
-  width: min(1120px, calc(100% - 40px));
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 44px;
+  width: min(1280px, calc(100% - 48px));
   margin: 0 auto;
   padding: 36px 0 56px;
 }
@@ -113,6 +113,7 @@ a:focus-visible {
 
 .content {
   min-width: 0;
+  max-width: 980px;
 }
 
 .content > :first-child {
@@ -153,7 +154,7 @@ li {
 }
 
 .lead {
-  max-width: 760px;
+  max-width: 800px;
   color: var(--muted);
   font-size: 19px;
 }
@@ -229,6 +230,68 @@ li {
   color: var(--muted);
 }
 
+.doc-card:hover,
+.doc-card:focus-visible,
+.release-card:hover,
+.release-card:focus-visible {
+  border-color: rgba(34, 124, 122, 0.42);
+  box-shadow: 0 10px 28px rgba(23, 32, 42, 0.08);
+}
+
+.content img {
+  max-width: 100%;
+  height: auto;
+}
+
+.screenshot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 18px;
+  margin: 24px 0 18px;
+}
+
+.screenshot-card {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.screenshot-card img {
+  display: block;
+  width: 100%;
+  height: clamp(240px, 32vw, 430px);
+  object-fit: contain;
+  background: #121820;
+}
+
+.screenshot-card.compact img {
+  height: clamp(150px, 20vw, 240px);
+  padding: 24px 16px;
+  background: #1a222c;
+}
+
+.screenshot-card figcaption {
+  padding: 14px 16px 16px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.screenshot-card figcaption strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.media-credit {
+  color: var(--muted);
+  font-size: 15px;
+}
+
 code {
   padding: 2px 5px;
   border-radius: 5px;
@@ -257,6 +320,12 @@ table {
   border-collapse: collapse;
 }
 
+table img {
+  display: block;
+  max-width: min(100%, 460px);
+  height: auto;
+}
+
 th,
 td {
   padding: 9px 12px;
@@ -269,7 +338,7 @@ th {
 }
 
 .site-footer {
-  width: min(1120px, calc(100% - 40px));
+  width: min(1280px, calc(100% - 48px));
   margin: 0 auto;
   padding: 22px 0 34px;
   border-top: 1px solid var(--line);
@@ -306,5 +375,13 @@ th {
 
   h1 {
     font-size: 31px;
+  }
+
+  .screenshot-card img {
+    height: clamp(210px, 58vw, 320px);
+  }
+
+  .screenshot-card.compact img {
+    height: clamp(140px, 42vw, 210px);
   }
 }

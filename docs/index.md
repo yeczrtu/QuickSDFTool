@@ -18,22 +18,6 @@ QuickSDFTool is an Unreal Engine 5.7.x editor-mode plugin for painting toon-shad
   <a class="button secondary" href="https://github.com/user-attachments/assets/1eb770b6-b65d-44bb-b5a0-fbb78d998202">Watch Demo</a>
 </div>
 
-## Workflow Screenshots
-
-The current documentation captures show the main v1.0 workflow from slot selection to SDF output.
-
-| Select active slot | Paint in Screen mode |
-| --- | --- |
-| ![Select mode active material slot overlay]({{ '/images/quick-sdf-select-active-slot.png' | relative_url }}) | ![Paint mode with Screen projection brush preview]({{ '/images/quick-sdf-paint-screen-mode.png' | relative_url }}) |
-| Select mode keeps the full mesh visible and marks the active material slot with the selected row and cyan viewport overlay. | Paint mode shows Screen projection, the brush preview, UV texture preview, and active slot context. |
-
-| Timeline | SDF output |
-| --- | --- |
-| ![Quick SDF timeline controls and keyframes]({{ '/images/quick-sdf-timeline.png' | relative_url }}) | ![Generated SDF threshold texture preview]({{ '/images/quick-sdf-sdf-preview.png' | relative_url }}) |
-| Timeline thumbnails, angle labels, and keyframe controls stay visible while seeking or dragging keys. | The generated SDF threshold texture is the map consumed by toon materials. |
-
-Screenshot character model credit: [真冬 Mafuyu / Original 3D Model](https://booth.pm/ja/items/5007531) by ぷらすわん. Character design and 3D modeling: 有坂みと.
-
 ## Start Here
 
 <div class="doc-grid">
@@ -62,6 +46,43 @@ Screenshot character model credit: [真冬 Mafuyu / Original 3D Model](https://b
     <span>Inspect architecture, verification, and repository maintenance notes.</span>
   </a>
 </div>
+
+## Workflow Screenshots
+
+The current documentation captures show the main v1.0 workflow from slot selection to SDF output.
+
+<div class="screenshot-grid">
+  <figure class="screenshot-card">
+    <img src="{{ '/images/quick-sdf-select-active-slot.png' | relative_url }}" alt="Select mode active material slot overlay">
+    <figcaption>
+      <strong>Select active slot</strong>
+      Select mode keeps the full mesh visible and marks the active material slot with the selected row and cyan viewport overlay.
+    </figcaption>
+  </figure>
+  <figure class="screenshot-card">
+    <img src="{{ '/images/quick-sdf-paint-screen-mode.png' | relative_url }}" alt="Paint mode with Screen projection brush preview">
+    <figcaption>
+      <strong>Paint in Screen mode</strong>
+      Paint mode shows Screen projection, the brush preview, UV texture preview, and active slot context.
+    </figcaption>
+  </figure>
+  <figure class="screenshot-card compact">
+    <img src="{{ '/images/quick-sdf-timeline.png' | relative_url }}" alt="Quick SDF timeline controls and keyframes">
+    <figcaption>
+      <strong>Timeline</strong>
+      Timeline thumbnails, angle labels, and keyframe controls stay visible while seeking or dragging keys.
+    </figcaption>
+  </figure>
+  <figure class="screenshot-card compact">
+    <img src="{{ '/images/quick-sdf-sdf-preview.png' | relative_url }}" alt="Generated SDF threshold texture preview">
+    <figcaption>
+      <strong>SDF output</strong>
+      The generated SDF threshold texture is the map consumed by toon materials.
+    </figcaption>
+  </figure>
+</div>
+
+<p class="media-credit">Screenshot character model credit: <a href="https://booth.pm/ja/items/5007531">真冬 Mafuyu / Original 3D Model</a> by ぷらすわん. Character design and 3D modeling: 有坂みと.</p>
 
 ## Quick Start
 
