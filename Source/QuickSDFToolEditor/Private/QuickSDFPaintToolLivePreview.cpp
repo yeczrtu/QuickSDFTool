@@ -12,7 +12,7 @@
 
 namespace
 {
-constexpr float QuickSDFLivePreviewScale = 0.25f;
+constexpr float QuickSDFLivePreviewScale = 0.5f;
 constexpr int32 QuickSDFLivePreviewMaxSize = 512;
 constexpr int32 QuickSDFLivePreviewMinSize = 16;
 constexpr double QuickSDFLivePreviewStrokeInterval = 0.1;

@@ -186,7 +186,7 @@ FRDGTextureRef AddJumpFloodPasses(
 		TEXT("QuickSDF.Live.JumpSeed"));
 
 	TShaderMapRef<FQuickSDFFastJumpFloodCS> ComputeShader(GetGlobalShaderMap(FeatureLevel));
-	for (int32 Step = GetInitialJumpStep(OutputSize); Step >= 4; Step /= 2)
+	for (int32 Step = GetInitialJumpStep(OutputSize); Step >= 1; Step /= 2)
 	{
 		FQuickSDFFastJumpFloodCS::FParameters* Parameters = GraphBuilder.AllocParameters<FQuickSDFFastJumpFloodCS::FParameters>();
 		Parameters->InputSeed = CurrentSeed;

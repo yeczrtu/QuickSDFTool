@@ -35,6 +35,12 @@ static float2 InvalidSeed()
 	return float2(-1.0f, -1.0f);
 }
 
+static float LoadSourceMask(int2 SourcePos)
+{
+	SourcePos = clamp(SourcePos, int2(0, 0), SourceSize - int2(1, 1));
+	return SourceTexture.Load(int3(SourcePos, 0)).r;
+}
+
 [numthreads(8, 8, 1)]
 void DownsampleMaskMain(uint3 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -48,12 +54,19 @@ void DownsampleMaskMain(uint3 DispatchThreadId : SV_DispatchThreadID)
 		return;
 	}
 
-	float2 SourceUV = (float2(PixelPos) + 0.5f) / float2(Width, Height);
-	int2 SourcePos = int2(SourceUV * float2(SourceSize));
-	SourcePos = clamp(SourcePos, int2(0, 0), SourceSize - int2(1, 1));
+	float2 SourceMin = float2(PixelPos) * float2(SourceSize) / float2(Width, Height);
+	float2 SourceMax = float2(PixelPos + int2(1, 1)) * float2(SourceSize) / float2(Width, Height) - 1.0f;
+	int2 SourceP0 = int2(floor(SourceMin));
+	int2 SourceP1 = int2(floor(SourceMax));
+	int2 SourceCenter = int2((SourceMin + SourceMax) * 0.5f);
 
-	float4 SourceValue = SourceTexture.Load(int3(SourcePos, 0));
-	float Gray = SourceValue.r;
+	float Gray =
+		LoadSourceMask(SourceP0) +
+		LoadSourceMask(int2(SourceP1.x, SourceP0.y)) +
+		LoadSourceMask(int2(SourceP0.x, SourceP1.y)) +
+		LoadSourceMask(SourceP1) +
+		LoadSourceMask(SourceCenter);
+	Gray *= 0.2f;
 	OutputMask[PixelPos] = float4(Gray, Gray, Gray, 1.0f);
 }
 
