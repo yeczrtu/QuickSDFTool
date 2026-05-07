@@ -2020,6 +2020,60 @@ double UQuickSDFPaintTool::GetTextureCanvasBrushRadiusPixels() const
 	return FMath::Max(static_cast<double>(FMath::Min(PixelSize.X, PixelSize.Y) * 0.5f), 1.0);
 }
 
+void UQuickSDFPaintTool::SetTextureCanvasBrushRadiusPixels(double NewRadiusPixels)
+{
+	const float ClampedRadiusPixels = FMath::Clamp(static_cast<float>(NewRadiusPixels), 1.0f, 4096.0f);
+	if (Properties && GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection)
+	{
+		if (FMath::IsNearlyEqual(Properties->ScreenProjectionBrushRadiusPixels, ClampedRadiusPixels, KINDA_SMALL_NUMBER))
+		{
+			return;
+		}
+		Properties->ScreenProjectionBrushRadiusPixels = ClampedRadiusPixels;
+		LastBrushStamp.Radius = ClampedRadiusPixels;
+		NotifyOfPropertyChangeByTool(Properties);
+		return;
+	}
+
+	if (!BrushProperties)
+	{
+		return;
+	}
+
+	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
+	float NewBrushRadius = ClampedRadiusPixels;
+	if (RT && CurrentComponent.IsValid() && TargetMesh.IsValid())
+	{
+		const FTransform Transform = CurrentComponent->GetComponentTransform();
+		const float MeshBoundsMax = static_cast<float>(TargetMesh->GetBounds().MaxDim());
+		const float MaxScale = static_cast<float>(Transform.GetScale3D().GetMax());
+		const float TextureMinDimension = static_cast<float>(FMath::Max(FMath::Min(RT->SizeX, RT->SizeY), 1));
+		if (MeshBoundsMax > KINDA_SMALL_NUMBER && MaxScale > KINDA_SMALL_NUMBER)
+		{
+			NewBrushRadius = (ClampedRadiusPixels / TextureMinDimension) * MaxScale * MeshBoundsMax;
+		}
+	}
+
+	NewBrushRadius = FMath::Max(NewBrushRadius, 0.1f);
+	if (FMath::IsNearlyEqual(BrushProperties->BrushRadius, NewBrushRadius, KINDA_SMALL_NUMBER))
+	{
+		return;
+	}
+
+	const float RangeMin = BrushRelativeSizeRange.Min;
+	const float RangeSize = BrushRelativeSizeRange.Max - BrushRelativeSizeRange.Min;
+	if (RangeSize > KINDA_SMALL_NUMBER)
+	{
+		BrushProperties->BrushSize = FMath::Clamp((NewBrushRadius - RangeMin) / RangeSize, 0.0f, 1.0f);
+	}
+	BrushProperties->BrushRadius = NewBrushRadius;
+	RecalculateBrushRadius();
+	BrushProperties->BrushSize = BrushProperties->BrushRadius;
+	LastBrushStamp.Radius = NewBrushRadius;
+	UpdateBrushStampIndicator();
+	NotifyOfPropertyChangeByTool(BrushProperties);
+}
+
 void UQuickSDFPaintTool::StampSample(const FQuickSDFStrokeSample& Sample)
 {
 	StampSamples({ Sample });

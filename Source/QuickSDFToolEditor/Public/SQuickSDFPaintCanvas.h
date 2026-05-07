@@ -46,6 +46,9 @@ public:
 	void TogglePixelGrid();
 	void SetHoverUV(const FVector2f& UV);
 	void ClearHoverUV();
+	double GetBrushRadiusPixels() const;
+	void SetBrushRadiusPixels(double NewRadiusPixels);
+	void AdjustBrushRadiusPixels(double DeltaPixels);
 	FText GetStatusText() const;
 
 private:
@@ -55,6 +58,7 @@ private:
 	TSharedRef<SWidget> BuildStatusBar();
 	TSharedRef<SWidget> BuildTextureSetSelector();
 	TSharedRef<SWidget> BuildAngleSelector();
+	TSharedRef<SWidget> BuildBrushSizeControl();
 	TSharedRef<SWidget> MakeTextureSetMenu();
 	TSharedRef<SWidget> MakeAngleMenu();
 	void UpdateScrollBars();

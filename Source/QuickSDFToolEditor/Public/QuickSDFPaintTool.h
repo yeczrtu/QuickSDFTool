@@ -250,6 +250,7 @@ public:
 	void UpdateTextureCanvasHover(const FVector2f& UV, const FVector2D& ScreenPosition);
 	void SetTextureCanvasCursorActive(bool bActive);
 	double GetTextureCanvasBrushRadiusPixels() const;
+	void SetTextureCanvasBrushRadiusPixels(double NewRadiusPixels);
 	class UMaterialInstanceDynamic* GetCanvasMaskPreviewMaterial(class UTextureRenderTarget2D* RenderTarget);
 	class UTextureRenderTarget2D* GetCanvasUVOverlayRenderTarget();
 	class UTextureRenderTarget2D* GetCanvasOnionSkinRenderTarget(int32 RelativeAngleOffset) const;

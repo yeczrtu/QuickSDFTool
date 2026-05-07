@@ -24,6 +24,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SComboButton.h"
+#include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBar.h"
@@ -135,27 +136,65 @@ public:
 		const FKey Key = EventArgs.Key;
 		const EInputEvent Event = EventArgs.Event;
 		const FVector2D MousePosition(Viewport->GetMouseX(), Viewport->GetMouseY());
+		const bool bControlDown = IsControlDown(Viewport);
 
 		if ((Event == IE_Pressed || Event == IE_Repeat) && Key == EKeys::MouseScrollUp)
 		{
+			if (bControlDown)
+			{
+				AdjustBrushRadiusByWheel(1.0);
+				Viewport->InvalidateDisplay();
+				return true;
+			}
 			Owner->ZoomBy(1.15, MousePosition);
 			Viewport->InvalidateDisplay();
 			return true;
 		}
 		if ((Event == IE_Pressed || Event == IE_Repeat) && Key == EKeys::MouseScrollDown)
 		{
+			if (bControlDown)
+			{
+				AdjustBrushRadiusByWheel(-1.0);
+				Viewport->InvalidateDisplay();
+				return true;
+			}
 			Owner->ZoomBy(1.0 / 1.15, MousePosition);
 			Viewport->InvalidateDisplay();
 			return true;
 		}
+		if ((Event == IE_Pressed || Event == IE_Repeat) && Key == EKeys::RightBracket)
+		{
+			AdjustBrushRadiusByWheel(1.0);
+			Viewport->InvalidateDisplay();
+			return true;
+		}
+		if ((Event == IE_Pressed || Event == IE_Repeat) && Key == EKeys::LeftBracket)
+		{
+			AdjustBrushRadiusByWheel(-1.0);
+			Viewport->InvalidateDisplay();
+			return true;
+		}
+		if (bBrushResizing)
+		{
+			if (Event == IE_Pressed && (Key == EKeys::Escape || Key == EKeys::RightMouseButton))
+			{
+				CancelBrushResize();
+				Viewport->InvalidateDisplay();
+				return true;
+			}
+			if (Event == IE_Pressed && (Key == EKeys::LeftMouseButton || Key == EKeys::Enter))
+			{
+				EndBrushResize();
+				Viewport->InvalidateDisplay();
+				return true;
+			}
+			return true;
+		}
 		if ((Event == IE_Pressed || Event == IE_Repeat) && Key == EKeys::F)
 		{
-			if (IsControlDown(Viewport))
+			if (bControlDown)
 			{
-				if (UQuickSDFPaintTool* Tool = Owner->GetPaintTool())
-				{
-					Tool->RequestBrushResizeMode();
-				}
+				BeginBrushResize(MousePosition);
 			}
 			else
 			{
@@ -279,6 +318,7 @@ public:
 	{
 		EndPaintStroke();
 		EndPan();
+		EndBrushResize();
 		if (UQuickSDFPaintTool* Tool = Owner ? Owner->GetPaintTool() : nullptr)
 		{
 			Tool->SetTextureCanvasCursorActive(false);
@@ -351,6 +391,53 @@ private:
 		bPanning = false;
 	}
 
+	void BeginBrushResize(const FVector2D& MousePosition)
+	{
+		EndPaintStroke();
+		EndPan();
+		bBrushResizing = true;
+		BrushResizeStartMousePosition = MousePosition;
+		BrushResizeStartRadiusPixels = Owner ? Owner->GetBrushRadiusPixels() : 1.0;
+	}
+
+	void UpdateBrushResize(const FVector2D& MousePosition)
+	{
+		if (!Owner)
+		{
+			return;
+		}
+
+		const double DeltaX = MousePosition.X - BrushResizeStartMousePosition.X;
+		const double Scale = FMath::Pow(2.0, DeltaX / 180.0);
+		Owner->SetBrushRadiusPixels(BrushResizeStartRadiusPixels * Scale);
+	}
+
+	void EndBrushResize()
+	{
+		bBrushResizing = false;
+	}
+
+	void CancelBrushResize()
+	{
+		if (Owner)
+		{
+			Owner->SetBrushRadiusPixels(BrushResizeStartRadiusPixels);
+		}
+		bBrushResizing = false;
+	}
+
+	void AdjustBrushRadiusByWheel(double Direction)
+	{
+		if (!Owner)
+		{
+			return;
+		}
+
+		const double CurrentRadius = Owner->GetBrushRadiusPixels();
+		const double Step = FMath::Max(1.0, CurrentRadius * 0.08);
+		Owner->AdjustBrushRadiusPixels(Direction * Step);
+	}
+
 	void HandleMouseMove(FViewport* Viewport, const FVector2D& MousePosition)
 	{
 		if (!Owner)
@@ -367,6 +454,21 @@ private:
 		{
 			Owner->GetViewState().Pan += MousePosition - LastMousePosition;
 			LastMousePosition = MousePosition;
+			if (Viewport)
+			{
+				Viewport->InvalidateDisplay();
+			}
+			return;
+		}
+
+		if (bBrushResizing)
+		{
+			FVector2f ResizeUV;
+			if (Owner->IsViewportPositionInsideTexture(MousePosition, &ResizeUV))
+			{
+				Owner->SetHoverUV(ResizeUV);
+			}
+			UpdateBrushResize(MousePosition);
 			if (Viewport)
 			{
 				Viewport->InvalidateDisplay();
@@ -585,8 +687,11 @@ private:
 	SQuickSDFPaintCanvas* Owner = nullptr;
 	TObjectPtr<UTexture2D> CheckerTexture;
 	FVector2D LastMousePosition = FVector2D::ZeroVector;
+	FVector2D BrushResizeStartMousePosition = FVector2D::ZeroVector;
+	double BrushResizeStartRadiusPixels = 1.0;
 	bool bPainting = false;
 	bool bPanning = false;
+	bool bBrushResizing = false;
 };
 
 void SQuickSDFPaintCanvas::Construct(const FArguments& InArgs)
@@ -705,6 +810,11 @@ TSharedRef<SWidget> SQuickSDFPaintCanvas::BuildToolbar()
 			+ SScrollBox::Slot()
 			.Padding(0.0f, 0.0f, 5.0f, 0.0f)
 			[
+				BuildBrushSizeControl()
+			]
+			+ SScrollBox::Slot()
+			.Padding(0.0f, 0.0f, 5.0f, 0.0f)
+			[
 				QuickSDFToolUI::MakeMaterialPreviewModeSelector([]() { return QuickSDFToolUI::GetActivePaintTool(); })
 			]
 			+ SScrollBox::Slot()
@@ -750,6 +860,43 @@ TSharedRef<SWidget> SQuickSDFPaintCanvas::BuildToolbar()
 			+ SScrollBox::Slot()
 			[
 				MakeCanvasButton(LOCTEXT("PixelGridButton", "Grid"), LOCTEXT("PixelGridTooltip", "Toggle the high-zoom pixel grid."), FOnClicked::CreateLambda([this]() { TogglePixelGrid(); return FReply::Handled(); }))
+			]
+		];
+}
+
+TSharedRef<SWidget> SQuickSDFPaintCanvas::BuildBrushSizeControl()
+{
+	return SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(0.0f, 0.0f, 3.0f, 0.0f)
+		[
+			SNew(SImage)
+			.Image(FQuickSDFToolStyle::GetBrush("QuickSDF.PaintTextureColor"))
+			.ToolTipText(LOCTEXT("BrushSizeIconTooltip", "Brush size"))
+		]
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		[
+			SNew(SBox)
+			.WidthOverride(84.0f)
+			[
+				SNew(SSpinBox<float>)
+				.MinValue(1.0f)
+				.MaxValue(4096.0f)
+				.MinSliderValue(1.0f)
+				.MaxSliderValue(256.0f)
+				.Delta(1.0f)
+				.Value_Lambda([this]()
+				{
+					return static_cast<float>(GetBrushRadiusPixels());
+				})
+				.OnValueChanged_Lambda([this](float NewValue)
+				{
+					SetBrushRadiusPixels(NewValue);
+				})
+				.ToolTipText(LOCTEXT("BrushSizeSpinBoxTooltip", "Brush size in texture pixels. Ctrl + Mouse Wheel, [ and ], or Ctrl + F then move horizontally also adjust it."))
 			]
 		];
 }
@@ -1070,6 +1217,25 @@ void SQuickSDFPaintCanvas::ClearHoverUV()
 	bHasHoverUV = false;
 }
 
+double SQuickSDFPaintCanvas::GetBrushRadiusPixels() const
+{
+	UQuickSDFPaintTool* Tool = GetPaintTool();
+	return Tool ? Tool->GetTextureCanvasBrushRadiusPixels() : 1.0;
+}
+
+void SQuickSDFPaintCanvas::SetBrushRadiusPixels(double NewRadiusPixels)
+{
+	if (UQuickSDFPaintTool* Tool = GetPaintTool())
+	{
+		Tool->SetTextureCanvasBrushRadiusPixels(NewRadiusPixels);
+	}
+}
+
+void SQuickSDFPaintCanvas::AdjustBrushRadiusPixels(double DeltaPixels)
+{
+	SetBrushRadiusPixels(GetBrushRadiusPixels() + DeltaPixels);
+}
+
 void SQuickSDFPaintCanvas::UpdateScrollBars()
 {
 	if (!HorizontalScrollBar.IsValid() || !VerticalScrollBar.IsValid())
@@ -1152,12 +1318,14 @@ FText SQuickSDFPaintCanvas::GetStatusText() const
 	const FQuickSDFTextureSetData* ActiveSet = Asset ? Asset->GetActiveTextureSet() : nullptr;
 	const FString DirtyText = ActiveSet && ActiveSet->bDirty ? FString(TEXT("Dirty")) : FString(TEXT("Clean"));
 	const FString PreviewText = Tool ? Tool->GetMaterialPreviewStatusText().ToString() : FString(TEXT("No Tool"));
+	const FString BrushText = FString::Printf(TEXT("Brush %.0f px"), GetBrushRadiusPixels());
 
 	return FText::FromString(FString::Printf(
-		TEXT("Resolution %s   Zoom %s   %s   %s   Target %s   %s   Preview %s"),
+		TEXT("Resolution %s   Zoom %s   %s   %s   %s   Target %s   %s   Preview %s"),
 		*ResolutionText,
 		*ZoomText,
 		*CursorText,
+		*BrushText,
 		*AngleText,
 		*TargetModeText,
 		*DirtyText,
