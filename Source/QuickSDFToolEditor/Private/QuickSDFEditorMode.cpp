@@ -169,7 +169,6 @@ void UQuickSDFEditorMode::Exit()
 	DetachTimelineFromViewport();
 	TimelineWidget.Reset();
 	EndViewportNavigationSuppression();
-	bPaintCanvasTabRequested = false;
 
 	RestoreLights();
 
@@ -269,14 +268,12 @@ bool UQuickSDFEditorMode::RequestBrushResizeFromHoveredViewport()
 
 void UQuickSDFEditorMode::StartQuickSDFPaintTool()
 {
-	bPaintCanvasTabRequested = false;
 	GetInteractiveToolsContext()->StartTool(TEXT("QuickSDFPaintTool"));
 	UpdatePaintToolEnvironment();
 }
 
 void UQuickSDFEditorMode::StartQuickSDFSelectTool()
 {
-	bPaintCanvasTabRequested = false;
 	GetInteractiveToolsContext()->StartTool(TEXT("QuickSDFSelectTool"));
 	UpdatePaintToolEnvironment();
 }
@@ -399,6 +396,9 @@ void UQuickSDFEditorMode::BindCommands()
 		Commands.NextFrame,
 		FExecuteAction::CreateUObject(this, &UQuickSDFEditorMode::SelectRelativeFrame, 1),
 		FCanExecuteAction::CreateUObject(this, &UQuickSDFEditorMode::CanSelectRelativeFrame));
+	CommandList->MapAction(
+		Commands.Open2DCanvas,
+		FExecuteAction::CreateStatic(&QuickSDFPaintCanvas::OpenTab));
 }
 
 bool UQuickSDFEditorMode::InputKey(FEditorViewportClient* ViewportClient, FViewport* Viewport, FKey Key, EInputEvent Event)
@@ -581,15 +581,9 @@ void UQuickSDFEditorMode::UpdatePaintToolEnvironment()
 		{
 			AttachTimelineToActiveViewport();
 		}
-		if (!bPaintCanvasTabRequested)
-		{
-			QuickSDFPaintCanvas::OpenTab();
-			bPaintCanvasTabRequested = true;
-		}
 		return;
 	}
 
-	bPaintCanvasTabRequested = false;
 	DetachTimelineFromViewport();
 	EndViewportNavigationSuppression();
 	RestoreLights();

@@ -22,6 +22,7 @@ public:
 	// ツール切り替え用（ToggleButtonとして動作させる）
 	TSharedPtr<FUICommandInfo> SelectTextureAsset;
 	TSharedPtr<FUICommandInfo> PaintTextureColor;
+	TSharedPtr<FUICommandInfo> Open2DCanvas;
 
 	// アクション用（ボタン）
 	TSharedPtr<FUICommandInfo> GenerateSDF;

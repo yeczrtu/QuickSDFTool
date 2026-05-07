@@ -8,12 +8,13 @@ void FQuickSDFEditorModeCommands::RegisterCommands()
 {
 	UI_COMMAND(SelectTextureAsset, "Select", "Select Mesh", EUserInterfaceActionType::ToggleButton, FInputChord());
 	UI_COMMAND(PaintTextureColor, "Paint", "Paint SDF Mask", EUserInterfaceActionType::ToggleButton, FInputChord());
+	UI_COMMAND(Open2DCanvas, "2D Canvas", "Open the Quick SDF 2D Canvas", EUserInterfaceActionType::Button, FInputChord());
 	UI_COMMAND(GenerateSDF, "Generate", "Generate SDF Texture", EUserInterfaceActionType::Button, FInputChord());
 	UI_COMMAND(PreviousFrame, "Previous Frame", "Select the previous Quick SDF timeline frame", EUserInterfaceActionType::Button, FInputChord(EKeys::Left));
 	UI_COMMAND(NextFrame, "Next Frame", "Select the next Quick SDF timeline frame", EUserInterfaceActionType::Button, FInputChord(EKeys::Right));
 	
 	TArray<TSharedPtr<FUICommandInfo>> QuickSDFCommands = {
-		SelectTextureAsset, PaintTextureColor
+		SelectTextureAsset, PaintTextureColor, Open2DCanvas
 	};
 	Commands.Add(FName(TEXT("Default")), QuickSDFCommands);
 }
