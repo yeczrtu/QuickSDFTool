@@ -134,9 +134,9 @@ v1.0.x の対象は UE 5.7.x です。リリース検証ターゲットは UE 5.
 | 5.8+ | 対応予定、ただし未検証 |
 | 5.6 以前 | 非対応 |
 
-GitHub Release には Win64 のビルド済み plugin zip も置いていますが、これは現在のカスタム UE 5.7 系エディターでビルドしたものです。Epic Games Launcher 版 Unreal Engine 向けの互換バイナリとしては表記していません。
+GitHub Release には Win64 のビルド済み plugin zip も置いています。v1.0.1 の `QuickSDFTool-v1.0.1-UE57Launcher-Win64.zip` は、Epic Games Launcher 版 Unreal Engine 5.7.4 でビルドしたものです。
 
-Launcher 版 UE で使う場合は、ソースから使用中のエンジンビルドに合わせて再ビルドしてください。
+Launcher 版 UE 5.7.x プロジェクトではこの zip を利用できます。ソースビルド、ライセンシー版、カスタム版、または異なるエンジンビルドで使う場合は、ソースから使用中のエンジンビルドに合わせて再ビルドしてください。
 
 ## 詳しいドキュメント
 

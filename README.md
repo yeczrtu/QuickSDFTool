@@ -80,7 +80,7 @@ Then regenerate project files, build the project, enable **QuickSDFTool**, and r
 | 5.8+ | Intended to be supported, but not v1.0 release-tested |
 | 5.6 and earlier | Not supported |
 
-The v1.0.x binary releases are built with the current custom UE 5.7-based verification editor. They are not advertised as compatible with Epic Games Launcher builds of Unreal Engine. Launcher UE users should rebuild the plugin from source against their exact engine build.
+The v1.0.1 Win64 binary release is built with Epic Games Launcher Unreal Engine 5.7.4 (`++UE5+Release-5.7`) and is intended for Launcher UE 5.7.x projects. Rebuild the plugin from source if you use a source-built, licensee, custom, or otherwise different engine build.
 
 ## Documentation
 
@@ -88,7 +88,7 @@ The v1.0.x binary releases are built with the current custom UE 5.7-based verifi
 - [Authoring Workflow](./docs/workflow.md)
 - [Material Setup](./docs/material-setup.md)
 - [Troubleshooting](./docs/troubleshooting.md)
-- [Release Notes](./docs/release-notes/v1.0.0.md)
+- [Release Notes](./docs/release-notes/v1.0.1.md)
 - [Roadmap](./docs/roadmap.md)
 - [Development Notes](./docs/development.md)
 
