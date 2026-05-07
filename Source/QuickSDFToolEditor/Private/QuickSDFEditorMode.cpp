@@ -22,6 +22,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Commands/UICommandList.h"
 #include "Input/Events.h"
+#include "SQuickSDFPaintCanvas.h"
 #include "Widgets/SViewport.h"
 
 const FEditorModeID UQuickSDFEditorMode::EM_QuickSDFEditorModeId = TEXT("EM_QuickSDFEditorMode");
@@ -168,6 +169,7 @@ void UQuickSDFEditorMode::Exit()
 	DetachTimelineFromViewport();
 	TimelineWidget.Reset();
 	EndViewportNavigationSuppression();
+	bPaintCanvasTabRequested = false;
 
 	RestoreLights();
 
@@ -267,12 +269,14 @@ bool UQuickSDFEditorMode::RequestBrushResizeFromHoveredViewport()
 
 void UQuickSDFEditorMode::StartQuickSDFPaintTool()
 {
+	bPaintCanvasTabRequested = false;
 	GetInteractiveToolsContext()->StartTool(TEXT("QuickSDFPaintTool"));
 	UpdatePaintToolEnvironment();
 }
 
 void UQuickSDFEditorMode::StartQuickSDFSelectTool()
 {
+	bPaintCanvasTabRequested = false;
 	GetInteractiveToolsContext()->StartTool(TEXT("QuickSDFSelectTool"));
 	UpdatePaintToolEnvironment();
 }
@@ -577,9 +581,15 @@ void UQuickSDFEditorMode::UpdatePaintToolEnvironment()
 		{
 			AttachTimelineToActiveViewport();
 		}
+		if (!bPaintCanvasTabRequested)
+		{
+			QuickSDFPaintCanvas::OpenTab();
+			bPaintCanvasTabRequested = true;
+		}
 		return;
 	}
 
+	bPaintCanvasTabRequested = false;
 	DetachTimelineFromViewport();
 	EndViewportNavigationSuppression();
 	RestoreLights();

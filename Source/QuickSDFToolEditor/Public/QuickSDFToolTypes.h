@@ -5,7 +5,25 @@ enum class EQuickSDFStrokeInputMode : uint8
 {
 	None,
 	MeshSurface,
-	TexturePreview
+	TexturePreview,
+	TextureCanvas
+};
+
+struct FQuickSDFTextureCanvasStrokeModifiers
+{
+	bool bPaintShadow = false;
+};
+
+struct FQuickSDFTextureCanvasViewState
+{
+	double Zoom = 1.0;
+	FVector2D Pan = FVector2D::ZeroVector;
+	double RotationDegrees = 0.0;
+	bool bFlipX = false;
+	bool bFlipY = false;
+	bool bFitToViewport = true;
+	bool bShowCheckerboard = true;
+	bool bShowPixelGrid = true;
 };
 
 struct FQuickSDFStrokeSample

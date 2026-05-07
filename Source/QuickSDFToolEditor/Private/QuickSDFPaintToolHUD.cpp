@@ -97,6 +97,34 @@ UTextureRenderTarget2D* UQuickSDFPaintTool::GetUVOverlayRenderTarget()
 	return UVOverlayRenderTarget;
 }
 
+UTextureRenderTarget2D* UQuickSDFPaintTool::GetCanvasUVOverlayRenderTarget()
+{
+	return GetUVOverlayRenderTarget();
+}
+
+UTextureRenderTarget2D* UQuickSDFPaintTool::GetCanvasOnionSkinRenderTarget(int32 RelativeAngleOffset) const
+{
+	if (!Properties || RelativeAngleOffset == 0)
+	{
+		return nullptr;
+	}
+
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	UQuickSDFAsset* ActiveAsset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
+	if (!ActiveAsset)
+	{
+		return nullptr;
+	}
+
+	const int32 AngleIndex = Properties->EditAngleIndex + RelativeAngleOffset;
+	if (!ActiveAsset->GetActiveAngleDataList().IsValidIndex(AngleIndex))
+	{
+		return nullptr;
+	}
+
+	return ActiveAsset->GetActiveAngleDataList()[AngleIndex].PaintRenderTarget;
+}
+
 void UQuickSDFPaintTool::RebuildUVOverlayRenderTarget(int32 Width, int32 Height)
 {
 	if (!Properties || !TargetMesh.IsValid() || !TargetMesh->HasAttributes())
@@ -393,6 +421,7 @@ void UQuickSDFPaintTool::DrawScreenProjectionBrushHUD(FCanvas* Canvas)
 		BrushCanvasPosition.Y <= PreviewOrigin.Y + PreviewSize.Y;
 	if (!bResizePreview &&
 		(ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ||
+			ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TextureCanvas ||
 			bBrushInPreviewBounds))
 	{
 		return;
@@ -559,7 +588,7 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
 
             // 2. 繝懊・繝繝ｼ縺ｮ謠冗判
             FCanvasBoxItem BorderItem(PreviewOrigin, PreviewSize);
-            BorderItem.SetColor(IsInPreviewBounds(LastInputScreenPosition) ? FLinearColor::Yellow : FLinearColor::Gray);
+            BorderItem.SetColor(FLinearColor(0.36f, 0.38f, 0.40f, 1.0f));
             Canvas->DrawItem(BorderItem);
         }
     }

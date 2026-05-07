@@ -511,7 +511,10 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::LerpStrokeSample(const FQuickSDFStroke
 	return Result;
 }
 
-bool UQuickSDFPaintTool::IsPaintingShadow() const { return GetShiftToggle(); }
+bool UQuickSDFPaintTool::IsPaintingShadow() const
+{
+	return bTextureCanvasShadowOverrideActive ? bTextureCanvasPaintShadow : GetShiftToggle();
+}
 
 bool UQuickSDFPaintTool::TryGetBrushFocusTarget(FVector& OutWorldPosition, float& OutWorldRadius) const
 {
@@ -528,7 +531,9 @@ bool UQuickSDFPaintTool::TryGetBrushFocusTarget(FVector& OutWorldPosition, float
 		!LastBrushStamp.HitResult.bBlockingHit ||
 		LastBrushStamp.HitResult.Component.Get() != CurrentComponent.Get() ||
 		ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ||
-		PendingStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview)
+		ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TextureCanvas ||
+		PendingStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ||
+		PendingStrokeInputMode == EQuickSDFStrokeInputMode::TextureCanvas)
 	{
 		return false;
 	}
@@ -547,7 +552,9 @@ void UQuickSDFPaintTool::UpdateBrushStampIndicator()
 		if (Properties &&
 			GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection &&
 			ActiveStrokeInputMode != EQuickSDFStrokeInputMode::TexturePreview &&
-			PendingStrokeInputMode != EQuickSDFStrokeInputMode::TexturePreview)
+			ActiveStrokeInputMode != EQuickSDFStrokeInputMode::TextureCanvas &&
+			PendingStrokeInputMode != EQuickSDFStrokeInputMode::TexturePreview &&
+			PendingStrokeInputMode != EQuickSDFStrokeInputMode::TextureCanvas)
 		{
 			BrushStampIndicator->bVisible = false;
 			return;
@@ -881,7 +888,11 @@ void UQuickSDFPaintTool::StampQuickLineResampledSamples(const TArray<FQuickSDFSt
 	const double QuickStrokeSpacingScale = ShouldUseAnySurfaceProjectionPaint() ? 1.0 : 0.35;
 	const double SpacingPixels = FMath::Max(GetCurrentStrokeSpacing(RT) * QuickStrokeSpacingScale, 0.35);
 	const double MinControlSpacingPixels = FMath::Max(SpacingPixels * 0.5, 1.0);
-	const int32 MaxResampledSamples = ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ? 512 : 2048;
+	const int32 MaxResampledSamples =
+		(ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ||
+		 ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TextureCanvas)
+			? 512
+			: 2048;
 
 	TArray<FQuickSDFStrokeSample> ControlSamples;
 	ControlSamples.Reserve(CurveSamples.Num());
@@ -1335,7 +1346,7 @@ FInputRayHit UQuickSDFPaintTool::CanBeginClickDragSequence(const FInputDeviceRay
 	}
 	if (Properties->bShowPreview && GetActiveRenderTarget() && IsInPreviewBounds(PressPos.ScreenPosition))
 	{
-		PendingStrokeInputMode = EQuickSDFStrokeInputMode::TexturePreview;
+		PendingStrokeInputMode = EQuickSDFStrokeInputMode::None;
 		return FInputRayHit(0.0f);
 	}
 	FHitResult OutHit;
@@ -1829,6 +1840,174 @@ bool UQuickSDFPaintTool::TryMakePreviewStrokeSample(const FVector2D& ScreenPosit
 	return true;
 }
 
+bool UQuickSDFPaintTool::TryMakeTextureCanvasStrokeSample(const FVector2f& UV, const FVector2D& ScreenPosition, FQuickSDFStrokeSample& OutSample) const
+{
+	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
+	if (!Properties || !RT)
+	{
+		return false;
+	}
+
+	const FVector2f ClampedUV(
+		FMath::Clamp(UV.X, 0.0f, 1.0f),
+		FMath::Clamp(UV.Y, 0.0f, 1.0f));
+	OutSample.UV = ClampedUV;
+	OutSample.WorldPos = FVector3d(ClampedUV.X * RT->SizeX, ClampedUV.Y * RT->SizeY, 0.0);
+	OutSample.LocalUVScale = 1.0f;
+	OutSample.ScreenPosition = ScreenPosition;
+	OutSample.RayOrigin = FVector3d(OutSample.WorldPos.X, OutSample.WorldPos.Y, 1.0);
+	OutSample.RayDirection = FVector3d(0.0, 0.0, -1.0);
+	return true;
+}
+
+bool UQuickSDFPaintTool::BeginTextureCanvasStroke(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers)
+{
+	if (bAdjustingBrushRadius)
+	{
+		return false;
+	}
+
+	FQuickSDFStrokeSample StartSample;
+	if (!TryMakeTextureCanvasStrokeSample(UV, ScreenPosition, StartSample))
+	{
+		return false;
+	}
+
+	ResetStrokeState();
+	ActiveStrokeInputMode = EQuickSDFStrokeInputMode::TextureCanvas;
+	bTextureCanvasStrokeActive = true;
+	bTextureCanvasShadowOverrideActive = true;
+	bTextureCanvasPaintShadow = Modifiers.bPaintShadow;
+	LastInputScreenPosition = ScreenPosition;
+
+	PointBuffer.Empty();
+	AccumulatedDistance = 0.0;
+	BeginStrokeTransaction();
+	if (!bStrokeTransactionActive)
+	{
+		ResetStrokeState();
+		return false;
+	}
+
+	if (BrushStampIndicator)
+	{
+		BrushStampIndicator->bVisible = false;
+	}
+	FilteredStrokeSample = StartSample;
+	bHasFilteredStrokeSample = true;
+	LastRawStrokeSample = StartSample;
+	bHasLastRawStrokeSample = true;
+	PointBuffer.Add(StartSample);
+	QuickLineSourceSamples.Reset();
+	QuickLineSourceSamples.Add(StartSample);
+	QuickLineStartSample = StartSample;
+	QuickLineEndSample = StartSample;
+	bHasQuickLineStartSample = true;
+	bHasQuickLineEndSample = true;
+	QuickLineHoldScreenPosition = ScreenPosition;
+	QuickLineLastMoveTime = GetToolCurrentTime();
+	StampSample(StartSample);
+	return true;
+}
+
+bool UQuickSDFPaintTool::UpdateTextureCanvasStroke(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers)
+{
+	if (!bTextureCanvasStrokeActive || ActiveStrokeInputMode != EQuickSDFStrokeInputMode::TextureCanvas)
+	{
+		return false;
+	}
+
+	FQuickSDFStrokeSample Sample;
+	if (!TryMakeTextureCanvasStrokeSample(UV, ScreenPosition, Sample))
+	{
+		return false;
+	}
+
+	bTextureCanvasPaintShadow = Modifiers.bPaintShadow;
+	LastInputScreenPosition = ScreenPosition;
+	LastRawStrokeSample = Sample;
+	bHasLastRawStrokeSample = true;
+	QuickLineEndSample = Sample;
+	bHasQuickLineEndSample = true;
+	UpdateQuickLineHoldState(ScreenPosition);
+	if (bQuickLineActive)
+	{
+		RedrawQuickLinePreview();
+		return true;
+	}
+
+	const FQuickSDFStrokeSample StabilizedSample = SmoothStrokeSample(Sample);
+	QuickLineEndSample = StabilizedSample;
+	if (QuickLineSourceSamples.Num() == 0 ||
+		!CanInterpolateStrokeSamples(QuickLineSourceSamples.Last(), StabilizedSample))
+	{
+		QuickLineSourceSamples.Add(StabilizedSample);
+	}
+	else
+	{
+		UTextureRenderTarget2D* RT = GetActiveRenderTarget();
+		const double MinQuickLineSourceSpacing = RT ? FMath::Max(GetCurrentStrokeSpacing(RT) * 0.5, 1.0) : 0.0;
+		if (!RT || GetSamplePixelDistance(QuickLineSourceSamples.Last(), StabilizedSample, RT) >= MinQuickLineSourceSpacing)
+		{
+			QuickLineSourceSamples.Add(StabilizedSample);
+		}
+	}
+	AppendStrokeSample(StabilizedSample);
+	return true;
+}
+
+void UQuickSDFPaintTool::EndTextureCanvasStroke()
+{
+	if (!bTextureCanvasStrokeActive || ActiveStrokeInputMode != EQuickSDFStrokeInputMode::TextureCanvas)
+	{
+		return;
+	}
+
+	if (bQuickLineActive)
+	{
+		RedrawQuickLinePreview(true);
+		EndStrokeTransaction();
+		PointBuffer.Empty();
+		ResetStrokeState();
+		return;
+	}
+
+	if (Properties && Properties->bEnableStrokeStabilizer && bHasLastRawStrokeSample)
+	{
+		AppendStrokeSample(LastRawStrokeSample);
+	}
+
+	FlushStrokeTail();
+	EndStrokeTransaction();
+	PointBuffer.Empty();
+	ResetStrokeState();
+}
+
+void UQuickSDFPaintTool::UpdateTextureCanvasHover(const FVector2f& UV, const FVector2D& ScreenPosition)
+{
+	FQuickSDFStrokeSample HoverSample;
+	if (TryMakeTextureCanvasStrokeSample(UV, ScreenPosition, HoverSample))
+	{
+		LastInputScreenPosition = ScreenPosition;
+		if (BrushStampIndicator)
+		{
+			BrushStampIndicator->bVisible = false;
+		}
+	}
+}
+
+double UQuickSDFPaintTool::GetTextureCanvasBrushRadiusPixels() const
+{
+	if (Properties && GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection)
+	{
+		return FMath::Max(static_cast<double>(GetScreenProjectionBrushRadiusPixels()), 1.0);
+	}
+
+	UTextureRenderTarget2D* RT = GetActiveRenderTarget();
+	const FVector2D PixelSize = GetBrushPixelSize(RT);
+	return FMath::Max(static_cast<double>(FMath::Min(PixelSize.X, PixelSize.Y) * 0.5f), 1.0);
+}
+
 void UQuickSDFPaintTool::StampSample(const FQuickSDFStrokeSample& Sample)
 {
 	StampSamples({ Sample });
@@ -1927,7 +2106,15 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 	{
 		FVector2D PixelSize;
 		
-		if (ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview)
+		if (ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TextureCanvas &&
+			Properties &&
+			GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection)
+		{
+			const float Diameter = FMath::Max(GetScreenProjectionBrushRadiusPixels() * 2.0f, 1.0f);
+			PixelSize = FVector2D(Diameter, Diameter);
+		}
+		else if (ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ||
+			ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TextureCanvas)
 		{
 			// 繝励Ξ繝薙Η繝ｼ陦ｨ遉ｺ・・D・峨・蝣ｴ蜷医・莉･蜑阪・蝗ｺ螳夊ｨ育ｮ・
 			PixelSize = GetBrushPixelSize(RT);
@@ -2267,6 +2454,9 @@ void UQuickSDFPaintTool::ResetStrokeState()
 	DistanceSinceLastStamp = 0.0;
 	ActiveStrokeInputMode = EQuickSDFStrokeInputMode::None;
 	PendingStrokeInputMode = EQuickSDFStrokeInputMode::None;
+	bTextureCanvasStrokeActive = false;
+	bTextureCanvasShadowOverrideActive = false;
+	bTextureCanvasPaintShadow = false;
 	bQuickLineActive = false;
 	bHasQuickLineStartSample = false;
 	bHasQuickLineEndSample = false;

@@ -244,6 +244,13 @@ public:
 	bool IsBrushResizeModeActive() const { return bAdjustingBrushRadius; }
 	void ConfirmBrushResizeMode();
 	void CancelBrushResizeMode();
+	bool BeginTextureCanvasStroke(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers);
+	bool UpdateTextureCanvasStroke(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers);
+	void EndTextureCanvasStroke();
+	void UpdateTextureCanvasHover(const FVector2f& UV, const FVector2D& ScreenPosition);
+	double GetTextureCanvasBrushRadiusPixels() const;
+	class UTextureRenderTarget2D* GetCanvasUVOverlayRenderTarget();
+	class UTextureRenderTarget2D* GetCanvasOnionSkinRenderTarget(int32 RelativeAngleOffset) const;
 	int32 GetMaskRevision() const { return MaskRevision; }
 	bool SelectTextureSet(int32 TextureSetIndex);
 	void RefreshTextureSetsForCurrentComponent();
@@ -298,6 +305,7 @@ protected:
 	bool IsTriangleInTargetMaterialSlot(int32 TriangleID) const;
 	bool TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample);
 	bool TryMakePreviewStrokeSample(const FVector2D& ScreenPosition, FQuickSDFStrokeSample& OutSample) const;
+	bool TryMakeTextureCanvasStrokeSample(const FVector2f& UV, const FVector2D& ScreenPosition, FQuickSDFStrokeSample& OutSample) const;
 	EQuickSDFMeshPaintMode GetMeshPaintMode() const;
 	bool ShouldUseSurfaceSpacePaint() const;
 	bool ShouldUseProjectedSurfacePaint() const;
@@ -485,6 +493,9 @@ protected:
 	bool bImportPanelRequested = false;
 	bool bHasOriginalOverlayMaterialState = false;
 	bool bHasOriginalMaterialSlotOverlayMaterialState = false;
+	bool bTextureCanvasStrokeActive = false;
+	bool bTextureCanvasShadowOverrideActive = false;
+	bool bTextureCanvasPaintShadow = false;
 	float OriginalOverlayMaterialMaxDrawDistance = 0.0f;
 	int32 MaskRevision = 0;
 	int32 LiveSDFSourceRevision = 0;

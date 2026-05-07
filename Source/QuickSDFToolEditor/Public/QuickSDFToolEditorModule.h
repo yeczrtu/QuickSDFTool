@@ -13,5 +13,8 @@ public:
 	
 protected:
 	void OnPostEngineInit();
+	void RegisterPaintCanvasTab();
+	void UnregisterPaintCanvasTab();
+	TSharedRef<class SDockTab> SpawnPaintCanvasTab(const class FSpawnTabArgs& Args);
 	
 };

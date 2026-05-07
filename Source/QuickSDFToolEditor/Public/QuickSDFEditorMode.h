@@ -81,4 +81,5 @@ private:
 	FEditorViewportClient* SuppressedViewportClient = nullptr;
 	FViewport* SuppressedViewport = nullptr;
 	bool bSuppressBrushResizeMouseButtonRelease = false;
+	bool bPaintCanvasTabRequested = false;
 };
