@@ -591,6 +591,115 @@ bool BuildIslandMirrorData(
 	return OutCharts.Num() > 0;
 }
 
+bool BuildOverlappedUVSplitData(
+	const UE::Geometry::FDynamicMesh3& Mesh,
+	int32 UVChannel,
+	const TMap<int32, int32>& TriangleChartIDs,
+	int32 Width,
+	int32 Height,
+	const FTransform& ComponentTransform,
+	const FVector& BoundsCenter,
+	const FVector& MeshRight,
+	double SideTolerance,
+	TArray<FQuickSDFIslandMirrorChart>& OutCharts,
+	TArray<uint8>& OutPixelSideFlags,
+	TArray<int32>& OutNegativePixelChartIDs,
+	FQuickSDFOverlappedUVSplitAnalysis& OutAnalysis)
+{
+	OutCharts.Reset();
+	OutPixelSideFlags.Init(0, Width * Height);
+	OutNegativePixelChartIDs.Init(INDEX_NONE, Width * Height);
+	OutAnalysis = FQuickSDFOverlappedUVSplitAnalysis();
+	if (Width <= 0 || Height <= 0 || !Mesh.HasAttributes() || MeshRight.IsNearlyZero())
+	{
+		return false;
+	}
+
+	TArray<int32> UnusedPixelChartIDs;
+	TArray<uint8> UnusedAmbiguousPixelFlags;
+	if (!BuildIslandMirrorData(
+		Mesh,
+		UVChannel,
+		TriangleChartIDs,
+		Width,
+		Height,
+		OutCharts,
+		UnusedPixelChartIDs,
+		UnusedAmbiguousPixelFlags))
+	{
+		return false;
+	}
+
+	const UE::Geometry::FDynamicMeshUVOverlay* UVOverlay = Mesh.Attributes()->GetUVLayer(UVChannel);
+	if (!UVOverlay)
+	{
+		return false;
+	}
+
+	const FVector Right = MeshRight.GetSafeNormal();
+	const double SafeSideTolerance = FMath::Max(SideTolerance, KINDA_SMALL_NUMBER);
+	for (const TPair<int32, int32>& TriangleChartPair : TriangleChartIDs)
+	{
+		const int32 TriangleID = TriangleChartPair.Key;
+		const int32 ChartID = TriangleChartPair.Value;
+		if (!Mesh.IsTriangle(TriangleID) || !UVOverlay->IsSetTriangle(TriangleID))
+		{
+			continue;
+		}
+
+		const UE::Geometry::FIndex3i MeshTri = Mesh.GetTriangle(TriangleID);
+		const FVector3d LocalCenter3d = (Mesh.GetVertex(MeshTri.A) + Mesh.GetVertex(MeshTri.B) + Mesh.GetVertex(MeshTri.C)) / 3.0;
+		const FVector LocalCenter(LocalCenter3d.X, LocalCenter3d.Y, LocalCenter3d.Z);
+		const FVector WorldCenter = ComponentTransform.TransformPosition(LocalCenter);
+		const double SideDistance = FVector::DotProduct(WorldCenter - BoundsCenter, Right);
+		const bool bCenterline = FMath::Abs(SideDistance) <= SafeSideTolerance;
+
+		const UE::Geometry::FIndex3i UVIndices = UVOverlay->GetTriangle(TriangleID);
+		const FVector2f UV0 = UVOverlay->GetElement(UVIndices.A);
+		const FVector2f UV1 = UVOverlay->GetElement(UVIndices.B);
+		const FVector2f UV2 = UVOverlay->GetElement(UVIndices.C);
+		const int32 MinX = FMath::Clamp(FMath::FloorToInt(FMath::Min3(UV0.X, UV1.X, UV2.X) * Width), 0, Width - 1);
+		const int32 MaxX = FMath::Clamp(FMath::CeilToInt(FMath::Max3(UV0.X, UV1.X, UV2.X) * Width), 0, Width - 1);
+		const int32 MinY = FMath::Clamp(FMath::FloorToInt(FMath::Min3(UV0.Y, UV1.Y, UV2.Y) * Height), 0, Height - 1);
+		const int32 MaxY = FMath::Clamp(FMath::CeilToInt(FMath::Max3(UV0.Y, UV1.Y, UV2.Y) * Height), 0, Height - 1);
+
+		for (int32 Y = MinY; Y <= MaxY; ++Y)
+		{
+			for (int32 X = MinX; X <= MaxX; ++X)
+			{
+				const FVector2f UV((static_cast<float>(X) + 0.5f) / Width, (static_cast<float>(Y) + 0.5f) / Height);
+				if (!IsPointInUVTriangle(UV, UV0, UV1, UV2))
+				{
+					continue;
+				}
+
+				const int32 PixelIndex = Y * Width + X;
+				if (bCenterline)
+				{
+					OutPixelSideFlags[PixelIndex] |= QuickSDFOverlappedUVCenterlineFlag;
+					continue;
+				}
+
+				const uint8 NewSideFlag = SideDistance >= 0.0
+					? QuickSDFOverlappedUVPositiveSideFlag
+					: QuickSDFOverlappedUVNegativeSideFlag;
+				if ((OutPixelSideFlags[PixelIndex] & NewSideFlag) != 0)
+				{
+					OutPixelSideFlags[PixelIndex] |= QuickSDFOverlappedUVSameSideOverlapFlag;
+				}
+				OutPixelSideFlags[PixelIndex] |= NewSideFlag;
+				if (NewSideFlag == QuickSDFOverlappedUVNegativeSideFlag)
+				{
+					OutNegativePixelChartIDs[PixelIndex] = ChartID;
+				}
+			}
+		}
+	}
+
+	MeasureOverlappedUVSplitScore(OutPixelSideFlags, Width, Height, &OutAnalysis);
+	return OutAnalysis.OccupiedPixels > 0;
+}
+
 void BuildAutoIslandMirrorPairsInternal(
 	const TArray<FQuickSDFIslandMirrorChart>& Charts,
 	const TArray<FQuickSDFIslandMirrorPair>& ExistingPairs,
@@ -678,6 +787,8 @@ FText GetQuickSDFSymmetryModeShortText(EQuickSDFSymmetryMode Mode)
 		return LOCTEXT("SymmetryModeOffShort", "Off");
 	case EQuickSDFSymmetryMode::UVIslandChannelFlip90:
 		return LOCTEXT("SymmetryModeIslandShort", "Island");
+	case EQuickSDFSymmetryMode::OverlappedUVSplit90:
+		return LOCTEXT("SymmetryModeOverlappedUVShort", "Overlap");
 	case EQuickSDFSymmetryMode::Auto:
 		return LOCTEXT("SymmetryModeAutoShort", "Auto");
 	case EQuickSDFSymmetryMode::WholeTextureFlip90:
@@ -691,6 +802,10 @@ const TCHAR* QuickSDFIntermediateFolder = TEXT("/Game/QuickSDF_INTERMEDIATE");
 
 EQuickSDFAutoSymmetryResolvedMode ToStoredAutoSymmetryResolvedMode(EQuickSDFSymmetryMode Mode)
 {
+	if (Mode == EQuickSDFSymmetryMode::OverlappedUVSplit90)
+	{
+		return EQuickSDFAutoSymmetryResolvedMode::OverlappedUV;
+	}
 	return Mode == EQuickSDFSymmetryMode::UVIslandChannelFlip90
 		? EQuickSDFAutoSymmetryResolvedMode::Island
 		: EQuickSDFAutoSymmetryResolvedMode::Texture;
@@ -715,6 +830,10 @@ EQuickSDFIntermediateSymmetryMode ToIntermediateSymmetryMode(EQuickSDFSymmetryMo
 	if (Mode == EQuickSDFSymmetryMode::UVIslandChannelFlip90)
 	{
 		return EQuickSDFIntermediateSymmetryMode::UVIslandChannelFlip90;
+	}
+	if (Mode == EQuickSDFSymmetryMode::OverlappedUVSplit90)
+	{
+		return EQuickSDFIntermediateSymmetryMode::OverlappedUVSplit90;
 	}
 	if (Mode == EQuickSDFSymmetryMode::None180)
 	{
@@ -753,7 +872,8 @@ EQuickSDFLilToonLeftChannelSource ToProcessorLilToonLeftSource(EQuickSDFIntermed
 
 EQuickSDFLilToonLeftChannelSource ResolveLilToonLeftChannelSource(EQuickSDFSymmetryMode EffectiveSymmetryMode)
 {
-	if (EffectiveSymmetryMode == EQuickSDFSymmetryMode::UVIslandChannelFlip90)
+	if (EffectiveSymmetryMode == EQuickSDFSymmetryMode::UVIslandChannelFlip90 ||
+		EffectiveSymmetryMode == EQuickSDFSymmetryMode::OverlappedUVSplit90)
 	{
 		return EQuickSDFLilToonLeftChannelSource::InternalW;
 	}
@@ -844,6 +964,11 @@ bool BuildOutputPixelsFromCanonical(
 	}
 	else if (OutputMode == EQuickSDFThresholdMapOutputMode::Grayscale)
 	{
+		if (Metadata.SymmetryMode == EQuickSDFIntermediateSymmetryMode::OverlappedUVSplit90)
+		{
+			OutError = LOCTEXT("OverlappedUVSplitGrayscaleUnsupported", "Overlapped UV Split stores separate left/right values in RGBA channels. Grayscale output cannot preserve that split.");
+			return false;
+		}
 		OutFinalPixels = FSDFProcessor::ConvertCanonicalToGrayscale(CanonicalPixels, Resolution.X, Resolution.Y);
 		OutTextureSaveFormat = ESDFOutputFormat::Monopolar;
 		bOutForceRGBA16F = false;
@@ -1030,13 +1155,54 @@ FQuickSDFAutoSymmetryResult UQuickSDFPaintTool::ResolveEffectiveSymmetryMode(boo
 	}
 
 	Result.TextureMirrorScore = MeasureTextureMirrorOccupancyScore(PixelChartIDs, AnalysisSize, AnalysisSize);
+	FQuickSDFOverlappedUVSplitAnalysis OverlappedAnalysis;
+	if (CurrentComponent.IsValid())
+	{
+		TArray<FQuickSDFIslandMirrorChart> OverlappedCharts;
+		TArray<uint8> PixelSideFlags;
+		TArray<int32> NegativePixelChartIDs;
+		const FQuickSDFMeshBakeBasis BakeBasis = FQuickSDFMeshComponentAdapter::GetBakeBasisForComponent(CurrentComponent.Get());
+		const double SideTolerance = FMath::Max(1.0, static_cast<double>(CurrentComponent->Bounds.SphereRadius)) * 0.001;
+		BuildOverlappedUVSplitData(
+			*TargetMesh,
+			Properties->UVChannel,
+			TargetTrianglePaintChartIDs,
+			AnalysisSize,
+			AnalysisSize,
+			CurrentComponent->GetComponentTransform(),
+			CurrentComponent->Bounds.Origin,
+			BakeBasis.Right,
+			SideTolerance,
+			OverlappedCharts,
+			PixelSideFlags,
+			NegativePixelChartIDs,
+			OverlappedAnalysis);
+	}
+	Result.OverlappedUVScore = OverlappedAnalysis.OverlapScore;
+	Result.OverlappedUVPixelCount = OverlappedAnalysis.OverlappedPixels;
+	const bool bHasOverlappedUVSplit =
+		OverlappedAnalysis.OverlappedPixels > 0 &&
+		OverlappedAnalysis.PositivePixels > 0 &&
+		OverlappedAnalysis.NegativePixels > 0 &&
+		OverlappedAnalysis.OverlapScore >= 0.25f;
 	Result.EffectiveMode = ResolveAutoSymmetryModeFromAnalysis(
 		Result.bHasValidUVData,
 		Result.TextureMirrorScore,
 		Result.AmbiguousPixelCount,
-		Result.OutOfRangeIslandCount);
+		Result.OutOfRangeIslandCount,
+		bHasOverlappedUVSplit);
 
-	if (Result.EffectiveMode == EQuickSDFSymmetryMode::UVIslandChannelFlip90)
+	if (Result.EffectiveMode == EQuickSDFSymmetryMode::OverlappedUVSplit90)
+	{
+		Result.Confidence = Result.OverlappedUVScore;
+		Result.StatusText = FText::Format(
+			LOCTEXT("AutoSymmetryOverlappedUVStatus", "Auto -> Overlap (overlapped UV {0}%, pixels {1}, same-side overlap pixels {2}, centerline pixels {3})"),
+			FText::AsNumber(FMath::RoundToInt(Result.OverlappedUVScore * 100.0f)),
+			FText::AsNumber(Result.OverlappedUVPixelCount),
+			FText::AsNumber(OverlappedAnalysis.SameSideOverlapPixels),
+			FText::AsNumber(OverlappedAnalysis.CenterlinePixels));
+	}
+	else if (Result.EffectiveMode == EQuickSDFSymmetryMode::UVIslandChannelFlip90)
 	{
 		TArray<FQuickSDFIslandMirrorPair> PreviewPairs;
 		const FQuickSDFTextureSetData* ActiveSet = nullptr;
@@ -1268,6 +1434,7 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 	const FQuickSDFAutoSymmetryResult SymmetryResolution = ResolveEffectiveSymmetryMode();
 	const bool bFrontHalfAngles = SymmetryResolution.EffectiveMode != EQuickSDFSymmetryMode::None180;
 	const bool bIslandChannelSymmetry = SymmetryResolution.EffectiveMode == EQuickSDFSymmetryMode::UVIslandChannelFlip90;
+	const bool bOverlappedUVSplitSymmetry = SymmetryResolution.EffectiveMode == EQuickSDFSymmetryMode::OverlappedUVSplit90;
 	FQuickSDFTextureSetData* ActiveSetForWarnings = Asset->GetActiveTextureSet();
 	if (ActiveSetForWarnings)
 	{
@@ -1289,6 +1456,7 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 	};
 
 	if (SymmetryResolution.bUsedAuto &&
+		!bOverlappedUVSplitSymmetry &&
 		(SymmetryResolution.bUsedFallback ||
 		 SymmetryResolution.UnpairedIslandCount > 0 ||
 		 SymmetryResolution.AmbiguousPixelCount > 0 ||
@@ -1456,6 +1624,64 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 				ActiveSet->IslandMirrorPairs);
 		}
 	}
+	else if (bOverlappedUVSplitSymmetry)
+	{
+		TArray<FQuickSDFIslandMirrorChart> OverlappedCharts;
+		TArray<uint8> PixelSideFlags;
+		TArray<int32> NegativePixelChartIDs;
+		FQuickSDFOverlappedUVSplitAnalysis OverlappedAnalysis;
+		bool bBuiltOverlappedData = false;
+		if (TargetMesh.IsValid() && CurrentComponent.IsValid())
+		{
+			EnsurePaintChartCache();
+			const FQuickSDFMeshBakeBasis BakeBasis = FQuickSDFMeshComponentAdapter::GetBakeBasisForComponent(CurrentComponent.Get());
+			const double SideTolerance = FMath::Max(1.0, static_cast<double>(CurrentComponent->Bounds.SphereRadius)) * 0.001;
+			bBuiltOverlappedData = BuildOverlappedUVSplitData(
+				*TargetMesh,
+				Properties->UVChannel,
+				TargetTrianglePaintChartIDs,
+				HighW,
+				HighH,
+				CurrentComponent->GetComponentTransform(),
+				CurrentComponent->Bounds.Origin,
+				BakeBasis.Right,
+				SideTolerance,
+				OverlappedCharts,
+				PixelSideFlags,
+				NegativePixelChartIDs,
+				OverlappedAnalysis);
+		}
+
+		if (!bBuiltOverlappedData)
+		{
+			AppendActiveSetWarning(LOCTEXT("OverlappedUVSplitNoMeshWarning", "UV mirror note: Overlapped UV Split could not read valid selected mesh/UV side data, so the left/right channels were copied from the 0-90 result."));
+			PixelSideFlags.Init(0, HighW * HighH);
+			NegativePixelChartIDs.Init(INDEX_NONE, HighW * HighH);
+		}
+
+		const FQuickSDFOverlappedUVSplitApplyResult OverlapResult = ApplyOverlappedUVSplitToCombinedField(
+			CombinedField,
+			HighW,
+			HighH,
+			EffectiveFormat == ESDFOutputFormat::Bipolar,
+			OverlappedCharts,
+			NegativePixelChartIDs,
+			PixelSideFlags);
+
+		if (bBuiltOverlappedData &&
+			(OverlappedAnalysis.OverlappedPixels == 0 ||
+			 OverlapResult.MissingChartPixels > 0 ||
+			 OverlapResult.SameSideOverlapPixels > 0 ||
+			 OverlapResult.CenterlinePixels > 0))
+		{
+			AppendActiveSetWarning(FText::Format(
+				LOCTEXT("OverlappedUVSplitGenerateWarning", "UV mirror note: Overlapped UV Split generated separate right/left channels, but some UV pixels needed fallback. Overlapped pixels: {0}, missing chart pixels: {1}, same-side overlap pixels: {2}, centerline pixels: {3}."),
+				FText::AsNumber(OverlappedAnalysis.OverlappedPixels),
+				FText::AsNumber(OverlapResult.MissingChartPixels),
+				FText::AsNumber(OverlapResult.SameSideOverlapPixels),
+				FText::AsNumber(OverlapResult.CenterlinePixels)));
+		}
+	}
 
 	// --- 4. 菫晏ｭ伜・逅・---
 	SlowTask.EnterProgressFrame(1.f, LOCTEXT("SaveSDF", "Downscaling and Saving..."));
@@ -1472,7 +1698,7 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 		EffectiveFormat,
 		SymmetryResolution.EffectiveMode,
 		LilToonLeftSource,
-		bIslandChannelSymmetry);
+		bIslandChannelSymmetry || bOverlappedUVSplitSymmetry);
 	const TArray<FFloat16Color> CanonicalPixels = FSDFProcessor::DownscaleCombinedFieldToCanonical(CombinedField, HighW, HighH, Upscale);
 
 	if (bSaveAsset)
@@ -1510,7 +1736,7 @@ void UQuickSDFPaintTool::GenerateSDFInternal(bool bSaveAsset, bool bPromptForFil
 
 	const EQuickSDFThresholdMapOutputMode OutputMode = Properties->SDFOutputFormat;
 	ESDFOutputFormat TextureSaveFormat = EffectiveFormat;
-	bool bForceRGBA16F = bIslandChannelSymmetry;
+	bool bForceRGBA16F = bIslandChannelSymmetry || bOverlappedUVSplitSymmetry;
 	bool bSupportsGeneratedSDFPreview = true;
 	TArray<FFloat16Color> FinalPixels;
 	FText SaveError;

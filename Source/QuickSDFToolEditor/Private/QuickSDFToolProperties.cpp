@@ -142,6 +142,11 @@ bool UQuickSDFToolProperties::UsesIslandChannelSymmetry() const
 	return SymmetryMode == EQuickSDFSymmetryMode::UVIslandChannelFlip90;
 }
 
+bool UQuickSDFToolProperties::UsesOverlappedUVSplitSymmetry() const
+{
+	return SymmetryMode == EQuickSDFSymmetryMode::OverlappedUVSplit90;
+}
+
 float UQuickSDFToolProperties::GetPaintMaxAngle() const
 {
 	return UsesFrontHalfAngles() ? 90.0f : 180.0f;

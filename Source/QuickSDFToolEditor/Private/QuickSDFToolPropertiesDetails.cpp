@@ -305,9 +305,16 @@ bool ShouldShowTextureSetAutoSymmetryPill(int32 TextureSetIndex)
 
 FText GetTextureSetAutoSymmetryResolvedText(EQuickSDFAutoSymmetryResolvedMode Mode)
 {
-	return Mode == EQuickSDFAutoSymmetryResolvedMode::Island
-		? LOCTEXT("AutoSymmetryResolvedIsland", "Island")
-		: LOCTEXT("AutoSymmetryResolvedTexture", "Texture");
+	switch (Mode)
+	{
+	case EQuickSDFAutoSymmetryResolvedMode::Island:
+		return LOCTEXT("AutoSymmetryResolvedIsland", "Island");
+	case EQuickSDFAutoSymmetryResolvedMode::OverlappedUV:
+		return LOCTEXT("AutoSymmetryResolvedOverlappedUV", "Overlap");
+	case EQuickSDFAutoSymmetryResolvedMode::Texture:
+	default:
+		return LOCTEXT("AutoSymmetryResolvedTexture", "Texture");
+	}
 }
 
 FText GetTextureSetAutoSymmetryText(int32 TextureSetIndex)

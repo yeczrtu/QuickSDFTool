@@ -437,10 +437,13 @@ void UQuickSDFPaintTool::UpdateGeneratedSDFMaterialParameters()
 	const bool bSymmetryUV = PreviewSymmetryMode == EQuickSDFSymmetryMode::WholeTextureFlip90;
 	const bool bUseGrayscaleTexture = !bLivePreview && FinalTexture &&
 		FinalTexture->CompressionSettings == TC_Grayscale &&
-		SymmetryResolution.EffectiveMode != EQuickSDFSymmetryMode::UVIslandChannelFlip90;
+		SymmetryResolution.EffectiveMode != EQuickSDFSymmetryMode::UVIslandChannelFlip90 &&
+		SymmetryResolution.EffectiveMode != EQuickSDFSymmetryMode::OverlappedUVSplit90;
 
 	const FQuickSDFMeshBakeBasis BakeBasis = FQuickSDFMeshComponentAdapter::GetBakeBasisForComponent(CurrentComponent.Get());
 	const FVector ForwardVector = BakeBasis.Forward.GetSafeNormal();
+	const FVector RightVector = BakeBasis.Right.GetSafeNormal();
+	const FVector BoundsCenter = CurrentComponent.IsValid() ? CurrentComponent->Bounds.Origin : FVector::ZeroVector;
 	const float Angle = GetCurrentPreviewAngle();
 
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("UVChannel"), static_cast<float>(Properties->UVChannel));
@@ -450,6 +453,8 @@ void UQuickSDFPaintTool::UpdateGeneratedSDFMaterialParameters()
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("SymmetryMode"), static_cast<float>(static_cast<uint8>(PreviewSymmetryMode)));
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("UseGrayscaleTexture"), bUseGrayscaleTexture ? 1.0f : 0.0f);
 	SDFToonPreviewMaterial->SetVectorParameterValue(TEXT("ForwardVector"), FLinearColor(ForwardVector.X, ForwardVector.Y, ForwardVector.Z, 0.0f));
+	SDFToonPreviewMaterial->SetVectorParameterValue(TEXT("RightVector"), FLinearColor(RightVector.X, RightVector.Y, RightVector.Z, 0.0f));
+	SDFToonPreviewMaterial->SetVectorParameterValue(TEXT("BoundsCenter"), FLinearColor(BoundsCenter.X, BoundsCenter.Y, BoundsCenter.Z, 0.0f));
 }
 
 void UQuickSDFPaintTool::RefreshPreviewMaterial()

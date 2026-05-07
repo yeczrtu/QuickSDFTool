@@ -20,7 +20,8 @@ UENUM(BlueprintType)
 enum class EQuickSDFAutoSymmetryResolvedMode : uint8
 {
 	Texture UMETA(DisplayName = "Texture"),
-	Island UMETA(DisplayName = "Island")
+	Island UMETA(DisplayName = "Island"),
+	OverlappedUV UMETA(DisplayName = "Overlapped UV")
 };
 
 UENUM(BlueprintType)
@@ -35,7 +36,8 @@ enum class EQuickSDFIntermediateSymmetryMode : uint8
 {
 	None180 UMETA(DisplayName = "Off"),
 	WholeTextureFlip90 UMETA(DisplayName = "Texture Flip"),
-	UVIslandChannelFlip90 UMETA(DisplayName = "UV Island Channel Flip")
+	UVIslandChannelFlip90 UMETA(DisplayName = "UV Island Channel Flip"),
+	OverlappedUVSplit90 UMETA(DisplayName = "Overlapped UV Split")
 };
 
 UENUM(BlueprintType)

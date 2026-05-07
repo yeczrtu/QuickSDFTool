@@ -40,7 +40,8 @@ enum class EQuickSDFSymmetryMode : uint8
 	None180 = 0 UMETA(DisplayName = "Off (0-180 Paint)"),
 	WholeTextureFlip90 = 1 UMETA(DisplayName = "Texture Flip (0-90 Paint)"),
 	UVIslandChannelFlip90 = 2 UMETA(DisplayName = "UV Island Channel Flip (0-90 Paint)"),
-	Auto = 3 UMETA(DisplayName = "Auto (0-90 Paint)")
+	Auto = 3 UMETA(DisplayName = "Auto (0-90 Paint)"),
+	OverlappedUVSplit90 = 4 UMETA(DisplayName = "Overlapped UV Split (0-90 Paint)")
 };
 
 struct FQuickSDFAutoSymmetryResult
@@ -49,10 +50,12 @@ struct FQuickSDFAutoSymmetryResult
 	EQuickSDFSymmetryMode EffectiveMode = EQuickSDFSymmetryMode::WholeTextureFlip90;
 	float Confidence = 0.0f;
 	float TextureMirrorScore = 0.0f;
+	float OverlappedUVScore = 0.0f;
 	int32 IslandCount = 0;
 	int32 UnpairedIslandCount = 0;
 	int32 AmbiguousPixelCount = 0;
 	int32 OutOfRangeIslandCount = 0;
+	int32 OverlappedUVPixelCount = 0;
 	bool bUsedAuto = false;
 	bool bHasValidUVData = false;
 	bool bUsedFallback = false;
@@ -334,6 +337,7 @@ public:
 	bool UsesFrontHalfAngles() const;
 	bool UsesWholeTextureSymmetry() const;
 	bool UsesIslandChannelSymmetry() const;
+	bool UsesOverlappedUVSplitSymmetry() const;
 	float GetPaintMaxAngle() const;
 	float GetMaterialAngle(float AuthoredAngle) const;
 	float GetMaterialAngle(float AuthoredAngle, float AngleOffsetDeltaDegrees) const;

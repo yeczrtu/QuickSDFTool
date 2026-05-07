@@ -167,6 +167,7 @@ const TArray<EQuickSDFSymmetryMode>& QuickSDFToolUI::GetSymmetryModes()
 		EQuickSDFSymmetryMode::Auto,
 		EQuickSDFSymmetryMode::WholeTextureFlip90,
 		EQuickSDFSymmetryMode::UVIslandChannelFlip90,
+		EQuickSDFSymmetryMode::OverlappedUVSplit90,
 		EQuickSDFSymmetryMode::None180,
 	};
 	return Modes;
@@ -539,6 +540,8 @@ FText QuickSDFToolUI::GetSymmetryModeLabel(EQuickSDFSymmetryMode Mode)
 		return LOCTEXT("SymmetryTextureLabel", "Texture");
 	case EQuickSDFSymmetryMode::UVIslandChannelFlip90:
 		return LOCTEXT("SymmetryIslandLabel", "Island");
+	case EQuickSDFSymmetryMode::OverlappedUVSplit90:
+		return LOCTEXT("SymmetryOverlappedUVLabel", "Overlap");
 	case EQuickSDFSymmetryMode::None180:
 	default:
 		return LOCTEXT("SymmetryOffLabel", "Off");
@@ -550,11 +553,13 @@ FText QuickSDFToolUI::GetSymmetryModeDescription(EQuickSDFSymmetryMode Mode)
 	switch (Mode)
 	{
 	case EQuickSDFSymmetryMode::Auto:
-		return LOCTEXT("SymmetryAutoDesc", "Automatically chooses Texture or Island symmetry from the active UV layout.");
+		return LOCTEXT("SymmetryAutoDesc", "Automatically chooses Texture, Island, or Overlap symmetry from the active UV layout.");
 	case EQuickSDFSymmetryMode::WholeTextureFlip90:
 		return LOCTEXT("SymmetryTextureDesc", "Paints 0-90 degrees and mirrors the texture for 90-180 degrees.");
 	case EQuickSDFSymmetryMode::UVIslandChannelFlip90:
 		return LOCTEXT("SymmetryIslandDesc", "Paints 0-90 degrees and mirrors 90-180 degrees per UV island.");
+	case EQuickSDFSymmetryMode::OverlappedUVSplit90:
+		return LOCTEXT("SymmetryOverlappedUVDesc", "Paints 0-90 degrees and stores right/left values in separate RGBA channels for overlapped mirrored UVs.");
 	case EQuickSDFSymmetryMode::None180:
 	default:
 		return LOCTEXT("SymmetryOffDesc", "Paints the full 0-180 degree range.");
@@ -648,7 +653,7 @@ FText QuickSDFToolUI::GetToggleDescription(EQuickSDFPaintToggle Toggle)
 	case EQuickSDFPaintToggle::QuickLine:
 		return LOCTEXT("QuickLineDesc", "Enables hold-to-line quick stroke drawing.");
 	case EQuickSDFPaintToggle::Symmetry:
-		return LOCTEXT("SymmetryDesc", "Uses a 0-90 degree front-half sweep. Auto chooses Texture or Island symmetry from the active UV layout.");
+		return LOCTEXT("SymmetryDesc", "Uses a 0-90 degree front-half sweep. Auto chooses Texture, Island, or Overlap symmetry from the active UV layout.");
 	case EQuickSDFPaintToggle::MonotonicGuard:
 		return LOCTEXT("MonotonicGuardDesc", "Clips brush strokes that would create repeated light/shadow flips in the active angle range.");
 	default:

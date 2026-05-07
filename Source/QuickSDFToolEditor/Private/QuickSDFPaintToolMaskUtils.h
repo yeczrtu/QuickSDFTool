@@ -33,6 +33,32 @@ struct FQuickSDFIslandMirrorApplyResult
 	int32 AmbiguousPixels = 0;
 };
 
+inline constexpr uint8 QuickSDFOverlappedUVPositiveSideFlag = 1 << 0;
+inline constexpr uint8 QuickSDFOverlappedUVNegativeSideFlag = 1 << 1;
+inline constexpr uint8 QuickSDFOverlappedUVSameSideOverlapFlag = 1 << 2;
+inline constexpr uint8 QuickSDFOverlappedUVCenterlineFlag = 1 << 3;
+
+struct FQuickSDFOverlappedUVSplitAnalysis
+{
+	int32 OccupiedPixels = 0;
+	int32 PositivePixels = 0;
+	int32 NegativePixels = 0;
+	int32 OverlappedPixels = 0;
+	int32 SameSideOverlapPixels = 0;
+	int32 CenterlinePixels = 0;
+	float OverlapScore = 0.0f;
+};
+
+struct FQuickSDFOverlappedUVSplitApplyResult
+{
+	int32 MirroredPixels = 0;
+	int32 FallbackPixels = 0;
+	int32 MissingChartPixels = 0;
+	int32 OverlappedPixels = 0;
+	int32 SameSideOverlapPixels = 0;
+	int32 CenterlinePixels = 0;
+};
+
 int32 GetQuickSDFPresetSize(EQuickSDFQualityPreset Preset);
 bool ShouldProcessMaskAngle(float RawAngle, bool bSymmetryMode);
 TArray<int32> CollectProcessableMaskIndices(const UQuickSDFAsset& Asset, bool bSymmetryMode);
@@ -48,7 +74,8 @@ bool TryBuildMaskData(
 void SortMaskData(TArray<FMaskData>& MaskData);
 bool NeedsBipolarOutput(const TArray<FMaskData>& MaskData, int32 PixelCount);
 float MeasureTextureMirrorOccupancyScore(const TArray<int32>& PixelChartIDs, int32 Width, int32 Height);
-EQuickSDFSymmetryMode ResolveAutoSymmetryModeFromAnalysis(bool bHasValidUVData, float TextureMirrorScore, int32 AmbiguousPixelCount, int32 OutOfRangeIslandCount);
+float MeasureOverlappedUVSplitScore(const TArray<uint8>& PixelSideFlags, int32 Width, int32 Height, FQuickSDFOverlappedUVSplitAnalysis* OutAnalysis = nullptr);
+EQuickSDFSymmetryMode ResolveAutoSymmetryModeFromAnalysis(bool bHasValidUVData, float TextureMirrorScore, int32 AmbiguousPixelCount, int32 OutOfRangeIslandCount, bool bHasOverlappedUVSplit = false);
 bool TryExtractAngleFromName(const FString& Name, float& OutAngle);
 bool HasImportedSourceMasks(const UQuickSDFAsset* Asset);
 bool HasNonWhitePaintMasks(const UQuickSDFPaintTool& Tool, const UQuickSDFAsset* Asset);
@@ -88,4 +115,12 @@ FQuickSDFIslandMirrorApplyResult ApplyIslandMirrorToCombinedField(
 	const TArray<int32>& PixelChartIDs,
 	const TArray<uint8>& AmbiguousPixelFlags,
 	const TArray<FQuickSDFIslandMirrorPair>& Pairs);
+FQuickSDFOverlappedUVSplitApplyResult ApplyOverlappedUVSplitToCombinedField(
+	TArray<FVector4f>& CombinedField,
+	int32 Width,
+	int32 Height,
+	bool bBipolar,
+	const TArray<FQuickSDFIslandMirrorChart>& Charts,
+	const TArray<int32>& NegativePixelChartIDs,
+	const TArray<uint8>& PixelSideFlags);
 }

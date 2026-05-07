@@ -112,6 +112,10 @@ bool FQuickSDFAutoSymmetryAnalysisTest::RunTest(const FString& Parameters)
 		static_cast<uint8>(QuickSDFPaintToolPrivate::ResolveAutoSymmetryModeFromAnalysis(true, 1.0f, 1, 0)),
 		static_cast<uint8>(EQuickSDFSymmetryMode::UVIslandChannelFlip90));
 	TestEqual(
+		TEXT("Side-aware overlapped UVs force Overlap before generic ambiguous fallback"),
+		static_cast<uint8>(QuickSDFPaintToolPrivate::ResolveAutoSymmetryModeFromAnalysis(true, 1.0f, 1, 0, true)),
+		static_cast<uint8>(EQuickSDFSymmetryMode::OverlappedUVSplit90));
+	TestEqual(
 		TEXT("Missing UV analysis falls back to Texture"),
 		static_cast<uint8>(QuickSDFPaintToolPrivate::ResolveAutoSymmetryModeFromAnalysis(false, 0.0f, 0, 0)),
 		static_cast<uint8>(EQuickSDFSymmetryMode::WholeTextureFlip90));
@@ -347,6 +351,69 @@ bool FQuickSDFIslandMirrorApplyTest::RunTest(const FString& Parameters)
 		return Pair.TargetIslandKey == TEXT("RightIsland");
 	});
 	TestTrue(TEXT("User-locked island pair is preserved"), LockedRightPair && LockedRightPair->SourceIslandKey == TEXT("ManualSource"));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FQuickSDFOverlappedUVSplitApplyTest,
+	"QuickSDFTool.Core.OverlappedUVSplitApply",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FQuickSDFOverlappedUVSplitApplyTest::RunTest(const FString& Parameters)
+{
+	TArray<uint8> SideFlags = {
+		static_cast<uint8>(QuickSDFPaintToolPrivate::QuickSDFOverlappedUVPositiveSideFlag | QuickSDFPaintToolPrivate::QuickSDFOverlappedUVNegativeSideFlag),
+		QuickSDFPaintToolPrivate::QuickSDFOverlappedUVPositiveSideFlag,
+		QuickSDFPaintToolPrivate::QuickSDFOverlappedUVNegativeSideFlag,
+		0
+	};
+	QuickSDFPaintToolPrivate::FQuickSDFOverlappedUVSplitAnalysis Analysis;
+	const float OverlapScore = QuickSDFPaintToolPrivate::MeasureOverlappedUVSplitScore(SideFlags, 4, 1, &Analysis);
+	TestTrue(TEXT("Overlap score counts pixels occupied by both mesh sides"), FMath::IsNearlyEqual(OverlapScore, 1.0f / 3.0f));
+	TestEqual(TEXT("Overlap analysis counts positive pixels"), Analysis.PositivePixels, 2);
+	TestEqual(TEXT("Overlap analysis counts negative pixels"), Analysis.NegativePixels, 2);
+	TestEqual(TEXT("Overlap analysis counts shared UV pixels"), Analysis.OverlappedPixels, 1);
+
+	TArray<FVector4f> Field = {
+		FVector4f(0.1f, 0.0f, 0.3f, 0.0f),
+		FVector4f(0.2f, 0.0f, 0.4f, 0.0f),
+		FVector4f(0.8f, 0.0f, 0.6f, 0.0f),
+		FVector4f(0.9f, 0.0f, 0.7f, 0.0f)
+	};
+
+	QuickSDFPaintToolPrivate::FQuickSDFIslandMirrorChart OverlapChart;
+	OverlapChart.Key = TEXT("Overlap");
+	OverlapChart.ChartID = 7;
+	OverlapChart.UVMin = FVector2f(0.0f, 0.0f);
+	OverlapChart.UVMax = FVector2f(1.0f, 1.0f);
+
+	const TArray<uint8> FullOverlapFlags = {
+		static_cast<uint8>(QuickSDFPaintToolPrivate::QuickSDFOverlappedUVPositiveSideFlag | QuickSDFPaintToolPrivate::QuickSDFOverlappedUVNegativeSideFlag),
+		static_cast<uint8>(QuickSDFPaintToolPrivate::QuickSDFOverlappedUVPositiveSideFlag | QuickSDFPaintToolPrivate::QuickSDFOverlappedUVNegativeSideFlag),
+		static_cast<uint8>(QuickSDFPaintToolPrivate::QuickSDFOverlappedUVPositiveSideFlag | QuickSDFPaintToolPrivate::QuickSDFOverlappedUVNegativeSideFlag),
+		static_cast<uint8>(QuickSDFPaintToolPrivate::QuickSDFOverlappedUVPositiveSideFlag | QuickSDFPaintToolPrivate::QuickSDFOverlappedUVNegativeSideFlag)
+	};
+	const TArray<int32> NegativeCharts = { 7, 7, 7, 7 };
+	const QuickSDFPaintToolPrivate::FQuickSDFOverlappedUVSplitApplyResult Result = QuickSDFPaintToolPrivate::ApplyOverlappedUVSplitToCombinedField(
+		Field,
+		4,
+		1,
+		true,
+		{ OverlapChart },
+		NegativeCharts,
+		FullOverlapFlags);
+
+	TestEqual(TEXT("Every overlapped UV pixel writes left-side channels"), Result.MirroredPixels, 4);
+	TestEqual(TEXT("Right-side enter value stays in internal R"), Field[0].X, 0.1f);
+	TestEqual(TEXT("Left-side exit value comes from mirrored internal B"), Field[0].Y, 0.7f);
+	TestEqual(TEXT("Left-side enter value comes from mirrored internal R"), Field[0].W, 0.9f);
+	TestEqual(TEXT("Last pixel mirrors from first pixel for left-side enter"), Field[3].W, 0.1f);
+
+	const TArray<FFloat16Color> NativePixels = FSDFProcessor::DownscaleAndConvert({ Field[0] }, 1, 1, 1);
+	TestTrue(TEXT("Final R keeps right-side enter"), FMath::IsNearlyEqual(NativePixels[0].R.GetFloat(), 0.1f, 0.001f));
+	TestTrue(TEXT("Final G receives left-side enter"), FMath::IsNearlyEqual(NativePixels[0].G.GetFloat(), 0.9f, 0.001f));
+	TestTrue(TEXT("Final B keeps right-side exit"), FMath::IsNearlyEqual(NativePixels[0].B.GetFloat(), 0.3f, 0.001f));
+	TestTrue(TEXT("Final A receives left-side exit"), FMath::IsNearlyEqual(NativePixels[0].A.GetFloat(), 0.7f, 0.001f));
 	return true;
 }
 

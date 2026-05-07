@@ -126,11 +126,68 @@ float MeasureTextureMirrorOccupancyScore(const TArray<int32>& PixelChartIDs, int
 		: 0.0f;
 }
 
-EQuickSDFSymmetryMode ResolveAutoSymmetryModeFromAnalysis(bool bHasValidUVData, float TextureMirrorScore, int32 AmbiguousPixelCount, int32 OutOfRangeIslandCount)
+float MeasureOverlappedUVSplitScore(const TArray<uint8>& PixelSideFlags, int32 Width, int32 Height, FQuickSDFOverlappedUVSplitAnalysis* OutAnalysis)
+{
+	FQuickSDFOverlappedUVSplitAnalysis Analysis;
+	if (Width <= 0 || Height <= 0 || PixelSideFlags.Num() != Width * Height)
+	{
+		if (OutAnalysis)
+		{
+			*OutAnalysis = Analysis;
+		}
+		return 0.0f;
+	}
+
+	for (uint8 Flags : PixelSideFlags)
+	{
+		const bool bPositive = (Flags & QuickSDFOverlappedUVPositiveSideFlag) != 0;
+		const bool bNegative = (Flags & QuickSDFOverlappedUVNegativeSideFlag) != 0;
+		if (bPositive || bNegative)
+		{
+			++Analysis.OccupiedPixels;
+		}
+		if (bPositive)
+		{
+			++Analysis.PositivePixels;
+		}
+		if (bNegative)
+		{
+			++Analysis.NegativePixels;
+		}
+		if (bPositive && bNegative)
+		{
+			++Analysis.OverlappedPixels;
+		}
+		if ((Flags & QuickSDFOverlappedUVSameSideOverlapFlag) != 0)
+		{
+			++Analysis.SameSideOverlapPixels;
+		}
+		if ((Flags & QuickSDFOverlappedUVCenterlineFlag) != 0)
+		{
+			++Analysis.CenterlinePixels;
+		}
+	}
+
+	Analysis.OverlapScore = Analysis.OccupiedPixels > 0
+		? static_cast<float>(Analysis.OverlappedPixels) / static_cast<float>(Analysis.OccupiedPixels)
+		: 0.0f;
+	if (OutAnalysis)
+	{
+		*OutAnalysis = Analysis;
+	}
+	return Analysis.OverlapScore;
+}
+
+EQuickSDFSymmetryMode ResolveAutoSymmetryModeFromAnalysis(bool bHasValidUVData, float TextureMirrorScore, int32 AmbiguousPixelCount, int32 OutOfRangeIslandCount, bool bHasOverlappedUVSplit)
 {
 	if (!bHasValidUVData)
 	{
 		return EQuickSDFSymmetryMode::WholeTextureFlip90;
+	}
+
+	if (bHasOverlappedUVSplit)
+	{
+		return EQuickSDFSymmetryMode::OverlappedUVSplit90;
 	}
 
 	if (AmbiguousPixelCount > 0 || OutOfRangeIslandCount > 0)
@@ -307,6 +364,107 @@ FQuickSDFIslandMirrorApplyResult ApplyIslandMirrorToCombinedField(
 
 		const FVector4f Mirrored = SampleCombinedFieldBilinear(CombinedField, Width, Height, SourceUV);
 		// DownscaleAndConvert exports G from internal W and A from internal Y.
+		Pixel.Y = bBipolar ? Mirrored.Z : 1.0f;
+		Pixel.W = Mirrored.X;
+		++Result.MirroredPixels;
+	}
+
+	return Result;
+}
+
+FQuickSDFOverlappedUVSplitApplyResult ApplyOverlappedUVSplitToCombinedField(
+	TArray<FVector4f>& CombinedField,
+	int32 Width,
+	int32 Height,
+	bool bBipolar,
+	const TArray<FQuickSDFIslandMirrorChart>& Charts,
+	const TArray<int32>& NegativePixelChartIDs,
+	const TArray<uint8>& PixelSideFlags)
+{
+	FQuickSDFOverlappedUVSplitApplyResult Result;
+	if (Width <= 0 || Height <= 0 || CombinedField.Num() != Width * Height ||
+		NegativePixelChartIDs.Num() != Width * Height || PixelSideFlags.Num() != Width * Height)
+	{
+		return Result;
+	}
+
+	TMap<int32, const FQuickSDFIslandMirrorChart*> ChartByID;
+	for (const FQuickSDFIslandMirrorChart& Chart : Charts)
+	{
+		ChartByID.Add(Chart.ChartID, &Chart);
+	}
+
+	for (int32 PixelIndex = 0; PixelIndex < CombinedField.Num(); ++PixelIndex)
+	{
+		FVector4f& Pixel = CombinedField[PixelIndex];
+		if (!bBipolar)
+		{
+			Pixel.Y = 1.0f;
+			Pixel.Z = 1.0f;
+		}
+
+		const uint8 Flags = PixelSideFlags[PixelIndex];
+		const bool bHasPositive = (Flags & QuickSDFOverlappedUVPositiveSideFlag) != 0;
+		const bool bHasNegative = (Flags & QuickSDFOverlappedUVNegativeSideFlag) != 0;
+		if (bHasPositive && bHasNegative)
+		{
+			++Result.OverlappedPixels;
+		}
+		if ((Flags & QuickSDFOverlappedUVSameSideOverlapFlag) != 0)
+		{
+			++Result.SameSideOverlapPixels;
+		}
+		if ((Flags & QuickSDFOverlappedUVCenterlineFlag) != 0)
+		{
+			++Result.CenterlinePixels;
+		}
+
+		auto CopyPositiveToNegativeChannels = [&Pixel, bBipolar]()
+		{
+			Pixel.Y = bBipolar ? Pixel.Z : 1.0f;
+			Pixel.W = Pixel.X;
+		};
+
+		if (!bHasNegative)
+		{
+			CopyPositiveToNegativeChannels();
+			++Result.FallbackPixels;
+			continue;
+		}
+
+		const FQuickSDFIslandMirrorChart* NegativeChart = ChartByID.FindRef(NegativePixelChartIDs[PixelIndex]);
+		if (!NegativeChart)
+		{
+			CopyPositiveToNegativeChannels();
+			++Result.MissingChartPixels;
+			++Result.FallbackPixels;
+			continue;
+		}
+
+		const int32 X = PixelIndex % Width;
+		const int32 Y = PixelIndex / Width;
+		const FVector2f TargetUV(
+			(static_cast<float>(X) + 0.5f) / static_cast<float>(Width),
+			(static_cast<float>(Y) + 0.5f) / static_cast<float>(Height));
+		const FVector2f ChartSize(
+			FMath::Max(NegativeChart->UVMax.X - NegativeChart->UVMin.X, KINDA_SMALL_NUMBER),
+			FMath::Max(NegativeChart->UVMax.Y - NegativeChart->UVMin.Y, KINDA_SMALL_NUMBER));
+		const FVector2f TargetLocal(
+			(TargetUV.X - NegativeChart->UVMin.X) / ChartSize.X,
+			(TargetUV.Y - NegativeChart->UVMin.Y) / ChartSize.Y);
+		const FVector2f SourceLocal = TransformIslandMirrorLocalUV(TargetLocal, EQuickSDFIslandMirrorTransform::FlipU);
+		const FVector2f SourceUV(
+			NegativeChart->UVMin.X + SourceLocal.X * ChartSize.X,
+			NegativeChart->UVMin.Y + SourceLocal.Y * ChartSize.Y);
+
+		if (SourceUV.X < 0.0f || SourceUV.X > 1.0f || SourceUV.Y < 0.0f || SourceUV.Y > 1.0f)
+		{
+			CopyPositiveToNegativeChannels();
+			++Result.FallbackPixels;
+			continue;
+		}
+
+		const FVector4f Mirrored = SampleCombinedFieldBilinear(CombinedField, Width, Height, SourceUV);
 		Pixel.Y = bBipolar ? Mirrored.Z : 1.0f;
 		Pixel.W = Mirrored.X;
 		++Result.MirroredPixels;
