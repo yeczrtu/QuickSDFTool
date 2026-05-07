@@ -62,7 +62,7 @@ void FQuickSDFToolEditorModule::RegisterPaintCanvasTab()
 		FOnSpawnTab::CreateRaw(this, &FQuickSDFToolEditorModule::SpawnPaintCanvasTab))
 		.SetDisplayName(LOCTEXT("QuickSDFPaintCanvasTab", "Quick SDF 2D Canvas"))
 		.SetTooltipText(LOCTEXT("QuickSDFPaintCanvasTabTooltip", "Paint the active Quick SDF mask in a dedicated 2D canvas."))
-		.SetIcon(FSlateIcon(FQuickSDFToolStyle::GetStyleSetName(), "QuickSDF.PaintTextureColor"))
+		.SetIcon(FSlateIcon(FQuickSDFToolStyle::GetStyleSetName(), "QuickSDF.Open2DCanvas"))
 		.SetMenuType(ETabSpawnerMenuType::Hidden)
 		.SetAutoGenerateMenuEntry(false);
 }
@@ -89,7 +89,7 @@ void FQuickSDFToolEditorModule::RegisterMenus()
 			QuickSDFOpen2DCanvasMenuEntryName,
 			LOCTEXT("QuickSDFOpen2DCanvasMenuLabel", "Quick SDF 2D Canvas"),
 			LOCTEXT("QuickSDFOpen2DCanvasMenuTooltip", "Open the Quick SDF 2D Canvas."),
-			FSlateIcon(FQuickSDFToolStyle::GetStyleSetName(), "QuickSDF.PaintTextureColor"),
+			FSlateIcon(FQuickSDFToolStyle::GetStyleSetName(), "QuickSDF.Open2DCanvas"),
 			FUIAction(FExecuteAction::CreateStatic(&QuickSDFPaintCanvas::OpenTab)));
 	}
 	ToolMenus->RefreshMenuWidget("LevelEditor.MainMenu.Window");

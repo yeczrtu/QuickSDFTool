@@ -248,7 +248,9 @@ public:
 	bool UpdateTextureCanvasStroke(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers);
 	void EndTextureCanvasStroke();
 	void UpdateTextureCanvasHover(const FVector2f& UV, const FVector2D& ScreenPosition);
+	void SetTextureCanvasCursorActive(bool bActive);
 	double GetTextureCanvasBrushRadiusPixels() const;
+	class UMaterialInstanceDynamic* GetCanvasMaskPreviewMaterial(class UTextureRenderTarget2D* RenderTarget);
 	class UTextureRenderTarget2D* GetCanvasUVOverlayRenderTarget();
 	class UTextureRenderTarget2D* GetCanvasOnionSkinRenderTarget(int32 RelativeAngleOffset) const;
 	int32 GetMaskRevision() const { return MaskRevision; }
@@ -494,6 +496,7 @@ protected:
 	bool bHasOriginalOverlayMaterialState = false;
 	bool bHasOriginalMaterialSlotOverlayMaterialState = false;
 	bool bTextureCanvasStrokeActive = false;
+	bool bTextureCanvasCursorActive = false;
 	bool bTextureCanvasShadowOverrideActive = false;
 	bool bTextureCanvasPaintShadow = false;
 	float OriginalOverlayMaterialMaxDrawDistance = 0.0f;

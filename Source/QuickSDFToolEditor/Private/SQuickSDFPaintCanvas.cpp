@@ -10,6 +10,7 @@
 #include "Framework/Docking/TabManager.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "InputCoreTypes.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "QuickSDFAsset.h"
 #include "QuickSDFPaintTool.h"
 #include "QuickSDFToolProperties.h"
@@ -250,7 +251,7 @@ public:
 			DrawSolidTextureBackground(Canvas);
 		}
 
-		DrawTextureLayer(Canvas, ActiveRT, FLinearColor::White, SE_BLEND_Opaque);
+		DrawActiveMaskLayer(Canvas, Tool, ActiveRT);
 
 		if (Tool->Properties && Tool->Properties->bEnableOnionSkin)
 		{
@@ -278,6 +279,10 @@ public:
 	{
 		EndPaintStroke();
 		EndPan();
+		if (UQuickSDFPaintTool* Tool = Owner ? Owner->GetPaintTool() : nullptr)
+		{
+			Tool->SetTextureCanvasCursorActive(false);
+		}
 	}
 
 private:
@@ -351,6 +356,11 @@ private:
 		if (!Owner)
 		{
 			return;
+		}
+
+		if (UQuickSDFPaintTool* Tool = Owner->GetPaintTool())
+		{
+			Tool->SetTextureCanvasCursorActive(true);
 		}
 
 		if (bPanning)
@@ -454,6 +464,34 @@ private:
 		Tile.Rotation = FRotator(0.0, ViewState.RotationDegrees, 0.0);
 		Tile.BlendMode = BlendMode;
 		Canvas->DrawItem(Tile);
+	}
+
+	void DrawActiveMaskLayer(FCanvas* Canvas, UQuickSDFPaintTool* Tool, UTextureRenderTarget2D* ActiveRT) const
+	{
+		if (!Tool || !ActiveRT || !ActiveRT->GetResource())
+		{
+			return;
+		}
+
+		const FIntPoint TextureSize = Owner->GetTextureSize();
+		const FQuickSDFTextureCanvasViewState& ViewState = Owner->GetViewState();
+		const double Zoom = Owner->GetEffectiveZoom();
+		const FVector2D DisplaySize(TextureSize.X * Zoom, TextureSize.Y * Zoom);
+		const FVector2D TopLeft = Owner->GetCanvasCenter() - DisplaySize * 0.5;
+		const FVector2D UV0(ViewState.bFlipX ? 1.0 : 0.0, ViewState.bFlipY ? 1.0 : 0.0);
+		const FVector2D UV1(ViewState.bFlipX ? 0.0 : 1.0, ViewState.bFlipY ? 0.0 : 1.0);
+
+		if (UMaterialInstanceDynamic* PreviewMaterial = Tool->GetCanvasMaskPreviewMaterial(ActiveRT))
+		{
+			FCanvasTileItem Tile(TopLeft, PreviewMaterial->GetRenderProxy(), DisplaySize, UV0, UV1);
+			Tile.PivotPoint = FVector2D(0.5, 0.5);
+			Tile.Rotation = FRotator(0.0, ViewState.RotationDegrees, 0.0);
+			Tile.BlendMode = SE_BLEND_Opaque;
+			Canvas->DrawItem(Tile);
+			return;
+		}
+
+		DrawTextureLayer(Canvas, ActiveRT, FLinearColor::White, SE_BLEND_Opaque);
 	}
 
 	void DrawSolidTextureBackground(FCanvas* Canvas) const
@@ -621,6 +659,15 @@ SQuickSDFPaintCanvas::~SQuickSDFPaintCanvas()
 void SQuickSDFPaintCanvas::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
 {
 	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+	const bool bCursorOverCanvas = AllottedGeometry.IsUnderLocation(FSlateApplication::Get().GetCursorPos());
+	if (UQuickSDFPaintTool* Tool = GetPaintTool())
+	{
+		Tool->SetTextureCanvasCursorActive(bCursorOverCanvas);
+	}
+	if (!bCursorOverCanvas)
+	{
+		ClearHoverUV();
+	}
 	UpdateScrollBars();
 	if (SceneViewport.IsValid())
 	{

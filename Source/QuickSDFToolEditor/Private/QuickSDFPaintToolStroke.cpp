@@ -1876,6 +1876,7 @@ bool UQuickSDFPaintTool::BeginTextureCanvasStroke(const FVector2f& UV, const FVe
 	ResetStrokeState();
 	ActiveStrokeInputMode = EQuickSDFStrokeInputMode::TextureCanvas;
 	bTextureCanvasStrokeActive = true;
+	bTextureCanvasCursorActive = true;
 	bTextureCanvasShadowOverrideActive = true;
 	bTextureCanvasPaintShadow = Modifiers.bPaintShadow;
 	LastInputScreenPosition = ScreenPosition;
@@ -1924,6 +1925,7 @@ bool UQuickSDFPaintTool::UpdateTextureCanvasStroke(const FVector2f& UV, const FV
 	}
 
 	bTextureCanvasPaintShadow = Modifiers.bPaintShadow;
+	bTextureCanvasCursorActive = true;
 	LastInputScreenPosition = ScreenPosition;
 	LastRawStrokeSample = Sample;
 	bHasLastRawStrokeSample = true;
@@ -1989,10 +1991,20 @@ void UQuickSDFPaintTool::UpdateTextureCanvasHover(const FVector2f& UV, const FVe
 	if (TryMakeTextureCanvasStrokeSample(UV, ScreenPosition, HoverSample))
 	{
 		LastInputScreenPosition = ScreenPosition;
+		bTextureCanvasCursorActive = true;
 		if (BrushStampIndicator)
 		{
 			BrushStampIndicator->bVisible = false;
 		}
+	}
+}
+
+void UQuickSDFPaintTool::SetTextureCanvasCursorActive(bool bActive)
+{
+	bTextureCanvasCursorActive = bActive;
+	if (bActive && BrushStampIndicator)
+	{
+		BrushStampIndicator->bVisible = false;
 	}
 }
 

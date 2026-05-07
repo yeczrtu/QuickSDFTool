@@ -300,6 +300,19 @@ void UQuickSDFPaintTool::UpdatePreviewMaterialParameters(UMaterialInstanceDynami
 	Material->SetScalarParameterValue(TEXT("BakeForwardAngleOffset"), BakeBasis.ForwardAngleOffsetDegrees);
 }
 
+UMaterialInstanceDynamic* UQuickSDFPaintTool::GetCanvasMaskPreviewMaterial(UTextureRenderTarget2D* RenderTarget)
+{
+	if (!PreviewHUDMaterial || !RenderTarget)
+	{
+		return nullptr;
+	}
+
+	PreviewHUDMaterial->SetTextureParameterValue(TEXT("BaseColor"), RenderTarget);
+	PreviewHUDMaterial->SetScalarParameterValue(TEXT("PreviewMode"), 0.0f);
+	PreviewHUDMaterial->SetScalarParameterValue(TEXT("UVChannel"), static_cast<float>(Properties ? Properties->UVChannel : 0));
+	return PreviewHUDMaterial;
+}
+
 UTexture2D* UQuickSDFPaintTool::GetActiveFinalSDFTexture() const
 {
 	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;

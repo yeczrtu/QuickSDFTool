@@ -43,6 +43,8 @@ void FQuickSDFToolStyle::Initialize()
 	StyleSet->Set("QuickSDF.SelectTextureAsset.Small", new IMAGE_BRUSH_SVG("Icons/QuickSDFSelect", Icon40x40));
 	StyleSet->Set("QuickSDF.PaintTextureColor", new IMAGE_BRUSH_SVG("Icons/QuickSDFPaint", Icon20x20));
 	StyleSet->Set("QuickSDF.PaintTextureColor.Small", new IMAGE_BRUSH_SVG("Icons/QuickSDFPaint", Icon40x40));
+	StyleSet->Set("QuickSDF.Open2DCanvas", new IMAGE_BRUSH_SVG("Icons/QuickSDF2DCanvas", Icon20x20));
+	StyleSet->Set("QuickSDF.Open2DCanvas.Small", new IMAGE_BRUSH_SVG("Icons/QuickSDF2DCanvas", Icon40x40));
 	StyleSet->Set("QuickSDF.GenerateSDF", new IMAGE_BRUSH_SVG("Icons/QuickSDFGenerate", Icon20x20));
 	StyleSet->Set("QuickSDF.GenerateSDF.Small", new IMAGE_BRUSH_SVG("Icons/QuickSDFGenerate", Icon20x20));
 

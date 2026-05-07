@@ -420,9 +420,10 @@ void UQuickSDFPaintTool::DrawScreenProjectionBrushHUD(FCanvas* Canvas)
 		BrushCanvasPosition.X <= PreviewOrigin.X + PreviewSize.X &&
 		BrushCanvasPosition.Y <= PreviewOrigin.Y + PreviewSize.Y;
 	if (!bResizePreview &&
+		(bTextureCanvasCursorActive ||
 		(ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ||
 			ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TextureCanvas ||
-			bBrushInPreviewBounds))
+			bBrushInPreviewBounds)))
 	{
 		return;
 	}
