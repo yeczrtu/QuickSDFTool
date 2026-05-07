@@ -266,6 +266,9 @@ public:
 	class UTexture2D* GetActiveFinalSDFTexture() const;
 	bool CanUseGeneratedSDFPreview() const;
 	bool CanUseLiveSDFPreview() const;
+	void SetTimelinePreviewSeekAngle(float Angle);
+	void SetTimelinePreviewSeekAngleToActiveKey();
+	float GetCurrentPreviewAngle() const;
 	void RefreshTimelinePreviewMaterial();
 	FText GetGeneratedSDFPreviewUnavailableText() const;
 	FText GetMaterialPreviewStatusText() const;
@@ -505,8 +508,10 @@ protected:
 	int32 LiveSDFSourceRevision = 0;
 	int32 LiveSDFPreviewRevision = INDEX_NONE;
 	int32 LiveSDFPreviewRequestedRevision = INDEX_NONE;
+	float TimelinePreviewSeekAngle = 0.0f;
 	bool bLiveSDFPreviewDirty = true;
 	bool bLiveSDFPreviewRenderPending = false;
+	bool bHasTimelinePreviewSeekAngle = false;
 	double LastLiveSDFPreviewRequestTime = -1000.0;
 	int32 CachedUVOverlayUVChannel = INDEX_NONE;
 	int32 CachedUVOverlayMaterialSlot = INDEX_NONE;

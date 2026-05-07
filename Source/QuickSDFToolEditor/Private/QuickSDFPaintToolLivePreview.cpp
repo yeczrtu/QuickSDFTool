@@ -36,7 +36,7 @@ float GetLivePreviewMaterialAngle(const UQuickSDFToolProperties* Properties, con
 		: AngleData.Angle;
 }
 
-float GetLivePreviewCurrentTargetT(const UQuickSDFToolProperties* Properties, const UQuickSDFAsset* Asset)
+float GetLivePreviewCurrentTargetT(const UQuickSDFPaintTool* Tool, const UQuickSDFToolProperties* Properties, const UQuickSDFAsset* Asset)
 {
 	if (!Properties)
 	{
@@ -44,12 +44,12 @@ float GetLivePreviewCurrentTargetT(const UQuickSDFToolProperties* Properties, co
 	}
 
 	const float MaxAngle = FMath::Max(Properties->GetPaintMaxAngle(), 1.0f);
-	float CurrentAngle = 0.0f;
-	if (Properties->TargetAngles.IsValidIndex(Properties->EditAngleIndex))
+	float CurrentAngle = Tool ? Tool->GetCurrentPreviewAngle() : 0.0f;
+	if (!Tool && Properties->TargetAngles.IsValidIndex(Properties->EditAngleIndex))
 	{
 		CurrentAngle = Properties->GetMaterialAngleForKey(Properties->EditAngleIndex);
 	}
-	else if (Asset && Asset->GetActiveAngleDataList().Num() > 0)
+	else if (!Tool && Asset && Asset->GetActiveAngleDataList().Num() > 0)
 	{
 		const int32 AngleIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Asset->GetActiveAngleDataList().Num() - 1);
 		const FQuickSDFAngleData& AngleData = Asset->GetActiveAngleDataList()[AngleIndex];
@@ -269,7 +269,7 @@ bool UQuickSDFPaintTool::QueueLiveSDFPreviewRender()
 		return A.TargetT < B.TargetT;
 	});
 
-	const float CurrentTargetT = GetLivePreviewCurrentTargetT(Properties, Asset);
+	const float CurrentTargetT = GetLivePreviewCurrentTargetT(this, Properties, Asset);
 	int32 UpperIndex = Sources.IndexOfByPredicate([CurrentTargetT](const FQuickSDFLivePreviewMaskSource& Source)
 	{
 		return Source.TargetT >= CurrentTargetT;

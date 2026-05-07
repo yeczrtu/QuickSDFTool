@@ -1078,6 +1078,7 @@ TSharedRef<SWidget> SQuickSDFPaintCanvas::MakeAngleMenu()
 						return;
 					}
 					ActiveProperties->EditAngleIndex = Index;
+					ActiveTool->SetTimelinePreviewSeekAngleToActiveKey();
 					FProperty* Prop = ActiveProperties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex));
 					ActiveTool->OnPropertyModified(ActiveProperties, Prop);
 					if (GEditor)

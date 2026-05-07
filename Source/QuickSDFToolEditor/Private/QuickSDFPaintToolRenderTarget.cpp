@@ -86,7 +86,7 @@ float GetQuickSDFMaterialPreviewModeValue(EQuickSDFMaterialPreviewMode Mode)
 	}
 }
 
-float GetQuickSDFCurrentPreviewAngle(const UQuickSDFToolProperties* Properties)
+float GetQuickSDFCurrentKeyPreviewAngle(const UQuickSDFToolProperties* Properties)
 {
 	if (!Properties)
 	{
@@ -117,11 +117,10 @@ float GetQuickSDFCurrentPreviewAngle(const UQuickSDFToolProperties* Properties)
 	return Properties->GetMaterialAngle(AngleData.Angle, AngleData.AngleOffsetDeltaDegrees);
 }
 
-void SyncQuickSDFPreviewLightToCurrentAngle(const UQuickSDFToolProperties* Properties)
+void SyncQuickSDFPreviewLightToAngle(const UQuickSDFToolProperties* Properties, float Angle)
 {
 	if (!Properties ||
-		!Properties->bAutoSyncLight ||
-		!Properties->TargetAngles.IsValidIndex(Properties->EditAngleIndex))
+		!Properties->bAutoSyncLight)
 	{
 		return;
 	}
@@ -133,7 +132,7 @@ void SyncQuickSDFPreviewLightToCurrentAngle(const UQuickSDFToolProperties* Prope
 		return;
 	}
 
-	Mode->SetPreviewLightAngle(Properties->GetMaterialAngleForKey(Properties->EditAngleIndex));
+	Mode->SetPreviewLightAngle(Angle);
 }
 
 bool CaptureRenderTargetPixelsInRect(UTextureRenderTarget2D* RenderTarget, const FIntRect& Rect, TArray<FColor>& OutPixels)
@@ -290,7 +289,7 @@ void UQuickSDFPaintTool::UpdatePreviewMaterialParameters(UMaterialInstanceDynami
 		Material->SetTextureParameterValue(TEXT("BaseColor"), ActiveRT);
 	}
 
-	const float Angle = GetQuickSDFCurrentPreviewAngle(Properties);
+	const float Angle = GetCurrentPreviewAngle();
 	const FQuickSDFMeshBakeBasis BakeBasis = FQuickSDFMeshComponentAdapter::GetBakeBasisForComponent(CurrentComponent.Get());
 	const EQuickSDFMaterialPreviewMode PreviewMode = Properties->MaterialPreviewMode;
 
@@ -323,6 +322,42 @@ UTexture2D* UQuickSDFPaintTool::GetActiveFinalSDFTexture() const
 bool UQuickSDFPaintTool::CanUseGeneratedSDFPreview() const
 {
 	return GetActiveFinalSDFTexture() != nullptr;
+}
+
+void UQuickSDFPaintTool::SetTimelinePreviewSeekAngle(float Angle)
+{
+	const float MaxAngle = Properties ? FMath::Max(Properties->GetPaintMaxAngle(), 1.0f) : 180.0f;
+	const float ClampedAngle = FMath::Clamp(Angle, 0.0f, MaxAngle);
+	if (bHasTimelinePreviewSeekAngle &&
+		FMath::IsNearlyEqual(TimelinePreviewSeekAngle, ClampedAngle, 0.001f))
+	{
+		return;
+	}
+
+	TimelinePreviewSeekAngle = ClampedAngle;
+	bHasTimelinePreviewSeekAngle = true;
+	if (Properties && Properties->MaterialPreviewMode == EQuickSDFMaterialPreviewMode::LiveSDF)
+	{
+		MarkLiveSDFPreviewDirty();
+	}
+}
+
+void UQuickSDFPaintTool::SetTimelinePreviewSeekAngleToActiveKey()
+{
+	SetTimelinePreviewSeekAngle(GetQuickSDFCurrentKeyPreviewAngle(Properties));
+}
+
+float UQuickSDFPaintTool::GetCurrentPreviewAngle() const
+{
+	if (Properties &&
+		Properties->MaterialPreviewMode == EQuickSDFMaterialPreviewMode::LiveSDF &&
+		bHasTimelinePreviewSeekAngle)
+	{
+		const float MaxAngle = FMath::Max(Properties->GetPaintMaxAngle(), 1.0f);
+		return FMath::Clamp(TimelinePreviewSeekAngle, 0.0f, MaxAngle);
+	}
+
+	return GetQuickSDFCurrentKeyPreviewAngle(Properties);
 }
 
 FText UQuickSDFPaintTool::GetGeneratedSDFPreviewUnavailableText() const
@@ -406,7 +441,7 @@ void UQuickSDFPaintTool::UpdateGeneratedSDFMaterialParameters()
 
 	const FQuickSDFMeshBakeBasis BakeBasis = FQuickSDFMeshComponentAdapter::GetBakeBasisForComponent(CurrentComponent.Get());
 	const FVector ForwardVector = BakeBasis.Forward.GetSafeNormal();
-	const float Angle = GetQuickSDFCurrentPreviewAngle(Properties);
+	const float Angle = GetCurrentPreviewAngle();
 
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("UVChannel"), static_cast<float>(Properties->UVChannel));
 	SDFToonPreviewMaterial->SetScalarParameterValue(TEXT("Angle"), Angle);
@@ -430,7 +465,7 @@ void UQuickSDFPaintTool::RefreshPreviewMaterial()
 		(Properties->MaterialPreviewMode == EQuickSDFMaterialPreviewMode::GeneratedSDF ||
 		 Properties->MaterialPreviewMode == EQuickSDFMaterialPreviewMode::LiveSDF))
 	{
-		SyncQuickSDFPreviewLightToCurrentAngle(Properties);
+		SyncQuickSDFPreviewLightToAngle(Properties, GetCurrentPreviewAngle());
 	}
 
 	UpdatePreviewMaterialParameters(PreviewMaterial);

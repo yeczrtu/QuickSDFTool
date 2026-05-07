@@ -1154,6 +1154,9 @@ void SQuickSDFTimeline::ApplyActiveAngleOffsetDelta(float RequestedDelta, bool b
 	{
 		Props->TargetAngleOffsetDeltas[Props->EditAngleIndex] = ClampedDelta;
 	}
+	LastSeekAngle = Props->GetMaterialAngleForKey(Props->EditAngleIndex);
+	bHasSeekAngle = true;
+	Tool->SetTimelinePreviewSeekAngle(LastSeekAngle);
 	if (bNotifyPropertyModified)
 	{
 		FProperty* Prop = Props->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngleOffsetDeltas));
@@ -1164,8 +1167,6 @@ void SQuickSDFTimeline::ApplyActiveAngleOffsetDelta(float RequestedDelta, bool b
 		Tool->RefreshTimelinePreviewMaterial();
 	}
 
-	LastSeekAngle = Props->GetMaterialAngleForKey(Props->EditAngleIndex);
-	bHasSeekAngle = true;
 	SyncPreviewLightToActiveKey();
 	Invalidate(EInvalidateWidgetReason::PaintAndVolatility);
 	if (GEditor)
@@ -1313,6 +1314,10 @@ void SQuickSDFTimeline::SetSeekAngle(float Angle)
 	const float MaxAngle = Props && Props->UsesFrontHalfAngles() ? 90.0f : 180.0f;
 	LastSeekAngle = FMath::Clamp(Angle, 0.0f, MaxAngle);
 	bHasSeekAngle = true;
+	if (Tool)
+	{
+		Tool->SetTimelinePreviewSeekAngle(LastSeekAngle);
+	}
 	Invalidate(EInvalidateWidgetReason::PaintAndVolatility);
 }
 
@@ -1434,6 +1439,12 @@ void SQuickSDFTimeline::SeekTimelineAtScreenPosition(const FVector2D& ScreenPosi
 		Props->EditAngleIndex = BestIndex;
 		FProperty* Prop = Props->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex));
 		Tool->OnPropertyModified(Props, Prop);
+	}
+
+	Tool->SetTimelinePreviewSeekAngle(SeekAngle);
+	if (Props->MaterialPreviewMode == EQuickSDFMaterialPreviewMode::LiveSDF)
+	{
+		Tool->RefreshTimelinePreviewMaterial();
 	}
 
 	if (Props->bAutoSyncLight)
@@ -2350,6 +2361,13 @@ void SQuickSDFTimeline::OnKeyframeClicked(int32 Index)
 	{
 		if (UQuickSDFToolProperties* Props = Tool->Properties)
 		{
+			if (Props->TargetAngles.IsValidIndex(Index))
+			{
+				LastSeekAngle = Props->GetMaterialAngleForKey(Index);
+				bHasSeekAngle = true;
+				Tool->SetTimelinePreviewSeekAngle(LastSeekAngle);
+			}
+
 			Props->EditAngleIndex = Index;
 			FProperty* Prop = Props->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex));
 			Tool->OnPropertyModified(Props, Prop);
@@ -2404,6 +2422,7 @@ FReply SQuickSDFTimeline::OnSyncLightClicked()
 		const float TargetAngle = Tool->Properties->GetMaterialAngleForKey(Index);
 		LastSeekAngle = TargetAngle;
 		bHasSeekAngle = true;
+		Tool->SetTimelinePreviewSeekAngle(TargetAngle);
 		Mode->SetPreviewLightAngle(TargetAngle);
 	}
 
@@ -2432,11 +2451,13 @@ void SQuickSDFTimeline::OnKeyframeAngleChanged(float NewAngle, int32 Index)
 					}
 				}
 
+				LastSeekAngle = Props->GetMaterialAngleForKey(Index);
+				bHasSeekAngle = true;
+				Tool->SetTimelinePreviewSeekAngle(LastSeekAngle);
+
 				// Fire property modified to update the preview light
 				FProperty* Prop = Props->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngles));
 				Tool->OnPropertyModified(Props, Prop);
-				LastSeekAngle = Props->GetMaterialAngleForKey(Index);
-				bHasSeekAngle = true;
 				if (Props->bAutoSyncLight)
 				{
 					SyncPreviewLightToActiveKey();
