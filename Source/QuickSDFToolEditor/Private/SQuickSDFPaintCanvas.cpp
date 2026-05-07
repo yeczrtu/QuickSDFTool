@@ -9,6 +9,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "GenericPlatform/ICursor.h"
 #include "InputCoreTypes.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "QuickSDFAsset.h"
@@ -397,33 +398,55 @@ private:
 		EndPan();
 		bBrushResizing = true;
 		BrushResizeStartMousePosition = MousePosition;
+		BrushResizeAnchorAbsolutePosition = FSlateApplication::Get().GetCursorPos();
+		BrushResizeAccumulatedDeltaX = 0.0;
 		BrushResizeStartRadiusPixels = Owner ? Owner->GetBrushRadiusPixels() : 1.0;
+		SetBrushResizeCursorHidden(true);
 	}
 
-	void UpdateBrushResize(const FVector2D& MousePosition)
+	void UpdateBrushResize()
 	{
 		if (!Owner)
 		{
 			return;
 		}
 
-		const double DeltaX = MousePosition.X - BrushResizeStartMousePosition.X;
-		const double Scale = FMath::Pow(2.0, DeltaX / 180.0);
+		const FVector2D CurrentAbsolutePosition = FSlateApplication::Get().GetCursorPos();
+		const double DeltaX = CurrentAbsolutePosition.X - BrushResizeAnchorAbsolutePosition.X;
+		if ((CurrentAbsolutePosition - BrushResizeAnchorAbsolutePosition).SizeSquared() > KINDA_SMALL_NUMBER)
+		{
+			BrushResizeAccumulatedDeltaX += DeltaX;
+			FSlateApplication::Get().SetCursorPos(BrushResizeAnchorAbsolutePosition);
+		}
+
+		const double Scale = FMath::Pow(2.0, BrushResizeAccumulatedDeltaX / 180.0);
 		Owner->SetBrushRadiusPixels(BrushResizeStartRadiusPixels * Scale);
 	}
 
 	void EndBrushResize()
 	{
+		if (!bBrushResizing)
+		{
+			return;
+		}
+		FSlateApplication::Get().SetCursorPos(BrushResizeAnchorAbsolutePosition);
 		bBrushResizing = false;
+		SetBrushResizeCursorHidden(false);
 	}
 
 	void CancelBrushResize()
 	{
+		if (!bBrushResizing)
+		{
+			return;
+		}
 		if (Owner)
 		{
 			Owner->SetBrushRadiusPixels(BrushResizeStartRadiusPixels);
 		}
+		FSlateApplication::Get().SetCursorPos(BrushResizeAnchorAbsolutePosition);
 		bBrushResizing = false;
+		SetBrushResizeCursorHidden(false);
 	}
 
 	void AdjustBrushRadiusByWheel(double Direction)
@@ -436,6 +459,33 @@ private:
 		const double CurrentRadius = Owner->GetBrushRadiusPixels();
 		const double Step = FMath::Max(1.0, CurrentRadius * 0.08);
 		Owner->AdjustBrushRadiusPixels(Direction * Step);
+	}
+
+	void SetBrushResizeCursorHidden(bool bHidden)
+	{
+		if (bBrushResizeCursorHidden == bHidden)
+		{
+			return;
+		}
+
+		if (Owner && Owner->ViewportWidget.IsValid())
+		{
+			if (bHidden)
+			{
+				Owner->ViewportWidget->SetCursor(EMouseCursor::None);
+			}
+			else
+			{
+				Owner->ViewportWidget->SetCursor(EMouseCursor::Default);
+			}
+		}
+
+		if (TSharedPtr<ICursor> PlatformCursor = FSlateApplication::Get().GetPlatformCursor())
+		{
+			PlatformCursor->Show(!bHidden);
+		}
+
+		bBrushResizeCursorHidden = bHidden;
 	}
 
 	void HandleMouseMove(FViewport* Viewport, const FVector2D& MousePosition)
@@ -464,11 +514,11 @@ private:
 		if (bBrushResizing)
 		{
 			FVector2f ResizeUV;
-			if (Owner->IsViewportPositionInsideTexture(MousePosition, &ResizeUV))
+			if (Owner->IsViewportPositionInsideTexture(BrushResizeStartMousePosition, &ResizeUV))
 			{
 				Owner->SetHoverUV(ResizeUV);
 			}
-			UpdateBrushResize(MousePosition);
+			UpdateBrushResize();
 			if (Viewport)
 			{
 				Viewport->InvalidateDisplay();
@@ -688,10 +738,13 @@ private:
 	TObjectPtr<UTexture2D> CheckerTexture;
 	FVector2D LastMousePosition = FVector2D::ZeroVector;
 	FVector2D BrushResizeStartMousePosition = FVector2D::ZeroVector;
+	FVector2D BrushResizeAnchorAbsolutePosition = FVector2D::ZeroVector;
 	double BrushResizeStartRadiusPixels = 1.0;
+	double BrushResizeAccumulatedDeltaX = 0.0;
 	bool bPainting = false;
 	bool bPanning = false;
 	bool bBrushResizing = false;
+	bool bBrushResizeCursorHidden = false;
 };
 
 void SQuickSDFPaintCanvas::Construct(const FArguments& InArgs)
