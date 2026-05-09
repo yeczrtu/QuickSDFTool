@@ -108,6 +108,11 @@ public:
 		{
 			PaintTool->UpdateExternalPenPointerState(LastPenPointerAbsolutePosition, LastPenPointerPressure, bLastPenPointerInContact);
 		}
+		if (QuickSDFPaintCanvas::UpdateExternalPenPointerState(LastPenPointerAbsolutePosition, bLastPenPointerInContact))
+		{
+			OutResult = 0;
+			return true;
+		}
 		return false;
 	}
 #endif

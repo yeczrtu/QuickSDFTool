@@ -10,6 +10,7 @@
 #include "Framework/Docking/TabManager.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "GenericPlatform/ICursor.h"
+#include "HAL/PlatformTime.h"
 #include "InputCoreTypes.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "QuickSDFAsset.h"
@@ -41,6 +42,8 @@
 namespace
 {
 const FName QuickSDFPaintCanvasTabId(TEXT("QuickSDF_2DCanvas"));
+constexpr double QuickSDFCanvasExternalPenFreshSeconds = 0.75;
+SQuickSDFPaintCanvas* GActivePaintCanvas = nullptr;
 
 UQuickSDFAsset* GetActiveQuickSDFAsset()
 {
@@ -100,6 +103,13 @@ void OpenTab()
 {
 	FGlobalTabmanager::Get()->TryInvokeTab(QuickSDFPaintCanvasTabId);
 }
+
+bool UpdateExternalPenPointerState(const FVector2D& AbsoluteScreenPosition, bool bInContact)
+{
+	return GActivePaintCanvas
+		? GActivePaintCanvas->UpdateExternalPenPointerState(AbsoluteScreenPosition, bInContact)
+		: false;
+}
 }
 
 class FQuickSDFPaintCanvasViewportClient final : public FViewportClient, public FGCObject
@@ -136,7 +146,8 @@ public:
 
 		const FKey Key = EventArgs.Key;
 		const EInputEvent Event = EventArgs.Event;
-		const FVector2D MousePosition(Viewport->GetMouseX(), Viewport->GetMouseY());
+		FVector2D MousePosition(Viewport->GetMouseX(), Viewport->GetMouseY());
+		TryUseFreshExternalPenPosition(MousePosition);
 		const bool bControlDown = IsControlDown(Viewport);
 
 		if ((Event == IE_Pressed || Event == IE_Repeat) && Key == EKeys::MouseScrollUp)
@@ -249,12 +260,16 @@ public:
 
 	virtual void MouseMove(FViewport* Viewport, int32 X, int32 Y) override
 	{
-		HandleMouseMove(Viewport, FVector2D(X, Y));
+		FVector2D MousePosition(X, Y);
+		TryUseFreshExternalPenPosition(MousePosition);
+		HandleMouseMove(Viewport, MousePosition);
 	}
 
 	virtual void CapturedMouseMove(FViewport* Viewport, int32 X, int32 Y) override
 	{
-		HandleMouseMove(Viewport, FVector2D(X, Y));
+		FVector2D MousePosition(X, Y);
+		TryUseFreshExternalPenPosition(MousePosition);
+		HandleMouseMove(Viewport, MousePosition);
 	}
 
 	virtual void Draw(FViewport* Viewport, FCanvas* Canvas) override
@@ -320,10 +335,79 @@ public:
 		EndPaintStroke();
 		EndPan();
 		EndBrushResize();
+		bPaintingFromExternalPen = false;
 		if (UQuickSDFPaintTool* Tool = Owner ? Owner->GetPaintTool() : nullptr)
 		{
 			Tool->SetTextureCanvasCursorActive(false);
 		}
+	}
+
+	bool HandleExternalPenPointer(const FVector2D& AbsoluteScreenPosition, bool bInContact)
+	{
+		if (!Owner)
+		{
+			return false;
+		}
+
+		const bool bRequireUnderViewport = !bPainting && !bPaintingFromExternalPen;
+		FVector2D ViewportPosition;
+		bool bUnderViewport = false;
+		const bool bHasViewportPosition = Owner->TryResolveAbsoluteViewportPosition(
+			AbsoluteScreenPosition,
+			ViewportPosition,
+			bRequireUnderViewport,
+			&bUnderViewport);
+		if (!bHasViewportPosition)
+		{
+			return false;
+		}
+
+		LastExternalPenViewportPosition = ViewportPosition;
+		LastExternalPenUpdateTime = FPlatformTime::Seconds();
+		bHasFreshExternalPenViewportPosition = true;
+		bLastExternalPenInContact = bInContact;
+		bLastExternalPenOverViewport = bUnderViewport;
+
+		FViewport* Viewport = Owner->SceneViewport.IsValid() ? Owner->SceneViewport.Get() : nullptr;
+		if (bInContact)
+		{
+			if (bPainting)
+			{
+				HandleMouseMove(Viewport, ViewportPosition);
+				bPaintingFromExternalPen = true;
+			}
+			else
+			{
+				bPaintingFromExternalPen = BeginPaintStroke(Viewport, ViewportPosition);
+			}
+		}
+		else
+		{
+			if (bPaintingFromExternalPen || bPainting)
+			{
+				EndPaintStroke();
+			}
+			bPaintingFromExternalPen = false;
+			HandleMouseMove(Viewport, ViewportPosition);
+		}
+
+		if (Viewport)
+		{
+			Viewport->InvalidateDisplay();
+		}
+		return true;
+	}
+
+	bool HasFreshExternalPenOverViewport() const
+	{
+		return bHasFreshExternalPenViewportPosition &&
+			bLastExternalPenOverViewport &&
+			FPlatformTime::Seconds() - LastExternalPenUpdateTime <= QuickSDFCanvasExternalPenFreshSeconds;
+	}
+
+	bool IsExternalPenPainting() const
+	{
+		return bPaintingFromExternalPen;
 	}
 
 private:
@@ -377,6 +461,7 @@ private:
 			Tool->EndTextureCanvasStroke();
 		}
 		bPainting = false;
+		bPaintingFromExternalPen = false;
 	}
 
 	void BeginPan(const FVector2D& MousePosition)
@@ -553,6 +638,19 @@ private:
 		{
 			Viewport->InvalidateDisplay();
 		}
+	}
+
+	bool TryUseFreshExternalPenPosition(FVector2D& InOutMousePosition) const
+	{
+		if (!bHasFreshExternalPenViewportPosition ||
+			(!bLastExternalPenInContact && !bPaintingFromExternalPen) ||
+			FPlatformTime::Seconds() - LastExternalPenUpdateTime > QuickSDFCanvasExternalPenFreshSeconds)
+		{
+			return false;
+		}
+
+		InOutMousePosition = LastExternalPenViewportPosition;
+		return true;
 	}
 
 	void CreateCheckerTexture()
@@ -745,10 +843,18 @@ private:
 	bool bPanning = false;
 	bool bBrushResizing = false;
 	bool bBrushResizeCursorHidden = false;
+	bool bPaintingFromExternalPen = false;
+	bool bHasFreshExternalPenViewportPosition = false;
+	bool bLastExternalPenInContact = false;
+	bool bLastExternalPenOverViewport = false;
+	FVector2D LastExternalPenViewportPosition = FVector2D::ZeroVector;
+	double LastExternalPenUpdateTime = -1000.0;
 };
 
 void SQuickSDFPaintCanvas::Construct(const FArguments& InArgs)
 {
+	GActivePaintCanvas = this;
+
 	ViewportWidget = SNew(SViewport)
 		.EnableGammaCorrection(false)
 		.EnableBlending(false)
@@ -806,6 +912,11 @@ void SQuickSDFPaintCanvas::Construct(const FArguments& InArgs)
 
 SQuickSDFPaintCanvas::~SQuickSDFPaintCanvas()
 {
+	if (GActivePaintCanvas == this)
+	{
+		GActivePaintCanvas = nullptr;
+	}
+
 	if (ViewportClient.IsValid())
 	{
 		ViewportClient->EndActiveInput();
@@ -817,12 +928,14 @@ SQuickSDFPaintCanvas::~SQuickSDFPaintCanvas()
 void SQuickSDFPaintCanvas::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
 {
 	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
-	const bool bCursorOverCanvas = AllottedGeometry.IsUnderLocation(FSlateApplication::Get().GetCursorPos());
+	const bool bExternalPenOverCanvas = ViewportClient.IsValid() && ViewportClient->HasFreshExternalPenOverViewport();
+	const bool bExternalPenPainting = ViewportClient.IsValid() && ViewportClient->IsExternalPenPainting();
+	const bool bCursorOverCanvas = AllottedGeometry.IsUnderLocation(FSlateApplication::Get().GetCursorPos()) || bExternalPenOverCanvas;
 	if (UQuickSDFPaintTool* Tool = GetPaintTool())
 	{
 		Tool->SetTextureCanvasCursorActive(bCursorOverCanvas);
 	}
-	if (!bCursorOverCanvas)
+	if (!bCursorOverCanvas && !bExternalPenPainting)
 	{
 		ClearHoverUV();
 	}
@@ -1205,6 +1318,51 @@ bool SQuickSDFPaintCanvas::IsViewportPositionInsideTexture(const FVector2D& View
 		*OutUV = UV;
 	}
 	return bInside;
+}
+
+bool SQuickSDFPaintCanvas::TryResolveAbsoluteViewportPosition(
+	const FVector2D& AbsoluteScreenPosition,
+	FVector2D& OutViewportPosition,
+	bool bRequireUnderViewport,
+	bool* bOutUnderViewport) const
+{
+	if (!ViewportWidget.IsValid() || !SceneViewport.IsValid())
+	{
+		if (bOutUnderViewport)
+		{
+			*bOutUnderViewport = false;
+		}
+		return false;
+	}
+
+	const FGeometry ViewportGeometry = ViewportWidget->GetTickSpaceGeometry();
+	const bool bUnderViewport = ViewportGeometry.IsUnderLocation(AbsoluteScreenPosition);
+	if (bOutUnderViewport)
+	{
+		*bOutUnderViewport = bUnderViewport;
+	}
+	if (bRequireUnderViewport && !bUnderViewport)
+	{
+		return false;
+	}
+
+	const FVector2D LocalPosition = ViewportGeometry.AbsoluteToLocal(AbsoluteScreenPosition);
+	const FVector2D GeometrySize = ViewportGeometry.GetLocalSize();
+	const FIntPoint ViewportSize = SceneViewport->GetSizeXY();
+	OutViewportPosition = LocalPosition;
+	if (GeometrySize.X > KINDA_SMALL_NUMBER && GeometrySize.Y > KINDA_SMALL_NUMBER && ViewportSize.X > 0 && ViewportSize.Y > 0)
+	{
+		OutViewportPosition.X = LocalPosition.X * static_cast<double>(ViewportSize.X) / GeometrySize.X;
+		OutViewportPosition.Y = LocalPosition.Y * static_cast<double>(ViewportSize.Y) / GeometrySize.Y;
+	}
+	return true;
+}
+
+bool SQuickSDFPaintCanvas::UpdateExternalPenPointerState(const FVector2D& AbsoluteScreenPosition, bool bInContact)
+{
+	return ViewportClient.IsValid()
+		? ViewportClient->HandleExternalPenPointer(AbsoluteScreenPosition, bInContact)
+		: false;
 }
 
 void SQuickSDFPaintCanvas::FitCanvas()

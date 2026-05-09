@@ -15,6 +15,7 @@ namespace QuickSDFPaintCanvas
 {
 const FName& GetTabId();
 void OpenTab();
+bool UpdateExternalPenPointerState(const FVector2D& AbsoluteScreenPosition, bool bInContact);
 }
 
 class SQuickSDFPaintCanvas : public SCompoundWidget
@@ -46,6 +47,7 @@ public:
 	void TogglePixelGrid();
 	void SetHoverUV(const FVector2f& UV);
 	void ClearHoverUV();
+	bool UpdateExternalPenPointerState(const FVector2D& AbsoluteScreenPosition, bool bInContact);
 	double GetBrushRadiusPixels() const;
 	void SetBrushRadiusPixels(double NewRadiusPixels);
 	void AdjustBrushRadiusPixels(double DeltaPixels);
@@ -67,6 +69,11 @@ private:
 	double GetFitZoom() const;
 	FVector2D GetCanvasCenter() const;
 	FIntPoint GetTextureSize() const;
+	bool TryResolveAbsoluteViewportPosition(
+		const FVector2D& AbsoluteScreenPosition,
+		FVector2D& OutViewportPosition,
+		bool bRequireUnderViewport,
+		bool* bOutUnderViewport = nullptr) const;
 
 	TSharedPtr<SViewport> ViewportWidget;
 	TSharedPtr<FSceneViewport> SceneViewport;
