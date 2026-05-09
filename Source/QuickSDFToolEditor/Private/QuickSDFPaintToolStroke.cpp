@@ -399,7 +399,7 @@ float UQuickSDFPaintTool::GetScreenProjectionBrushRadiusPixels() const
 
 float UQuickSDFPaintTool::GetCurrentStrokePressure() const
 {
-	if (!BrushProperties || !BrushProperties->bEnablePressureSensitivity)
+	if (!BrushProperties || !BrushProperties->bEnablePressureSensitivity || !Properties || !Properties->bEnablePenPressure)
 	{
 		return 1.0f;
 	}
@@ -414,12 +414,15 @@ float UQuickSDFPaintTool::GetCurrentStrokePressure() const
 		return 1.0f;
 	}
 
-	return FMath::Clamp(ExternalPenPressure, QuickSDFMinPressureRadiusScale, 1.0f);
+	const float ClampedPressure = FMath::Clamp(ExternalPenPressure, 0.0f, 1.0f);
+	const float PressureCurve = FMath::Clamp(Properties->PenPressureCurve, 0.1f, 4.0f);
+	const float CurvedPressure = FMath::Pow(ClampedPressure, PressureCurve);
+	return FMath::Clamp(CurvedPressure, QuickSDFMinPressureRadiusScale, 1.0f);
 }
 
 float UQuickSDFPaintTool::GetSamplePressureRadiusScale(const FQuickSDFStrokeSample& Sample) const
 {
-	if (!BrushProperties || !BrushProperties->bEnablePressureSensitivity)
+	if (!BrushProperties || !BrushProperties->bEnablePressureSensitivity || !Properties || !Properties->bEnablePenPressure)
 	{
 		return 1.0f;
 	}
@@ -429,7 +432,14 @@ float UQuickSDFPaintTool::GetSamplePressureRadiusScale(const FQuickSDFStrokeSamp
 
 double UQuickSDFPaintTool::GetPressureAdjustedBrushRadius(double BaseRadius, float Pressure) const
 {
-	return FMath::Max(BaseRadius * static_cast<double>(FMath::Clamp(Pressure, QuickSDFMinPressureRadiusScale, 1.0f)), 0.001);
+	const bool bUsePenPressure = BrushProperties &&
+		BrushProperties->bEnablePressureSensitivity &&
+		Properties &&
+		Properties->bEnablePenPressure;
+	const float PressureScale = bUsePenPressure
+		? FMath::Clamp(Pressure, QuickSDFMinPressureRadiusScale, 1.0f)
+		: 1.0f;
+	return FMath::Max(BaseRadius * static_cast<double>(PressureScale), 0.001);
 }
 
 bool UQuickSDFPaintTool::CanInterpolateStrokeSamples(const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B) const

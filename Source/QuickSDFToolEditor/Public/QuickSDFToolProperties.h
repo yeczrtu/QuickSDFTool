@@ -144,6 +144,12 @@ public:
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Screen Projection Brush Radius Pixels", ClampMin = "1.0", UIMin = "1.0", UIMax = "256.0", EditCondition = "MeshPaintMode == EQuickSDFMeshPaintMode::ScreenProjection"))
 	float ScreenProjectionBrushRadiusPixels = 32.0f;
 
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Pen Pressure"))
+	bool bEnablePenPressure = true;
+
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Pen Pressure Curve", ClampMin = "0.1", ClampMax = "4.0", UIMin = "0.1", UIMax = "4.0", EditCondition = "bEnablePenPressure"))
+	float PenPressureCurve = 1.0f;
+
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DeprecatedProperty, DeprecationMessage = "Use Mesh Paint Mode instead.", HideInDetailPanel))
 	bool bUseSurfaceSpacePaint = false;
 
