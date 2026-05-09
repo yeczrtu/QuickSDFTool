@@ -147,7 +147,8 @@ public:
 		const FKey Key = EventArgs.Key;
 		const EInputEvent Event = EventArgs.Event;
 		FVector2D MousePosition(Viewport->GetMouseX(), Viewport->GetMouseY());
-		TryUseFreshExternalPenPosition(MousePosition);
+		FVector2D AbsolutePosition = FSlateApplication::Get().GetCursorPos();
+		TryUseFreshExternalPenPosition(MousePosition, &AbsolutePosition);
 		const bool bControlDown = IsControlDown(Viewport);
 
 		if ((Event == IE_Pressed || Event == IE_Repeat) && Key == EKeys::MouseScrollUp)
@@ -206,7 +207,7 @@ public:
 		{
 			if (bControlDown)
 			{
-				BeginBrushResize(MousePosition);
+				BeginBrushResize(MousePosition, AbsolutePosition);
 			}
 			else
 			{
@@ -349,7 +350,7 @@ public:
 			return false;
 		}
 
-		const bool bRequireUnderViewport = !bPainting && !bPaintingFromExternalPen;
+		const bool bRequireUnderViewport = !bPainting && !bPaintingFromExternalPen && !bBrushResizing;
 		FVector2D ViewportPosition;
 		bool bUnderViewport = false;
 		const bool bHasViewportPosition = Owner->TryResolveAbsoluteViewportPosition(
@@ -363,12 +364,23 @@ public:
 		}
 
 		LastExternalPenViewportPosition = ViewportPosition;
+		LastExternalPenAbsolutePosition = AbsoluteScreenPosition;
 		LastExternalPenUpdateTime = FPlatformTime::Seconds();
 		bHasFreshExternalPenViewportPosition = true;
 		bLastExternalPenInContact = bInContact;
 		bLastExternalPenOverViewport = bUnderViewport;
 
 		FViewport* Viewport = Owner->SceneViewport.IsValid() ? Owner->SceneViewport.Get() : nullptr;
+		if (bBrushResizing)
+		{
+			HandleMouseMove(Viewport, ViewportPosition);
+			if (Viewport)
+			{
+				Viewport->InvalidateDisplay();
+			}
+			return true;
+		}
+
 		if (bInContact)
 		{
 			if (bPainting)
@@ -400,9 +412,17 @@ public:
 
 	bool HasFreshExternalPenOverViewport() const
 	{
-		return bHasFreshExternalPenViewportPosition &&
-			bLastExternalPenOverViewport &&
-			FPlatformTime::Seconds() - LastExternalPenUpdateTime <= QuickSDFCanvasExternalPenFreshSeconds;
+		if (!bHasFreshExternalPenViewportPosition ||
+			FPlatformTime::Seconds() - LastExternalPenUpdateTime > QuickSDFCanvasExternalPenFreshSeconds)
+		{
+			return false;
+		}
+
+		FVector2D ViewportPosition;
+		bool bUnderViewport = false;
+		return Owner &&
+			Owner->TryResolveAbsoluteViewportPosition(LastExternalPenAbsolutePosition, ViewportPosition, false, &bUnderViewport) &&
+			bUnderViewport;
 	}
 
 	bool IsExternalPenPainting() const
@@ -477,15 +497,16 @@ private:
 		bPanning = false;
 	}
 
-	void BeginBrushResize(const FVector2D& MousePosition)
+	void BeginBrushResize(const FVector2D& MousePosition, const FVector2D& AbsolutePosition)
 	{
 		EndPaintStroke();
 		EndPan();
 		bBrushResizing = true;
 		BrushResizeStartMousePosition = MousePosition;
-		BrushResizeAnchorAbsolutePosition = FSlateApplication::Get().GetCursorPos();
+		BrushResizeAnchorAbsolutePosition = AbsolutePosition;
 		BrushResizeAccumulatedDeltaX = 0.0;
 		BrushResizeStartRadiusPixels = Owner ? Owner->GetBrushRadiusPixels() : 1.0;
+		bBrushResizingFromExternalPen = HasFreshExternalPenOverViewport();
 		SetBrushResizeCursorHidden(true);
 	}
 
@@ -496,8 +517,21 @@ private:
 			return;
 		}
 
-		const FVector2D CurrentAbsolutePosition = FSlateApplication::Get().GetCursorPos();
+		const FVector2D CurrentAbsolutePosition = bBrushResizingFromExternalPen
+			? LastExternalPenAbsolutePosition
+			: FSlateApplication::Get().GetCursorPos();
 		const double DeltaX = CurrentAbsolutePosition.X - BrushResizeAnchorAbsolutePosition.X;
+		if (bBrushResizingFromExternalPen)
+		{
+			if (FPlatformTime::Seconds() - LastExternalPenUpdateTime > QuickSDFCanvasExternalPenFreshSeconds)
+			{
+				return;
+			}
+			const double Scale = FMath::Pow(2.0, DeltaX / 180.0);
+			Owner->SetBrushRadiusPixels(BrushResizeStartRadiusPixels * Scale);
+			return;
+		}
+
 		if ((CurrentAbsolutePosition - BrushResizeAnchorAbsolutePosition).SizeSquared() > KINDA_SMALL_NUMBER)
 		{
 			BrushResizeAccumulatedDeltaX += DeltaX;
@@ -514,8 +548,12 @@ private:
 		{
 			return;
 		}
-		FSlateApplication::Get().SetCursorPos(BrushResizeAnchorAbsolutePosition);
+		if (!bBrushResizingFromExternalPen)
+		{
+			FSlateApplication::Get().SetCursorPos(BrushResizeAnchorAbsolutePosition);
+		}
 		bBrushResizing = false;
+		bBrushResizingFromExternalPen = false;
 		SetBrushResizeCursorHidden(false);
 	}
 
@@ -529,8 +567,12 @@ private:
 		{
 			Owner->SetBrushRadiusPixels(BrushResizeStartRadiusPixels);
 		}
-		FSlateApplication::Get().SetCursorPos(BrushResizeAnchorAbsolutePosition);
+		if (!bBrushResizingFromExternalPen)
+		{
+			FSlateApplication::Get().SetCursorPos(BrushResizeAnchorAbsolutePosition);
+		}
 		bBrushResizing = false;
+		bBrushResizingFromExternalPen = false;
 		SetBrushResizeCursorHidden(false);
 	}
 
@@ -640,16 +682,30 @@ private:
 		}
 	}
 
-	bool TryUseFreshExternalPenPosition(FVector2D& InOutMousePosition) const
+	bool TryUseFreshExternalPenPosition(FVector2D& InOutMousePosition, FVector2D* OutAbsolutePosition = nullptr) const
 	{
 		if (!bHasFreshExternalPenViewportPosition ||
-			(!bLastExternalPenInContact && !bPaintingFromExternalPen) ||
+			(!bLastExternalPenOverViewport && !bLastExternalPenInContact && !bPaintingFromExternalPen && !bBrushResizingFromExternalPen) ||
 			FPlatformTime::Seconds() - LastExternalPenUpdateTime > QuickSDFCanvasExternalPenFreshSeconds)
 		{
 			return false;
 		}
 
-		InOutMousePosition = LastExternalPenViewportPosition;
+		FVector2D ViewportPosition = LastExternalPenViewportPosition;
+		if (Owner)
+		{
+			const bool bRequireUnderViewport = !bLastExternalPenInContact && !bPaintingFromExternalPen && !bBrushResizingFromExternalPen;
+			if (!Owner->TryResolveAbsoluteViewportPosition(LastExternalPenAbsolutePosition, ViewportPosition, bRequireUnderViewport))
+			{
+				return false;
+			}
+		}
+
+		InOutMousePosition = ViewportPosition;
+		if (OutAbsolutePosition)
+		{
+			*OutAbsolutePosition = LastExternalPenAbsolutePosition;
+		}
 		return true;
 	}
 
@@ -842,12 +898,14 @@ private:
 	bool bPainting = false;
 	bool bPanning = false;
 	bool bBrushResizing = false;
+	bool bBrushResizingFromExternalPen = false;
 	bool bBrushResizeCursorHidden = false;
 	bool bPaintingFromExternalPen = false;
 	bool bHasFreshExternalPenViewportPosition = false;
 	bool bLastExternalPenInContact = false;
 	bool bLastExternalPenOverViewport = false;
 	FVector2D LastExternalPenViewportPosition = FVector2D::ZeroVector;
+	FVector2D LastExternalPenAbsolutePosition = FVector2D::ZeroVector;
 	double LastExternalPenUpdateTime = -1000.0;
 };
 
