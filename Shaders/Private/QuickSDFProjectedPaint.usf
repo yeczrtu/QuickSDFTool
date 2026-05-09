@@ -56,16 +56,17 @@ float ComputeFalloff(float Distance, float Radius, float FalloffRange, float Ant
 	return Coverage;
 }
 
-float DistanceToProjectedSegment(float2 Position, float2 Start, float2 End)
+float DistanceToProjectedSegment(float2 Position, float2 Start, float2 End, out float SegmentAlpha)
 {
 	const float2 Segment = End - Start;
 	const float SegmentLengthSqr = dot(Segment, Segment);
 	if (SegmentLengthSqr <= 0.000001f)
 	{
+		SegmentAlpha = 0.0f;
 		return length(Position - Start);
 	}
 
-	const float SegmentAlpha = saturate(dot(Position - Start, Segment) / SegmentLengthSqr);
+	SegmentAlpha = saturate(dot(Position - Start, Segment) / SegmentLengthSqr);
 	return length(Position - (Start + Segment * SegmentAlpha));
 }
 
@@ -84,25 +85,30 @@ void MainCoveragePS(
 	const float AntialiasWidth = c_StrokeMetrics.y;
 
 	const int StrokePointCount = min((int)c_StrokeMetrics.x, QUICK_SDF_MAX_PROJECTED_STROKE_POINTS);
-	float RadialDistance = BrushRadius + AntialiasWidth + 1.0f;
+	float PaintCoverage = 0.0f;
 
 	if (StrokePointCount <= 1)
 	{
-		RadialDistance = length(ProjectedPosition - c_StrokePoints[0].xy);
+		const float EffectiveRadius = BrushRadius * max(c_StrokePoints[0].w, 0.0001f);
+		PaintCoverage = ComputeFalloff(length(ProjectedPosition - c_StrokePoints[0].xy), EffectiveRadius, BrushRadialFalloffRange, AntialiasWidth);
 	}
 	else
 	{
 		for (int StrokePointIndex = 1; StrokePointIndex < StrokePointCount; ++StrokePointIndex)
 		{
-			RadialDistance = min(
-				RadialDistance,
-				DistanceToProjectedSegment(ProjectedPosition, c_StrokePoints[StrokePointIndex - 1].xy, c_StrokePoints[StrokePointIndex].xy));
+			float SegmentAlpha = 0.0f;
+			const float RadialDistance = DistanceToProjectedSegment(
+				ProjectedPosition,
+				c_StrokePoints[StrokePointIndex - 1].xy,
+				c_StrokePoints[StrokePointIndex].xy,
+				SegmentAlpha);
+			const float Pressure = lerp(c_StrokePoints[StrokePointIndex - 1].w, c_StrokePoints[StrokePointIndex].w, SegmentAlpha);
+			const float EffectiveRadius = BrushRadius * max(Pressure, 0.0001f);
+			PaintCoverage = max(PaintCoverage, ComputeFalloff(RadialDistance, EffectiveRadius, BrushRadialFalloffRange, AntialiasWidth));
 		}
 	}
 
-	float PaintCoverage =
-		ComputeFalloff(RadialDistance, BrushRadius, BrushRadialFalloffRange, AntialiasWidth) *
-		ComputeFalloff(DepthDistance, BrushDepth, BrushDepthFalloffRange, 0.0f);
+	PaintCoverage *= ComputeFalloff(DepthDistance, BrushDepth, BrushDepthFalloffRange, 0.0f);
 
 	OutColor = float4(PaintCoverage, PaintCoverage, PaintCoverage, PaintCoverage);
 }

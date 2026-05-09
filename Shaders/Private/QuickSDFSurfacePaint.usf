@@ -54,6 +54,8 @@ float ComputeSegmentPaintAmount(
 	float3 SegmentEnd,
 	float3 SegmentNormal,
 	float Radius,
+	float StartPressure,
+	float EndPressure,
 	float FalloffRange,
 	float Depth,
 	float DepthFalloffRange,
@@ -63,7 +65,7 @@ float ComputeSegmentPaintAmount(
 	const float SegmentLength = length(Segment);
 	if (SegmentLength <= 0.0001f)
 	{
-		return ComputeFalloff(length(WorldPosition - SegmentStart), Radius, FalloffRange, AntialiasWidth);
+		return ComputeFalloff(length(WorldPosition - SegmentStart), Radius * max(max(StartPressure, EndPressure), 0.0001f), FalloffRange, AntialiasWidth);
 	}
 
 	const float3 Tangent = Segment / SegmentLength;
@@ -79,17 +81,19 @@ float ComputeSegmentPaintAmount(
 	{
 		const float3 Delta3D = WorldPosition - SegmentStart;
 		const float ClosestAlong3D = clamp(dot(Delta3D, Tangent), 0.0f, SegmentLength);
-		return ComputeFalloff(length(Delta3D - Tangent * ClosestAlong3D), Radius, FalloffRange, AntialiasWidth);
+		const float Pressure3D = lerp(StartPressure, EndPressure, ClosestAlong3D / max(SegmentLength, 0.0001f));
+		return ComputeFalloff(length(Delta3D - Tangent * ClosestAlong3D), Radius * max(Pressure3D, 0.0001f), FalloffRange, AntialiasWidth);
 	}
 
 	const float3 Delta = WorldPosition - SegmentStart;
 	const float Along = dot(Delta, Tangent);
 	const float ClosestAlong = clamp(Along, 0.0f, SegmentLength);
+	const float Pressure = lerp(StartPressure, EndPressure, ClosestAlong / max(SegmentLength, 0.0001f));
 	const float Across = dot(Delta, Side);
 	const float RadialDistance = length(float2(Along - ClosestAlong, Across));
 	const float DepthDistance = abs(dot(Delta - Tangent * ClosestAlong, Normal));
 
-	return ComputeFalloff(RadialDistance, Radius, FalloffRange, AntialiasWidth) *
+	return ComputeFalloff(RadialDistance, Radius * max(Pressure, 0.0001f), FalloffRange, AntialiasWidth) *
 		ComputeFalloff(DepthDistance, Depth, DepthFalloffRange, 0.0f);
 }
 
@@ -138,7 +142,7 @@ void MainPS(
 					InWorldSpaceVertexPosition,
 					c_StrokePoints[StrokePointIndex].xyz,
 					c_StrokeNormals[StrokePointIndex].xyz,
-					BrushRadius,
+					BrushRadius * max(c_StrokePoints[StrokePointIndex].w, 0.0001f),
 					BrushRadialFalloffRange,
 					BrushDepth,
 					BrushDepthFalloffRange,
@@ -158,6 +162,8 @@ void MainPS(
 					SegmentEnd,
 					SegmentNormal,
 					BrushRadius,
+					c_StrokePoints[StrokePointIndex - 1].w,
+					c_StrokePoints[StrokePointIndex].w,
 					BrushRadialFalloffRange,
 					BrushDepth,
 					BrushDepthFalloffRange,

@@ -71,6 +71,7 @@ using namespace QuickSDFPaintToolPrivate;
 namespace
 {
 constexpr double QuickSDFExternalPointerFreshSeconds = 0.75;
+constexpr float QuickSDFMinPressureRadiusScale = 0.05f;
 
 FEditorViewportClient* GetCurrentLevelViewportClient()
 {
@@ -396,6 +397,41 @@ float UQuickSDFPaintTool::GetScreenProjectionBrushRadiusPixels() const
 	return Properties ? FMath::Max(Properties->ScreenProjectionBrushRadiusPixels, 1.0f) : 32.0f;
 }
 
+float UQuickSDFPaintTool::GetCurrentStrokePressure() const
+{
+	if (!BrushProperties || !BrushProperties->bEnablePressureSensitivity)
+	{
+		return 1.0f;
+	}
+
+	if (!bHasExternalPenPointerState || !bExternalPenPointerInContact)
+	{
+		return 1.0f;
+	}
+
+	if (GetToolCurrentTime() - LastExternalPenPointerTime > QuickSDFExternalPointerFreshSeconds)
+	{
+		return 1.0f;
+	}
+
+	return FMath::Clamp(ExternalPenPressure, QuickSDFMinPressureRadiusScale, 1.0f);
+}
+
+float UQuickSDFPaintTool::GetSamplePressureRadiusScale(const FQuickSDFStrokeSample& Sample) const
+{
+	if (!BrushProperties || !BrushProperties->bEnablePressureSensitivity)
+	{
+		return 1.0f;
+	}
+
+	return FMath::Clamp(Sample.Pressure, QuickSDFMinPressureRadiusScale, 1.0f);
+}
+
+double UQuickSDFPaintTool::GetPressureAdjustedBrushRadius(double BaseRadius, float Pressure) const
+{
+	return FMath::Max(BaseRadius * static_cast<double>(FMath::Clamp(Pressure, QuickSDFMinPressureRadiusScale, 1.0f)), 0.001);
+}
+
 bool UQuickSDFPaintTool::CanInterpolateStrokeSamples(const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B) const
 {
 	if (!Properties ||
@@ -536,17 +572,18 @@ FVector2D UQuickSDFPaintTool::GetBrushPixelSize(UTextureRenderTarget2D* RenderTa
 double UQuickSDFPaintTool::GetCurrentStrokeSpacing(UTextureRenderTarget2D* RenderTarget) const
 {
 	const double SpacingRatio = Properties ? static_cast<double>(Properties->StrokeSpacingRatio) : QuickSDFStrokeSpacingFactor;
+	const double PressureScale = static_cast<double>(GetCurrentStrokePressure());
 	if (ShouldUseProjectedSurfacePaint())
 	{
-		return FMath::Max(GetEffectiveBrushRadius() * FMath::Max(SpacingRatio, 0.02), 0.1);
+		return FMath::Max(GetEffectiveBrushRadius() * PressureScale * FMath::Max(SpacingRatio, 0.02), 0.1);
 	}
 	if (ShouldUseScreenProjectionPaint())
 	{
-		return FMath::Max(static_cast<double>(GetScreenProjectionBrushRadiusPixels()) * FMath::Max(SpacingRatio, 0.02), 1.0);
+		return FMath::Max(static_cast<double>(GetScreenProjectionBrushRadiusPixels()) * PressureScale * FMath::Max(SpacingRatio, 0.02), 1.0);
 	}
 
 	const FVector2D PixelSize = GetBrushPixelSize(RenderTarget);
-	const double PixelRadius = FMath::Max(static_cast<double>(FMath::Min(PixelSize.X, PixelSize.Y) * 0.5f), 1.0);
+	const double PixelRadius = FMath::Max(static_cast<double>(FMath::Min(PixelSize.X, PixelSize.Y) * 0.5f) * PressureScale, 1.0);
 	return FMath::Max(PixelRadius * FMath::Max(SpacingRatio, 0.02), 1.0);
 }
 
@@ -597,6 +634,7 @@ FQuickSDFStrokeSample UQuickSDFPaintTool::LerpStrokeSample(const FQuickSDFStroke
 	Result.ScreenPosition = FMath::Lerp(A.ScreenPosition, B.ScreenPosition, AlphaFloat);
 	Result.RayOrigin = FMath::Lerp(A.RayOrigin, B.RayOrigin, static_cast<double>(AlphaFloat));
 	Result.RayDirection = FMath::Lerp(A.RayDirection, B.RayDirection, static_cast<double>(AlphaFloat)).GetSafeNormal();
+	Result.Pressure = FMath::Lerp(A.Pressure, B.Pressure, AlphaFloat);
 	return Result;
 }
 
@@ -1068,6 +1106,7 @@ void UQuickSDFPaintTool::StampQuickLineResampledSamples(const TArray<FQuickSDFSt
 		OutSample.ScreenPosition = FMath::CubicInterp(P1.ScreenPosition, ScreenTangent1, P2.ScreenPosition, ScreenTangent2, Alpha);
 		OutSample.RayOrigin = FMath::CubicInterp(P1.RayOrigin, RayOriginTangent1, P2.RayOrigin, RayOriginTangent2, Alpha);
 		OutSample.RayDirection = FMath::Lerp(P1.RayDirection, P2.RayDirection, static_cast<double>(Alpha)).GetSafeNormal();
+		OutSample.Pressure = FMath::Clamp(FMath::CubicInterp(P1.Pressure, (P2.Pressure - P0.Pressure) * 0.5f, P2.Pressure, (P3.Pressure - P1.Pressure) * 0.5f, Alpha), QuickSDFMinPressureRadiusScale, 1.0f);
 		return OutSample;
 	};
 
@@ -1418,6 +1457,17 @@ void UQuickSDFPaintTool::CancelBrushResizeMode()
 	{
 		GEditor->RedrawAllViewports(false);
 	}
+}
+
+void UQuickSDFPaintTool::UpdateExternalPenPointerState(const FVector2D& AbsoluteScreenPosition, float Pressure, bool bInContact)
+{
+	ExternalViewportPointerAbsolutePosition = AbsoluteScreenPosition;
+	LastExternalViewportPointerTime = GetToolCurrentTime();
+	bHasExternalViewportPointerPosition = true;
+	ExternalPenPressure = FMath::Clamp(Pressure, 0.0f, 1.0f);
+	bExternalPenPointerInContact = bInContact;
+	LastExternalPenPointerTime = LastExternalViewportPointerTime;
+	bHasExternalPenPointerState = true;
 }
 
 bool UQuickSDFPaintTool::TryResolveViewportPointerPosition(const FVector2D& AbsoluteScreenPosition, FVector2D& OutViewportPosition, FRay& OutWorldRay) const
@@ -1927,6 +1977,7 @@ bool UQuickSDFPaintTool::TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSam
 	OutSample.ScreenPosition = LastInputScreenPosition;
 	OutSample.RayOrigin = Ray.Origin;
 	OutSample.RayDirection = Ray.Direction.GetSafeNormal();
+	OutSample.Pressure = GetCurrentStrokePressure();
 	return true;
 }
 
@@ -2020,6 +2071,7 @@ bool UQuickSDFPaintTool::TryMakePreviewStrokeSample(const FVector2D& ScreenPosit
 	OutSample.UV = ScreenToPreviewUV(ScreenPosition);
 	OutSample.WorldPos = FVector3d(OutSample.UV.X * RT->SizeX, OutSample.UV.Y * RT->SizeY, 0.0);
 	OutSample.ScreenPosition = ScreenPosition;
+	OutSample.Pressure = GetCurrentStrokePressure();
 	return true;
 }
 
@@ -2040,6 +2092,7 @@ bool UQuickSDFPaintTool::TryMakeTextureCanvasStrokeSample(const FVector2f& UV, c
 	OutSample.ScreenPosition = ScreenPosition;
 	OutSample.RayOrigin = FVector3d(OutSample.WorldPos.X, OutSample.WorldPos.Y, 1.0);
 	OutSample.RayDirection = FVector3d(0.0, 0.0, -1.0);
+	OutSample.Pressure = GetCurrentStrokePressure();
 	return true;
 }
 
@@ -2203,6 +2256,11 @@ double UQuickSDFPaintTool::GetTextureCanvasBrushRadiusPixels() const
 	return FMath::Max(static_cast<double>(FMath::Min(PixelSize.X, PixelSize.Y) * 0.5f), 1.0);
 }
 
+double UQuickSDFPaintTool::GetCurrentTextureCanvasBrushRadiusPixels() const
+{
+	return FMath::Max(GetTextureCanvasBrushRadiusPixels() * static_cast<double>(GetCurrentStrokePressure()), 1.0);
+}
+
 void UQuickSDFPaintTool::SetTextureCanvasBrushRadiusPixels(double NewRadiusPixels)
 {
 	const float ClampedRadiusPixels = FMath::Clamp(static_cast<float>(NewRadiusPixels), 1.0f, 4096.0f);
@@ -2354,23 +2412,24 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 	for (const FQuickSDFStrokeSample& Sample : Samples)
 	{
 		FVector2D PixelSize;
+		const double PressureScale = static_cast<double>(GetSamplePressureRadiusScale(Sample));
 		
 		if (ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TextureCanvas &&
 			Properties &&
 			GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection)
 		{
-			const float Diameter = FMath::Max(GetScreenProjectionBrushRadiusPixels() * 2.0f, 1.0f);
+			const float Diameter = FMath::Max(static_cast<float>(static_cast<double>(GetScreenProjectionBrushRadiusPixels()) * PressureScale * 2.0), 1.0f);
 			PixelSize = FVector2D(Diameter, Diameter);
 		}
 		else if (ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TexturePreview ||
 			ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TextureCanvas)
 		{
 			// 繝励Ξ繝薙Η繝ｼ陦ｨ遉ｺ・・D・峨・蝣ｴ蜷医・莉･蜑阪・蝗ｺ螳夊ｨ育ｮ・
-			PixelSize = GetBrushPixelSize(RT);
+			PixelSize = GetBrushPixelSize(RT) * PressureScale;
 		}
 		else
 		{
-			const float BrushRadiusWorld = static_cast<float>(GetEffectiveBrushRadius());
+			const float BrushRadiusWorld = static_cast<float>(GetPressureAdjustedBrushRadius(GetEffectiveBrushRadius(), Sample.Pressure));
 			const float UVRadius = BrushRadiusWorld * FMath::Max(Sample.LocalUVScale, KINDA_SMALL_NUMBER);
 			PixelSize = FVector2D(UVRadius * RTSize.X * 2.0f, UVRadius * RTSize.Y * 2.0f);
 		}
@@ -2612,6 +2671,7 @@ void UQuickSDFPaintTool::StampInterpolatedSegment(
 		Out.ScreenPosition = FMath::Lerp(P1.ScreenPosition, P2.ScreenPosition, SegmentAlpha);
 		Out.RayOrigin = FMath::Lerp(P1.RayOrigin, P2.RayOrigin, static_cast<double>(SegmentAlpha));
 		Out.RayDirection = FMath::Lerp(P1.RayDirection, P2.RayDirection, static_cast<double>(SegmentAlpha)).GetSafeNormal();
+		Out.Pressure = FMath::Lerp(P1.Pressure, P2.Pressure, SegmentAlpha);
     	
         return Out;
     };

@@ -160,7 +160,7 @@ bool UQuickSDFPaintTool::BuildSurfaceBrushParams(const FQuickSDFStrokeSample& Sa
 	const FVector BrushCenterF(Sample.WorldPos);
 	const FMatrix BrushToWorldMatrix(BrushXAxis, BrushYAxis, BrushNormalF, BrushCenterF);
 
-	const float BrushRadius = static_cast<float>(GetEffectiveBrushRadius());
+	const float BrushRadius = static_cast<float>(GetPressureAdjustedBrushRadius(GetEffectiveBrushRadius(), Sample.Pressure));
 	const float BrushDepth = BrushRadius;
 	const FVector2D BrushPixelSize = GetBrushPixelSize(RenderTarget);
 	const float BrushPixelRadius = FMath::Max(static_cast<float>(FMath::Min(BrushPixelSize.X, BrushPixelSize.Y) * 0.5), 1.0f);
@@ -232,6 +232,10 @@ bool UQuickSDFPaintTool::BuildSurfaceLineBrushParams(const FQuickSDFStrokeSample
 	const FMatrix BrushToWorldMatrix(FVector(BrushXAxis), FVector(BrushYAxis), FVector(BrushNormal), FVector(StartSample.WorldPos));
 
 	OutParams = StartParams;
+	OutParams.Radius = FMath::Max(
+		StartParams.Radius,
+		static_cast<float>(GetPressureAdjustedBrushRadius(GetEffectiveBrushRadius(), EndSample.Pressure)));
+	OutParams.Depth = FMath::Max(OutParams.Depth, OutParams.Radius);
 	OutParams.Center = (StartSample.WorldPos + EndSample.WorldPos) * 0.5;
 	OutParams.LineStart = StartSample.WorldPos;
 	OutParams.LineEnd = EndSample.WorldPos;
@@ -628,9 +632,10 @@ bool UQuickSDFPaintTool::BuildProjectedPaintParams(
 	OutParams.ProjectionAxisX = ProjectionAxisX.GetSafeNormal();
 	OutParams.ProjectionAxisY = ProjectionAxisY.GetSafeNormal();
 	OutParams.ProjectionNormal = ProjectionNormal.GetSafeNormal();
-	OutParams.Radius = SurfaceBrushParams.Radius;
+	const float BaseBrushRadius = static_cast<float>(GetEffectiveBrushRadius());
+	OutParams.Radius = BaseBrushRadius;
 	OutParams.RadialFalloffRange = SurfaceBrushParams.RadialFalloffRange;
-	OutParams.Depth = FMath::Max(SurfaceBrushParams.Depth * 1.5f, SurfaceBrushParams.Radius + SurfaceBrushParams.AntialiasWidth);
+	OutParams.Depth = FMath::Max(BaseBrushRadius * 1.5f, BaseBrushRadius + SurfaceBrushParams.AntialiasWidth);
 	OutParams.DepthFalloffRange = SurfaceBrushParams.DepthFalloffRange;
 	OutParams.Strength = SurfaceBrushParams.Strength;
 	OutParams.AntialiasWidth = SurfaceBrushParams.AntialiasWidth;
@@ -650,8 +655,8 @@ bool UQuickSDFPaintTool::BuildProjectedPaintParams(
 			FMath::Abs(FVector3d::DotProduct(StrokePoint.WorldPosition - OutParams.ProjectionOrigin, OutParams.ProjectionNormal)));
 	}
 	OutParams.Depth = FMath::Max(
-		SurfaceBrushParams.Depth * 2.0f,
-		static_cast<float>(MaxStrokeDepth) + SurfaceBrushParams.Radius + SurfaceBrushParams.AntialiasWidth);
+		BaseBrushRadius * 2.0f,
+		static_cast<float>(MaxStrokeDepth) + BaseBrushRadius + SurfaceBrushParams.AntialiasWidth);
 
 	return true;
 }
@@ -678,6 +683,7 @@ bool UQuickSDFPaintTool::BuildProjectedStrokePoints(
 		if (OutStrokePoints.Num() > 0 &&
 			FVector3d::DistSquared(OutStrokePoints.Last().WorldPosition, Sample.WorldPos) <= 1e-8)
 		{
+			OutStrokePoints.Last().Pressure = FMath::Max(OutStrokePoints.Last().Pressure, GetSamplePressureRadiusScale(Sample));
 			continue;
 		}
 
@@ -692,7 +698,7 @@ bool UQuickSDFPaintTool::BuildProjectedStrokePoints(
 		{
 			StrokePoint.Normal = PaintParams.ProjectionNormal;
 		}
-		StrokePoint.Pressure = 1.0f;
+		StrokePoint.Pressure = GetSamplePressureRadiusScale(Sample);
 	}
 
 	return OutStrokePoints.Num() > 0;
@@ -955,6 +961,7 @@ bool UQuickSDFPaintTool::BuildScreenProjectionStrokePoints(
 		{
 			OutStrokePoints.Last().WorldPosition = Sample.WorldPos;
 			OutStrokePoints.Last().ViewDepth = ViewDepth;
+			OutStrokePoints.Last().Pressure = FMath::Max(OutStrokePoints.Last().Pressure, GetSamplePressureRadiusScale(Sample));
 			continue;
 		}
 
@@ -962,7 +969,7 @@ bool UQuickSDFPaintTool::BuildScreenProjectionStrokePoints(
 		StrokePoint.WorldPosition = Sample.WorldPos;
 		StrokePoint.ScreenPosition = InputScreen;
 		StrokePoint.ViewDepth = ViewDepth;
-		StrokePoint.Pressure = 1.0f;
+		StrokePoint.Pressure = GetSamplePressureRadiusScale(Sample);
 	}
 
 	return OutStrokePoints.Num() > 0;
@@ -2402,7 +2409,7 @@ bool UQuickSDFPaintTool::PaintSurfacePolylineToRenderTarget(UTextureRenderTarget
 			static_cast<float>(Sample.WorldPos.X),
 			static_cast<float>(Sample.WorldPos.Y),
 			static_cast<float>(Sample.WorldPos.Z),
-			1.0f));
+			GetSamplePressureRadiusScale(Sample)));
 
 		FVector3d StrokeNormal = -Sample.RayDirection.GetSafeNormal();
 		if (StrokeNormal.IsNearlyZero())

@@ -69,17 +69,18 @@ float ComputeFalloff(float Distance, float Radius, float FalloffRange, float Ant
 	return Coverage;
 }
 
-float DistanceToScreenSegment(float2 Position, float2 Start, float2 End, float StartDepth, float EndDepth, out float SegmentDepth)
+float DistanceToScreenSegment(float2 Position, float2 Start, float2 End, float StartDepth, float EndDepth, out float SegmentDepth, out float SegmentAlpha)
 {
 	const float2 Segment = End - Start;
 	const float SegmentLengthSqr = dot(Segment, Segment);
 	if (SegmentLengthSqr <= 0.000001f)
 	{
 		SegmentDepth = StartDepth;
+		SegmentAlpha = 0.0f;
 		return length(Position - Start);
 	}
 
-	const float SegmentAlpha = saturate(dot(Position - Start, Segment) / SegmentLengthSqr);
+	SegmentAlpha = saturate(dot(Position - Start, Segment) / SegmentLengthSqr);
 	SegmentDepth = lerp(StartDepth, EndDepth, SegmentAlpha);
 	return length(Position - (Start + Segment * SegmentAlpha));
 }
@@ -99,31 +100,34 @@ void MainCoveragePS(
 	const float FacingThreshold = c_StrokeMetrics.z;
 	const int StrokePointCount = min((int)c_StrokeMetrics.x, QUICK_SDF_MAX_SCREEN_PROJECTION_STROKE_POINTS);
 
-	float RadialDistance = BrushRadius + AntialiasWidth + 1.0f;
-	float ClosestDepthDistance = BrushDepth + BrushDepthFalloffRange + 1.0f;
+	float StrokeCoverage = 0.0f;
 	if (StrokePointCount <= 1)
 	{
-		RadialDistance = length(ScreenPosition - c_StrokePoints[0].xy);
-		ClosestDepthDistance = abs(PixelDepth - c_StrokePoints[0].z);
+		const float EffectiveRadius = BrushRadius * max(c_StrokePoints[0].w, 0.0001f);
+		StrokeCoverage =
+			ComputeFalloff(length(ScreenPosition - c_StrokePoints[0].xy), EffectiveRadius, BrushRadialFalloffRange, AntialiasWidth) *
+			ComputeFalloff(abs(PixelDepth - c_StrokePoints[0].z), BrushDepth, BrushDepthFalloffRange, 0.0f);
 	}
 	else
 	{
 		for (int StrokePointIndex = 1; StrokePointIndex < StrokePointCount; ++StrokePointIndex)
 		{
 			float SegmentDepth = 0.0f;
+			float SegmentAlpha = 0.0f;
 			const float SegmentDistance = DistanceToScreenSegment(
 				ScreenPosition,
 				c_StrokePoints[StrokePointIndex - 1].xy,
 				c_StrokePoints[StrokePointIndex].xy,
 				c_StrokePoints[StrokePointIndex - 1].z,
 				c_StrokePoints[StrokePointIndex].z,
-				SegmentDepth);
-
-			if (SegmentDistance < RadialDistance)
-			{
-				RadialDistance = SegmentDistance;
-				ClosestDepthDistance = abs(PixelDepth - SegmentDepth);
-			}
+				SegmentDepth,
+				SegmentAlpha);
+			const float Pressure = lerp(c_StrokePoints[StrokePointIndex - 1].w, c_StrokePoints[StrokePointIndex].w, SegmentAlpha);
+			const float EffectiveRadius = BrushRadius * max(Pressure, 0.0001f);
+			const float SegmentCoverage =
+				ComputeFalloff(SegmentDistance, EffectiveRadius, BrushRadialFalloffRange, AntialiasWidth) *
+				ComputeFalloff(abs(PixelDepth - SegmentDepth), BrushDepth, BrushDepthFalloffRange, 0.0f);
+			StrokeCoverage = max(StrokeCoverage, SegmentCoverage);
 		}
 	}
 
@@ -138,8 +142,7 @@ void MainCoveragePS(
 	const float FacingGate = FacingThreshold <= 0.0f ? 1.0f : step(FacingThreshold, Facing);
 
 	float PaintCoverage =
-		ComputeFalloff(RadialDistance, BrushRadius, BrushRadialFalloffRange, AntialiasWidth) *
-		ComputeFalloff(ClosestDepthDistance, BrushDepth, BrushDepthFalloffRange, 0.0f) *
+		StrokeCoverage *
 		FacingGate *
 		step(0.0001f, PixelDepth);
 

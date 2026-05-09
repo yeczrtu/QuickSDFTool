@@ -725,7 +725,7 @@ private:
 		const FIntPoint TextureSize = Owner->GetTextureSize();
 		const FVector2D Pixel(Owner->HoverUV.X * TextureSize.X, Owner->HoverUV.Y * TextureSize.Y);
 		const FVector2D Center = Owner->TexturePixelToViewport(Pixel);
-		const double Radius = Tool->GetTextureCanvasBrushRadiusPixels() * Owner->GetEffectiveZoom();
+		const double Radius = Tool->GetCurrentTextureCanvasBrushRadiusPixels() * Owner->GetEffectiveZoom();
 		const bool bShadow = IsShiftDown(Viewport);
 		const FLinearColor Outer = bShadow
 			? FLinearColor(0.02f, 0.02f, 0.02f, 0.95f)

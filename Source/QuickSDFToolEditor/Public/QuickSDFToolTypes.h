@@ -36,6 +36,7 @@ struct FQuickSDFStrokeSample
 	FVector2D ScreenPosition = FVector2D::ZeroVector;
 	FVector3d RayOrigin = FVector3d::Zero();
 	FVector3d RayDirection = FVector3d(0.0, 0.0, 1.0);
+	float Pressure = 1.0f;
 };
 
 UENUM(BlueprintType)

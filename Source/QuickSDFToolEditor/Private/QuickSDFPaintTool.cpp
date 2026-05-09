@@ -275,6 +275,7 @@ void UQuickSDFPaintTool::Setup()
 		BrushProperties->ClearFlags(RF_Transactional);
 		BrushProperties->bSpecifyRadius = true;
 		BrushProperties->bToolSupportsPressureSensitivity = true;
+		BrushProperties->bEnablePressureSensitivity = true;
 		BrushProperties->BrushRadius = QuickSDFInitialBrushRadius;
 		const float RangeSize = BrushRelativeSizeRange.Max - BrushRelativeSizeRange.Min;
 		if (RangeSize > KINDA_SMALL_NUMBER)

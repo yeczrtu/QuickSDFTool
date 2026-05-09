@@ -38,6 +38,7 @@ const FEditorModeID UQuickSDFEditorMode::EM_QuickSDFEditorModeId = TEXT("EM_Quic
 namespace
 {
 constexpr double QuickSDFPenPointerApplyFreshSeconds = 0.75;
+constexpr float QuickSDFWindowsMaxPenPressure = 1024.0f;
 
 class FQuickSDFBrushResizeInputPreProcessor final : public IInputProcessor
 #if PLATFORM_WINDOWS
@@ -86,24 +87,27 @@ public:
 		}
 
 		const uint32 PointerId = static_cast<uint32>(wParam & 0xFFFF);
-		POINTER_INPUT_TYPE PointerType = PT_POINTER;
-		if (::GetPointerType(PointerId, &PointerType) == 0 || PointerType != PT_PEN)
-		{
-			return false;
-		}
-
-		POINTER_INFO PointerInfo;
-		FMemory::Memzero(PointerInfo);
-		if (::GetPointerInfo(PointerId, &PointerInfo) == 0)
+		POINTER_PEN_INFO PenInfo;
+		FMemory::Memzero(PenInfo);
+		if (::GetPointerPenInfo(PointerId, &PenInfo) == 0)
 		{
 			return false;
 		}
 
 		LastPenPointerAbsolutePosition = FVector2D(
-			static_cast<double>(PointerInfo.ptPixelLocation.x),
-			static_cast<double>(PointerInfo.ptPixelLocation.y));
+			static_cast<double>(PenInfo.pointerInfo.ptPixelLocation.x),
+			static_cast<double>(PenInfo.pointerInfo.ptPixelLocation.y));
+		bLastPenPointerInContact = (PenInfo.pointerInfo.pointerFlags & POINTER_FLAG_INCONTACT) != 0;
+		const bool bHasPressure = (PenInfo.penMask & PEN_MASK_PRESSURE) != 0;
+		LastPenPointerPressure = (bLastPenPointerInContact && bHasPressure)
+			? FMath::Clamp(static_cast<float>(PenInfo.pressure) / QuickSDFWindowsMaxPenPressure, 0.0f, 1.0f)
+			: 1.0f;
 		LastPenPointerUpdateTime = FPlatformTime::Seconds();
 		++LastPenPointerSerial;
+		if (UQuickSDFPaintTool* PaintTool = GetActivePaintTool())
+		{
+			PaintTool->UpdateExternalPenPointerState(LastPenPointerAbsolutePosition, LastPenPointerPressure, bLastPenPointerInContact);
+		}
 		return false;
 	}
 #endif
@@ -225,9 +229,11 @@ private:
 #if PLATFORM_WINDOWS
 	FWindowsApplication* WindowsApplication = nullptr;
 	FVector2D LastPenPointerAbsolutePosition = FVector2D::ZeroVector;
+	float LastPenPointerPressure = 1.0f;
 	double LastPenPointerUpdateTime = -1000.0;
 	uint64 LastPenPointerSerial = 0;
 	uint64 LastAppliedPenPointerSerial = 0;
+	bool bLastPenPointerInContact = false;
 	bool bWindowsMessageHandlerRegistered = false;
 #endif
 };

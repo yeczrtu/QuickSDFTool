@@ -244,6 +244,7 @@ public:
 	bool IsBrushResizeModeActive() const { return bAdjustingBrushRadius; }
 	void ConfirmBrushResizeMode();
 	void CancelBrushResizeMode();
+	void UpdateExternalPenPointerState(const FVector2D& AbsoluteScreenPosition, float Pressure, bool bInContact);
 	bool UpdateExternalViewportPointerHover(const FVector2D& AbsoluteScreenPosition);
 	bool BeginTextureCanvasStroke(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers);
 	bool UpdateTextureCanvasStroke(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers);
@@ -251,6 +252,7 @@ public:
 	void UpdateTextureCanvasHover(const FVector2f& UV, const FVector2D& ScreenPosition);
 	void SetTextureCanvasCursorActive(bool bActive);
 	double GetTextureCanvasBrushRadiusPixels() const;
+	double GetCurrentTextureCanvasBrushRadiusPixels() const;
 	void SetTextureCanvasBrushRadiusPixels(double NewRadiusPixels);
 	class UMaterialInstanceDynamic* GetCanvasMaskPreviewMaterial(class UTextureRenderTarget2D* RenderTarget);
 	class UTextureRenderTarget2D* GetCanvasUVOverlayRenderTarget();
@@ -322,6 +324,9 @@ protected:
 	bool ShouldUseScreenProjectionPaint() const;
 	bool ShouldUseAnySurfaceProjectionPaint() const;
 	float GetScreenProjectionBrushRadiusPixels() const;
+	float GetCurrentStrokePressure() const;
+	float GetSamplePressureRadiusScale(const FQuickSDFStrokeSample& Sample) const;
+	double GetPressureAdjustedBrushRadius(double BaseRadius, float Pressure) const;
 	bool CanInterpolateStrokeSamples(const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B) const;
 	void StampSample(const FQuickSDFStrokeSample& Sample);
 	void StampSamples(const TArray<FQuickSDFStrokeSample>& Samples);
@@ -489,6 +494,10 @@ protected:
 	bool bHasExternalViewportPointerPosition = false;
 	FVector2D ExternalViewportPointerAbsolutePosition = FVector2D::ZeroVector;
 	double LastExternalViewportPointerTime = -1000.0;
+	bool bHasExternalPenPointerState = false;
+	bool bExternalPenPointerInContact = false;
+	float ExternalPenPressure = 1.0f;
+	double LastExternalPenPointerTime = -1000.0;
 	bool bAdjustingBrushRadius = false;
 	FVector2D BrushResizeStartScreenPosition = FVector2D::ZeroVector;
 	FBrushStampData BrushResizeStartStamp;
