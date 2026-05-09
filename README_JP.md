@@ -26,7 +26,7 @@ https://github.com/user-attachments/assets/7eec2890-be31-4cbc-9662-756b6e84c620
 - `Quick SDF` という専用 UE5 エディターモード。
 - メッシュ全体を表示したまま始まる Select / 準備ワークフロー。ビューポート上で mesh と material slot を同時に選択できます。
 - Static Mesh / Skeletal Mesh コンポーネントへの直接ペイント。PhysicsAsset がない Skeletal Mesh も選択対象です。
-- Screen、Surface、UV 系のペイントワークフロー。ブラシプレビュー、筆圧半径、Lazy Radius、ブラシ位置への `F` フォーカスに対応します。
+- Screen、Surface、2D Canvas のペイントワークフロー。ブラシプレビュー、液タブ hover 追従、筆圧半径、Lazy Radius、ブラシ位置への `F` フォーカスに対応します。
 - コンパクトな `Material Slots` リスト、Select 中の cyan active-slot overlay、スロット単位 Bake、Paint 中の既定 slot isolation。
 - シーク / キーフレームレーンを分けた角度タイムライン。サムネイル、スナップ、キー移動とシーク同期、Paint Target 範囲表示に対応します。
 - `Auto`、`Texture Flip`、`UV Island Channel Flip`、0-180 通常ペイントのシンメトリーワークフロー。

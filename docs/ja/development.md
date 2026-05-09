@@ -39,6 +39,7 @@ QuickSDFTool/
 
 - `UQuickSDFAsset` は、編集中の mask、resolution、UV channel、final SDF texture の主データ源として active `FQuickSDFTextureSetData` を使います。旧 top-level fields は保存済み asset 互換のため load 時に best-effort で移行します。
 - `UQuickSDFPaintTool` は Interactive Tools Framework の lifecycle、input routing、UI commands を担当する facade です。Paint state、Undo changes、mask utilities、SDF helpers、asset selection、render target support は責務別 private helper に分かれています。
+- Windows の液タブ / ペンタブ入力は、エンジン改造なしで editor module 内に閉じています。`QuickSDFEditorMode` が pen pointer の座標、接触状態、筆圧を取得し、`UQuickSDFPaintTool` と `SQuickSDFPaintCanvas` が現在の absolute pointer position から 3D viewport ray または 2D Canvas 座標を作り直します。
 - Live SDF preview は `QuickSDFPaintToolLivePreview.cpp` に分離され、`QuickSDFFastPreviewRendering` 経由で描画します。transient render target だけを持ち、保存済み final SDF texture は置き換えません。
 - Timeline keyframe rendering は main timeline widget から分離されています。range / key status calculation は `QuickSDFTimelineStatus` にあり、range highlight、badge、tooltip を Slate なしで test できます。
 - Mask import validation は Slate に依存しない import model 側で扱うため、UI と取り込み rule を個別に保守できます。
@@ -71,6 +72,8 @@ Automation RunTests QuickSDFTool.MonotonicGuard
 ```
 
 v1.0 release candidate は `sdfbuildEditor Win64 Development`、timeline 周辺の重点 Automation Test、`QuickSDFTool.Core`、Monotonic Guard test で検証します。
+
+手動入力の検証では、通常マウスのペイントに加えて、Windows 液タブ / ペンタブの hover、筆圧、stroke start / drag / release、2D Canvas のウィンドウ移動・リサイズ後の挙動、`Ctrl + F` ブラシリサイズを確認します。
 
 ## GitHub 公開チェックリスト
 

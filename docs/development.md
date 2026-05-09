@@ -39,6 +39,7 @@ QuickSDFTool/
 
 - `UQuickSDFAsset` uses the active `FQuickSDFTextureSetData` as the primary source for editable masks, resolution, UV channel, and final SDF texture data. Legacy top-level fields are migrated on load on a best-effort basis.
 - `UQuickSDFPaintTool` is the Interactive Tools Framework facade for lifecycle, input routing, and UI commands. Paint state, undo changes, mask utilities, SDF helpers, asset selection, and render target support live in focused private helpers.
+- Windows pen-display/tablet input is handled inside the editor module without engine changes. `QuickSDFEditorMode` captures pen pointer position, contact, and pressure, while `UQuickSDFPaintTool` and `SQuickSDFPaintCanvas` convert the current absolute pointer position into fresh 3D viewport rays or 2D Canvas coordinates.
 - Live SDF preview is isolated in `QuickSDFPaintToolLivePreview.cpp` and renders through `QuickSDFFastPreviewRendering`. It owns only transient render targets and never replaces the saved final SDF texture.
 - Timeline keyframe rendering is split from the main timeline widget. Timeline range/key status calculations live in `QuickSDFTimelineStatus` so range highlighting, badges, and tooltips can be tested without Slate.
 - Mask import validation is handled by a Slate-independent import model so the UI and import rules can evolve independently.
@@ -71,6 +72,8 @@ Automation RunTests QuickSDFTool.MonotonicGuard
 ```
 
 The v1.0 release candidate should be validated against `sdfbuildEditor Win64 Development`, focused timeline automation coverage, `QuickSDFTool.Core`, and the Monotonic Guard tests.
+
+Manual input verification should include mouse painting plus Windows pen-display/tablet hover, pressure, stroke start/drag/release, 2D Canvas window move/resize behavior, and `Ctrl + F` brush resizing.
 
 ## Repository Setup Checklist
 

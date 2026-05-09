@@ -27,13 +27,13 @@ Brush size can appear inconsistent when UV density varies strongly across the me
 - Use the 2D UV preview for precise edits.
 - Avoid judging brush behavior on heavily stretched UV islands until the UV brush-size item is addressed.
 
-## Pen Display Or Tablet Strokes Connect From The Previous Hit
+## Pen Display Or Tablet Input Feels Misaligned
 
-On some pen displays and tablets, hover movement while the pen is lifted may not update the brush position. The next painted stroke can then start from the previous brush hit and create an unintended connecting segment.
+On Windows, QuickSDF reads pen pointer coordinates directly for 3D Paint and the 2D Canvas. Hover, stroke start, drag, release, pressure-sensitive radius, and `Ctrl + F` brush resizing should continue to track correctly after moving or resizing the editor window.
 
-- Move the pen over the target area until the brush preview updates before starting a stroke.
-- Prefer Screen mode for camera-facing edits where the brush preview is easier to confirm.
-- If this reproduces consistently, include the tablet model, driver version, monitor DPI scale, and whether the issue happens in Screen, Surface, or UV mode when reporting it.
+- Confirm **Advanced > Pen Pressure** is enabled if you expect pressure-sensitive radius. Disable it if you need a fixed-radius mouse-like stroke.
+- Adjust **Advanced > Pen Pressure Curve** if the radius response feels too soft or too aggressive. `1.0` is linear, higher values keep light pressure thinner for longer, and lower values reach larger radii sooner.
+- If the brush preview and painted position diverge, move or resize the 2D Canvas once more and check whether both the preview circle and stroke position now follow the pen. Include the tablet model, driver version, monitor DPI scale, and whether the issue happens in Screen, Surface, or 2D Canvas mode when reporting it.
 
 ## GPU JFA Is Only Used For Live SDF Preview
 

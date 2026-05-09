@@ -55,7 +55,7 @@ QuickSDFTool is designed around one material slot at a time: select the mesh and
 | `Viewport Mesh / Material Click` in Select mode | Select the target mesh component and clicked material slot |
 | `Start Paint` | Enter Paint mode using the selected target mesh and material slot |
 | `F` in Paint mode | Focus the viewport on the current brush position; falls back to UE selection focus when no brush hit is active |
-| `Ctrl + F`, move mouse, click | Resize brush while the mouse is over the viewport |
+| `Ctrl + F`, move mouse or pen, click | Resize the brush while the pointer is over the viewport or 2D Canvas |
 | `Alt + T` | Open the quick toggle menu |
 | `Alt + 1` | Cycle paint target mode |
 | `Alt + 2` - `Alt + 8` | Toggle Auto Light, Preview, UV overlay, Onion Skin, Quick Stroke, Symmetry, and Monotonic Guard |
@@ -90,8 +90,10 @@ The `Quick SDF > Material Slots` section is optimized for artists editing one ma
 - Mesh painting supports Static Mesh and Skeletal Mesh components, including Skeletal Mesh assets without a PhysicsAsset.
 - Screen projection is the default paint mode. It is useful for direct face and hair shadow authoring from the current camera.
 - Surface and UV-oriented painting remain available for mesh-space and texture-space workflows.
-- The 2D UV preview supports texture-space control, optional UV guides, and onion skinning.
+- The 2D Canvas supports texture-space control, optional UV guides, onion skinning, tablet painting, and pen-based brush resize.
+- On Windows pen displays and tablets, QuickSDF reads pen pointer coordinates for hover, stroke start, drag, release, and 2D Canvas input. This keeps the brush preview and stroke position aligned after moving or resizing the editor window.
 - Brush input includes lazy-radius stroke stabilization, fine spacing, antialiased brush masks, and pressure-driven brush radius for tablet workflows.
+- Pen pressure is enabled by default and affects brush radius only, not mask opacity. Use **Advanced > Pen Pressure** to disable it and **Advanced > Pen Pressure Curve** to tune the response. `1.0` is linear, higher values keep light pressure thinner for longer, and lower values reach larger radii sooner.
 - `F` focuses the active viewport on the current brush hit. If the brush is not over a valid hit, the key falls back to UE's standard selection focus.
 
 ## Timeline And Paint Targets

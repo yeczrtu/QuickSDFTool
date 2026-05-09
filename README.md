@@ -26,7 +26,7 @@ Screenshot character model credit: [真冬 Mafuyu / Original 3D Model](https://b
 - Dedicated UE5 Editor Mode named `Quick SDF`.
 - Select/prep workflow that keeps the full mesh visible and supports viewport picking for both mesh and material slot.
 - Direct painting on Static Mesh and Skeletal Mesh components, including PhysicsAsset-less Skeletal Mesh targets.
-- Screen, Surface, and UV-oriented paint workflows with brush preview, pressure-sensitive radius, lazy-radius smoothing, and `F` focus on the active brush position.
+- Screen, Surface, and 2D Canvas paint workflows with brush preview, pen-display hover tracking, pressure-sensitive radius, lazy-radius smoothing, and `F` focus on the active brush position.
 - Compact `Material Slots` list with row selection, cyan active-slot overlay in Select mode, per-slot Bake, and paint-time slot isolation.
 - Angle timeline with seek/keyframe lanes, thumbnails, snapping, keyframe drag/seek synchronization, and paint-target range highlights.
 - Symmetry workflows for `Auto`, `Texture Flip`, `UV Island Channel Flip`, and full 0-180 painting.
