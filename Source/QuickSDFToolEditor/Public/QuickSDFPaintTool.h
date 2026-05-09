@@ -244,6 +244,7 @@ public:
 	bool IsBrushResizeModeActive() const { return bAdjustingBrushRadius; }
 	void ConfirmBrushResizeMode();
 	void CancelBrushResizeMode();
+	bool UpdateExternalViewportPointerHover(const FVector2D& AbsoluteScreenPosition);
 	bool BeginTextureCanvasStroke(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers);
 	bool UpdateTextureCanvasStroke(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers);
 	void EndTextureCanvasStroke();
@@ -312,6 +313,9 @@ protected:
 	bool TryMakeStrokeSample(const FRay& Ray, FQuickSDFStrokeSample& OutSample);
 	bool TryMakePreviewStrokeSample(const FVector2D& ScreenPosition, FQuickSDFStrokeSample& OutSample) const;
 	bool TryMakeTextureCanvasStrokeSample(const FVector2f& UV, const FVector2D& ScreenPosition, FQuickSDFStrokeSample& OutSample) const;
+	bool TryResolveViewportPointerPosition(const FVector2D& AbsoluteScreenPosition, FVector2D& OutViewportPosition, FRay& OutWorldRay) const;
+	bool TryResolveExternalViewportPointerPosition(FVector2D& OutViewportPosition, FRay& OutWorldRay) const;
+	FInputDeviceRay ResolveFreshInputRay(const FInputDeviceRay& InputRay) const;
 	EQuickSDFMeshPaintMode GetMeshPaintMode() const;
 	bool ShouldUseSurfaceSpacePaint() const;
 	bool ShouldUseProjectedSurfacePaint() const;
@@ -482,6 +486,9 @@ protected:
 	FVector2D PreviewCanvasSize = FVector2D(256.0, 256.0);
 	EQuickSDFStrokeInputMode PendingStrokeInputMode = EQuickSDFStrokeInputMode::None;
 	EQuickSDFStrokeInputMode ActiveStrokeInputMode = EQuickSDFStrokeInputMode::None;
+	bool bHasExternalViewportPointerPosition = false;
+	FVector2D ExternalViewportPointerAbsolutePosition = FVector2D::ZeroVector;
+	double LastExternalViewportPointerTime = -1000.0;
 	bool bAdjustingBrushRadius = false;
 	FVector2D BrushResizeStartScreenPosition = FVector2D::ZeroVector;
 	FBrushStampData BrushResizeStartStamp;

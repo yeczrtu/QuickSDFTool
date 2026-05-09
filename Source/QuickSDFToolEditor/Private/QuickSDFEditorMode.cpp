@@ -21,25 +21,92 @@
 #include "Framework/Application/IInputProcessor.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Commands/UICommandList.h"
+#include "HAL/PlatformTime.h"
 #include "Input/Events.h"
 #include "SQuickSDFPaintCanvas.h"
 #include "Widgets/SViewport.h"
+
+#if PLATFORM_WINDOWS
+#include "Windows/WindowsApplication.h"
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include <windows.h>
+#include "Windows/HideWindowsPlatformTypes.h"
+#endif
 
 const FEditorModeID UQuickSDFEditorMode::EM_QuickSDFEditorModeId = TEXT("EM_QuickSDFEditorMode");
 
 namespace
 {
+constexpr double QuickSDFPenPointerApplyFreshSeconds = 0.75;
+
 class FQuickSDFBrushResizeInputPreProcessor final : public IInputProcessor
+#if PLATFORM_WINDOWS
+	, public IWindowsMessageHandler
+#endif
 {
 public:
 	explicit FQuickSDFBrushResizeInputPreProcessor(UQuickSDFEditorMode* InMode)
 		: Mode(InMode)
 	{
+#if PLATFORM_WINDOWS
+		RegisterWindowsMessageHandler();
+#endif
+	}
+
+	virtual ~FQuickSDFBrushResizeInputPreProcessor() override
+	{
+#if PLATFORM_WINDOWS
+		UnregisterWindowsMessageHandler();
+#endif
 	}
 
 	virtual void Tick(const float DeltaTime, FSlateApplication& SlateApp, TSharedRef<ICursor> Cursor) override
 	{
+#if PLATFORM_WINDOWS
+		if (LastPenPointerSerial != LastAppliedPenPointerSerial)
+		{
+			if (FPlatformTime::Seconds() - LastPenPointerUpdateTime <= QuickSDFPenPointerApplyFreshSeconds)
+			{
+				if (UQuickSDFPaintTool* PaintTool = GetActivePaintTool())
+				{
+					PaintTool->UpdateExternalViewportPointerHover(LastPenPointerAbsolutePosition);
+				}
+			}
+			LastAppliedPenPointerSerial = LastPenPointerSerial;
+		}
+#endif
 	}
+
+#if PLATFORM_WINDOWS
+	virtual bool ProcessMessage(HWND hwnd, uint32 msg, WPARAM wParam, LPARAM lParam, int32& OutResult) override
+	{
+		if (msg != WM_POINTERUPDATE && msg != WM_POINTERDOWN && msg != WM_POINTERUP)
+		{
+			return false;
+		}
+
+		const uint32 PointerId = static_cast<uint32>(wParam & 0xFFFF);
+		POINTER_INPUT_TYPE PointerType = PT_POINTER;
+		if (::GetPointerType(PointerId, &PointerType) == 0 || PointerType != PT_PEN)
+		{
+			return false;
+		}
+
+		POINTER_INFO PointerInfo;
+		FMemory::Memzero(PointerInfo);
+		if (::GetPointerInfo(PointerId, &PointerInfo) == 0)
+		{
+			return false;
+		}
+
+		LastPenPointerAbsolutePosition = FVector2D(
+			static_cast<double>(PointerInfo.ptPixelLocation.x),
+			static_cast<double>(PointerInfo.ptPixelLocation.y));
+		LastPenPointerUpdateTime = FPlatformTime::Seconds();
+		++LastPenPointerSerial;
+		return false;
+	}
+#endif
 
 	virtual bool HandleKeyDownEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent) override
 	{
@@ -120,8 +187,49 @@ private:
 			: nullptr;
 	}
 
+#if PLATFORM_WINDOWS
+	void RegisterWindowsMessageHandler()
+	{
+		if (bWindowsMessageHandlerRegistered || !FSlateApplication::IsInitialized())
+		{
+			return;
+		}
+
+		const TSharedPtr<GenericApplication> PlatformApplication = FSlateApplication::Get().GetPlatformApplication();
+		if (!PlatformApplication.IsValid())
+		{
+			return;
+		}
+
+		WindowsApplication = static_cast<FWindowsApplication*>(PlatformApplication.Get());
+		if (WindowsApplication)
+		{
+			WindowsApplication->AddMessageHandler(*this);
+			bWindowsMessageHandlerRegistered = true;
+		}
+	}
+
+	void UnregisterWindowsMessageHandler()
+	{
+		if (bWindowsMessageHandlerRegistered && WindowsApplication)
+		{
+			WindowsApplication->RemoveMessageHandler(*this);
+		}
+		WindowsApplication = nullptr;
+		bWindowsMessageHandlerRegistered = false;
+	}
+#endif
+
 	TWeakObjectPtr<UQuickSDFEditorMode> Mode;
 	bool bSuppressNextMouseButtonUp = false;
+#if PLATFORM_WINDOWS
+	FWindowsApplication* WindowsApplication = nullptr;
+	FVector2D LastPenPointerAbsolutePosition = FVector2D::ZeroVector;
+	double LastPenPointerUpdateTime = -1000.0;
+	uint64 LastPenPointerSerial = 0;
+	uint64 LastAppliedPenPointerSerial = 0;
+	bool bWindowsMessageHandlerRegistered = false;
+#endif
 };
 }
 
