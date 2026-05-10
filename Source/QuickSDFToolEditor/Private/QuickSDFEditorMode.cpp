@@ -113,6 +113,14 @@ public:
 			OutResult = 0;
 			return true;
 		}
+		if (UQuickSDFPaintTool* PaintTool = GetActivePaintTool())
+		{
+			if (PaintTool->HandleExternalViewportPenPointer(LastPenPointerAbsolutePosition, LastPenPointerPressure, bLastPenPointerInContact))
+			{
+				OutResult = 0;
+				return true;
+			}
+		}
 		return false;
 	}
 #endif

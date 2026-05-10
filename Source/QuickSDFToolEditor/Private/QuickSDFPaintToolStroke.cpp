@@ -1562,6 +1562,7 @@ bool UQuickSDFPaintTool::UpdateExternalViewportPointerHover(const FVector2D& Abs
 		return false;
 	}
 
+	SetTextureCanvasCursorActive(false);
 	LastInputScreenPosition = ViewportPosition;
 	if (bAdjustingBrushRadius || ActiveStrokeInputMode != EQuickSDFStrokeInputMode::None)
 	{
@@ -1605,9 +1606,59 @@ bool UQuickSDFPaintTool::UpdateExternalViewportPointerHover(const FVector2D& Abs
 	return true;
 }
 
+bool UQuickSDFPaintTool::HandleExternalViewportPenPointer(const FVector2D& AbsoluteScreenPosition, float Pressure, bool bInContact)
+{
+	UpdateExternalPenPointerState(AbsoluteScreenPosition, Pressure, bInContact);
+
+	FVector2D ViewportPosition;
+	FRay WorldRay;
+	const bool bHasViewportRay = TryResolveViewportPointerPosition(AbsoluteScreenPosition, ViewportPosition, WorldRay);
+	if (bHasViewportRay)
+	{
+		LastExternalViewportPenDeviceRay = FInputDeviceRay(WorldRay, ViewportPosition);
+	}
+
+	if (!bInContact)
+	{
+		if (bExternalViewportPenStrokeActive)
+		{
+			OnClickRelease(LastExternalViewportPenDeviceRay);
+			bExternalViewportPenStrokeActive = false;
+			return true;
+		}
+		return false;
+	}
+
+	if (!bHasViewportRay)
+	{
+		return bExternalViewportPenStrokeActive;
+	}
+
+	const FModifierKeysState ModifierKeys = FSlateApplication::Get().GetModifierKeys();
+	SetShiftToggle(ModifierKeys.IsShiftDown());
+	SetCtrlToggle(ModifierKeys.IsControlDown());
+
+	if (bExternalViewportPenStrokeActive)
+	{
+		OnClickDrag(LastExternalViewportPenDeviceRay);
+		return true;
+	}
+
+	const FInputRayHit Hit = CanBeginClickDragSequence(LastExternalViewportPenDeviceRay);
+	if (!Hit.bHit)
+	{
+		return false;
+	}
+
+	OnClickPress(LastExternalViewportPenDeviceRay);
+	bExternalViewportPenStrokeActive = true;
+	return true;
+}
+
 FInputRayHit UQuickSDFPaintTool::CanBeginClickDragSequence(const FInputDeviceRay& PressPos)
 {
 	const FInputDeviceRay ResolvedPressPos = ResolveFreshInputRay(PressPos);
+	SetTextureCanvasCursorActive(false);
 	LastInputScreenPosition = ResolvedPressPos.ScreenPosition;
 	if (bAdjustingBrushRadius)
 	{
@@ -1741,6 +1792,7 @@ bool UQuickSDFPaintTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 FInputRayHit UQuickSDFPaintTool::BeginHoverSequenceHitTest(const FInputDeviceRay& PressPos)
 {
 	const FInputDeviceRay ResolvedPressPos = ResolveFreshInputRay(PressPos);
+	SetTextureCanvasCursorActive(false);
 	LastInputScreenPosition = ResolvedPressPos.ScreenPosition;
 	if (bAdjustingBrushRadius)
 	{
@@ -1775,6 +1827,7 @@ FInputRayHit UQuickSDFPaintTool::BeginHoverSequenceHitTest(const FInputDeviceRay
 bool UQuickSDFPaintTool::OnUpdateHover(const FInputDeviceRay& DevicePos)
 {
 	const FInputDeviceRay ResolvedDevicePos = ResolveFreshInputRay(DevicePos);
+	SetTextureCanvasCursorActive(false);
 	LastInputScreenPosition = ResolvedDevicePos.ScreenPosition;
 	if (bAdjustingBrushRadius)
 	{
@@ -2317,10 +2370,19 @@ void UQuickSDFPaintTool::UpdateTextureCanvasHover(const FVector2f& UV, const FVe
 
 void UQuickSDFPaintTool::SetTextureCanvasCursorActive(bool bActive)
 {
+	if (bTextureCanvasCursorActive == bActive)
+	{
+		return;
+	}
+
 	bTextureCanvasCursorActive = bActive;
 	if (bActive && BrushStampIndicator)
 	{
 		BrushStampIndicator->bVisible = false;
+	}
+	if (GEditor)
+	{
+		GEditor->RedrawAllViewports(false);
 	}
 }
 

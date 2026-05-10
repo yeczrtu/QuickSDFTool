@@ -247,6 +247,7 @@ public:
 	void CancelBrushResizeMode();
 	void UpdateExternalPenPointerState(const FVector2D& AbsoluteScreenPosition, float Pressure, bool bInContact);
 	bool UpdateExternalViewportPointerHover(const FVector2D& AbsoluteScreenPosition);
+	bool HandleExternalViewportPenPointer(const FVector2D& AbsoluteScreenPosition, float Pressure, bool bInContact);
 	bool BeginTextureCanvasStroke(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers);
 	bool UpdateTextureCanvasStroke(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers);
 	bool TickTextureCanvasQuickStrokePreview(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers);
@@ -502,6 +503,8 @@ protected:
 	bool bExternalPenPointerInContact = false;
 	float ExternalPenPressure = 1.0f;
 	double LastExternalPenPointerTime = -1000.0;
+	bool bExternalViewportPenStrokeActive = false;
+	FInputDeviceRay LastExternalViewportPenDeviceRay;
 	bool bAdjustingBrushRadius = false;
 	FVector2D BrushResizeStartScreenPosition = FVector2D::ZeroVector;
 	FBrushStampData BrushResizeStartStamp;
