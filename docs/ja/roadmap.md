@@ -1,6 +1,6 @@
 ---
 title: Roadmap
-description: QuickSDFTool 1.0 以降のロードマップと計画中機能要件。
+description: QuickSDFTool 1.0 以降のロードマップと計画中の機能要件。
 permalink: /ja/roadmap/
 lang: ja
 alternate_url: /roadmap/
@@ -10,70 +10,71 @@ alternate_label: English
 # Roadmap
 
 > [!IMPORTANT]
-> ロードマップは、安定版を使うアーティストにとっての信頼性、互換性、初回成功率を高める優先度で並べています。
+> この roadmap は、stable plugin を使う artist にとっての信頼性、互換性、初回導入成功率を最も改善する順に並べています。
 
-## P0: 1.0 フォローアップの安定化
+## P0: Stabilize 1.0 Follow-Up
 
-- [x] 現在の CPU 経路における SDF 出力チャンネルレイアウトと UV アイランド反転挙動をドキュメント化する。
-- [x] リリースノートと導入確認手順を含む安定版 1.0 リリースを公開する。
-- [x] Windows 液タブ / ペンタブの hover、筆圧半径、2D Canvas 入力、ペンによる `Ctrl + F` ブラシリサイズを安定化する。
-- [ ] UV 依存のブラシサイズ差を改善する。
-- [ ] マスクペイント -> SDF テクスチャ -> トゥーンシェーダー結果の短い動画を追加する。
+- [x] 現在の CPU path における final SDF output channel layout と island-mirror behavior を document する。
+- [x] release notes と install verification steps を含む stable 1.0 release を公開する。
+- [x] Windows pen-display/tablet hover、pressure radius、2D Canvas input、Quick Stroke preview、pen-based `Ctrl + F` brush resizing を安定化する。
+- [x] README、docs、GitHub Pages pages、generated concept diagrams、screenshot requirements を更新する。
+- [ ] UV density に依存する brush-size mismatch を改善する。
+- [ ] mask paint -> SDF texture -> toon shader result を示す短い end-to-end video を追加する。
 
-## P1: パフォーマンスと互換性
+## P1: Improve Performance and Compatibility
 
-- [x] `Live SDF` material preview 向けに preview-only GPU JFA 経路を有効化する。
-- [ ] CPU 出力と同等の品質 / packing 挙動を満たせる場合のみ、GPU JFA の最終保存生成対応を検討する。
-- [ ] 1K、2K、4K のマスクワークフローをベンチマークする。
-- [ ] UE 5.8+ 互換性を検証し、テスト済みエンジンバージョンを追加するタイミングでリリースノートを更新する。
+- [x] `Live SDF` material feedback 向けに preview-only GPU JFA path を有効化する。
+- [ ] CPU output quality と packing behavior に一致できるようになった後、GPU JFA を final saved generation に対応させるべきか評価する。
+- [ ] 1K、2K、4K mask workflow を benchmark する。
+- [ ] UE 5.8+ compatibility を検証し、tested engine version が追加された時点で release notes を更新する。
 
-## P2: ペイント体験の強化
+## P2: Deepen Painting Workflow
 
-- [ ] カスタムブラシアルファテクスチャのインポート。
-- [ ] より豊富なブラシプリセットと、任意のカスタムフォールオフ制御。
-- [ ] キーボード操作だけでは足りない場合に備えた、明示的な前 / 次タイムラインボタン。
-- [ ] 未保存マスク変更の autosave / hot-reload recovery。
+- [ ] custom brush alpha textures を import できるようにする。
+- [ ] brush presets と optional custom brush falloff controls を増やす。
+- [ ] keyboard navigation だけでは artist に足りない場合、explicit previous/next timeline toolbar buttons を追加する。
+- [ ] unsaved mask changes 向けの autosave / hot-reload recovery を追加する。
 
-## 計画中の機能要件
+## Planned Feature Requirements
 
 > [!NOTE]
-> ここは将来作業の要件です。v1.0 安定版には含まれておらず、将来リリースで明示されない限り、現在の C++ API、`UQuickSDFAsset` 形式、Slate UI、ショートカット、アセット形式は変更しません。
+> ここにある内容は将来作業の roadmap requirements です。v1.0 stable release には含まれず、future release が明記しない限り current C++ API、`UQuickSDFAsset` format、Slate UI、shortcuts、asset formats を変更しません。
 
 ### Quick Nose
 
-- `Quick Nose` は、アーティストが指定した鼻位置から鼻影プリセットを素早く配置するための非破壊ベクターレイヤーとして追加します。
-- プリセットは位置、回転、スケール、カーブ形状、制御点を編集できるようにし、最終形ではなく高速な出発点として使えるようにします。
-- Bake は現在 mask または複数 mask 範囲に対応し、Undo 可能で、あとから編集できるよう元の vector layer を保持します。
+- `Quick Nose` を non-destructive vector layer として追加し、artist が選んだ nose position から nose-shadow preset を素早く置けるようにする。
+- preset は position、rotation、scale、curve shape、control points で編集できるようにし、固定された完成形ではなく速い starting point として扱う。
+- baking は current mask または multi-mask range に対応し、undoable で、後から編集できるよう original vector layer を保持する。
 
 ### Quick Reshape
 
-- `Quick Reshape` は仮称で、より高レベルな境界線作成ワークフローとして扱います。
-- 1 つの非破壊 UV canvas guide layer に複数の `Boundary Line` curve を描き、それぞれに `Assigned Angle` を割り当てます。
-- `Bake Matching Angles` は、境界線が割り当てられている角度 mask だけを生成または更新し、全 timeline mask は更新しません。
-- 境界線は編集可能な vector data として保存し、Bake 後も位置や curve shape を調整して再 Bake できるようにします。
-- 白 / 黒の塗り側は、角度と線方向から推定する `Auto Side` を標準にし、必要に応じて `Invert Side` で線ごとに補正します。
-- 有効な境界線は active UV island を分割するか閉じた領域を作る必要があります。曖昧な部分線は Bake 前に警告し、塗りは active UV island 内に制限します。
-- `Quick Reshape` は `Stroke Auto Fill` と分けて扱います。`Stroke Auto Fill` は単一線の fill helper、`Quick Reshape` は複数角度の boundary plan から mask を作る機能です。
+- `Quick Reshape` は higher-level boundary authoring workflow の仮称として扱う。artist は 1 つの non-destructive UV-canvas guide layer に複数の `Boundary Line` curve を描き、それぞれを `Assigned Angle` で timeline angle に割り当てる。
+- 各 boundary line は assigned mask の light/shadow split を表す。`Bake Matching Angles` は boundary line が割り当てられた mask だけを generate / update し、すべての timeline mask は変更しない。
+- boundary lines は editable vector data として保存し、bake 後も位置と curve shape を修正して再 bake できるようにする。
+- fill side は `Auto Side` を既定にし、angle と line direction から white/black side を推定する。必要に応じて per-line の `Invert Side` で補正できるようにする。
+- valid boundary line は active UV island を分割するか closed region を形成する必要がある。曖昧な partial line は bake 前に警告し、fill は active UV island に制限する。
+- `Quick Reshape` と `Stroke Auto Fill` は分ける。`Stroke Auto Fill` は single-line fill helper、`Quick Reshape` は multi-angle boundary plan から mask を作成する workflow。
+- `Monotonic Guard` が Quick Reshape output を baking 中または baking 後に validate できるようにし、repeated transitions を検出する。
 
 ### Threshold Map Reverse Conversion
 
-- 完成済み threshold map に対して light angle を指定し、その角度の mask を復元または preview する reverse conversion workflow を追加します。
-- Preview、現在 mask への抽出、新規 mask への抽出に対応し、完成済み threshold map の確認や修正に使えるようにします。
-- Monopolar / Bipolar threshold map を reverse conversion するとき、指定角度に対してどの channel または value pair を解釈するかを明確にします。
+- completed threshold map から target light angle を入力して angle-specific mask を reconstruct または preview できる reverse-conversion workflow を追加する。
+- artist が completed threshold map を inspect / repair できるよう、少なくとも preview、current mask への extraction、新規 mask への extraction に対応する。
+- reverse conversion 中に Monopolar と Bipolar threshold maps をどう解釈するか明確にする。
 
 ### Mask Freeze
 
-- `Mask Freeze` は、編集中ではない mask の paint 用 Render Target を解放し、VRAM 使用量を抑える workflow です。
-- Frozen mask は authored data を asset-backed mask data または CPU / disk-backed texture data として保持し、一時的な `PaintRenderTarget` は必要になるまで破棄できるようにします。
-- 現在 mask の freeze、非 active mask の freeze、現在 mask の thaw、全 mask の thaw を用意します。
-- 複数 mask edit の対象に frozen mask が含まれる場合は、自動で thaw します。
-- Timeline key には freeze / thaw state を示す badge を表示します。
-- SDF generation、export、save、overwrite-source workflow では、frozen mask を透過的に thaw するか保存済み data を読み取り、出力から mask が欠落しないようにします。
-- Freeze / Thaw をまたいでも Undo / Redo で mask 内容が失われないようにします。
+- active editing していない mask の paint render targets を release し、VRAM usage を減らす `Mask Freeze` workflow を追加する。
+- frozen masks は asset-backed mask data または CPU/disk-backed saved texture data として authored data を保持し、transient `PaintRenderTarget` data は必要になるまで破棄できるようにする。
+- freeze current mask、freeze all inactive masks、thaw current mask、thaw all masks の action を用意する。
+- multi-mask edit の対象になった frozen mask は自動 thaw する。
+- Timeline keys は frozen/unfrozen state を badge で表示する。
+- SDF generation、export、save、overwrite-source workflows は frozen masks を透過的に thaw または read し、output が silent に欠落しないようにする。
+- Undo/Redo は freeze/thaw operations をまたいで mask data を失ってはいけない。
 
 ### Stroke Auto Fill
 
-- `Stroke Auto Fill` は、線を引いたあとに左右どちら側、または内側 / 外側のどちらを塗るかを preview して自動塗りつぶしする機能です。
-- 現在 mask のみの編集と、`All / Before / After` による一括適用の両方に対応します。
-- 意図しない別 island への塗り漏れを避けるため、fill operation は active UV island 単位に制限します。
-- 確定前に preview を表示し、確定後の結果は Undo できるようにします。
+- `Stroke Auto Fill` を追加し、drawn line から chosen left/right side または inside/outside region を preview / fill できるようにする。
+- current-mask edits と `All / Before / After` による bulk application の両方に対応する。
+- unrelated islands への accidental fill を避けるため、fill operations は active UV island に制限する。
+- commit 前に preview を表示し、committed result は undoable にする。

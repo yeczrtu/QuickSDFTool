@@ -27,6 +27,8 @@ Screenshot character model credit: [真冬 Mafuyu / Original 3D Model](https://b
 - Select/prep workflow that keeps the full mesh visible and supports viewport picking for both mesh and material slot.
 - Direct painting on Static Mesh and Skeletal Mesh components, including PhysicsAsset-less Skeletal Mesh targets.
 - Screen, Surface, and 2D Canvas paint workflows with brush preview, pen-display hover tracking, pressure-sensitive radius, lazy-radius smoothing, and `F` focus on the active brush position.
+- 2D Canvas controls for Texture Set / Angle selection, brush size, Fit / 100% zoom, rotate/flip, checker/grid, UV overlay, onion skin, and tablet-aligned texture-space strokes.
+- Quick Stroke hold-to-place workflow for straight, adjustable strokes in both 3D Paint and the 2D Canvas, with Move Tolerance / Hold Time controls and lightweight preview updates before release commits the final position.
 - Compact `Material Slots` list with row selection, cyan active-slot overlay in Select mode, per-slot Bake, and paint-time slot isolation.
 - Angle timeline with seek/keyframe lanes, thumbnails, snapping, keyframe drag/seek synchronization, and paint-target range highlights.
 - Symmetry workflows for `Auto`, `Texture Flip`, `UV Island Channel Flip`, and full 0-180 painting.
@@ -43,9 +45,11 @@ Screenshot character model credit: [真冬 Mafuyu / Original 3D Model](https://b
 5. Confirm the active slot in **Material Slots**. The selected row and cyan viewport overlay show the active material slot.
 6. Click **Start Paint**. Paint mode isolates the active slot by default; turn off **Isolate Slot** if you need the full mesh visible.
 7. Paint white with `LMB`; paint black/shadow with `Shift + LMB`.
-8. Optionally switch **Material Preview** to **Live SDF** for a fast GPU JFA preview while painting. The preview resolution is selected from `128 px`, `256 px`, `512 px`, or `1024 px` in **Advanced**.
-9. Use the timeline to seek light angle, add masks, choose a paint target range, and generate the final SDF threshold map.
-10. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
+8. Use the **2D Canvas** when you need texture-space strokes, UV guides, onion skin, checker/grid guides, zoom, rotate/flip, or pen input that must line up with the canvas brush circle.
+9. Hold a stroke still for **Quick Stroke** when you want to place and adjust a straight stroke before release. The preview is intentionally lightweight while moving, and the final stroke is committed at the release position.
+10. Optionally switch **Material Preview** to **Live SDF** for a fast GPU JFA preview while painting. The preview resolution is selected from `128 px`, `256 px`, `512 px`, or `1024 px` in **Advanced**.
+11. Use the timeline to seek light angle, add masks, choose a paint target range, and generate the final SDF threshold map.
+12. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
 
 See [Authoring Workflow](./docs/workflow.md), [Material Setup](./docs/material-setup.md), and [Troubleshooting](./docs/troubleshooting.md) for the full workflow.
 
@@ -91,6 +95,7 @@ The v1.0.1 Win64 binary release is built with Epic Games Launcher Unreal Engine 
 - [Release Notes](./docs/release-notes/v1.0.1.md)
 - [Roadmap](./docs/roadmap.md)
 - [Development Notes](./docs/development.md)
+- [日本語 README](./README_JP.md)
 
 ## Contributing
 
@@ -102,4 +107,4 @@ Contributions are welcome. Good first areas are documentation, UE version verifi
 - Felzenszwalb & Huttenlocher - *Distance Transforms of Sampled Functions* (2012).
 - Jump Flooding Algorithm (JFA) - GPU distance field generation reference.
 - [UE5 SDF Face Shadow Mappingでアニメ顔用の影を作ろう](https://unrealengine.hatenablog.com/entry/2024/02/28/222220).
-- [SDF TextureとLiltoonでセルルックの影を再現しよう！](https://note.com/ca__mocha/n/n9289fbbc4c8b).
+- [SDF TextureとLiltoonでセルルックの影を再現しよう](https://note.com/ca__mocha/n/n9289fbbc4c8b).

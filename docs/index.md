@@ -23,7 +23,7 @@ QuickSDFTool is an Unreal Engine 5.7.x editor-mode plugin for painting toon-shad
 <div class="doc-grid">
   <a class="doc-card" href="{{ '/workflow/' | relative_url }}">
     <strong>Authoring Workflow</strong>
-    <span>Learn Select, Paint, 2D Canvas, pen-display input, Material Slots, timeline, Live SDF preview, symmetry, Guard, import/export, and SDF generation.</span>
+    <span>Learn Select, Paint, 2D Canvas, pen-display input, Quick Stroke, Material Slots, timeline, Live SDF preview, symmetry, Guard, import/export, and SDF generation.</span>
   </a>
   <a class="doc-card" href="{{ '/material-setup/' | relative_url }}">
     <strong>Material Setup</strong>
@@ -31,7 +31,7 @@ QuickSDFTool is an Unreal Engine 5.7.x editor-mode plugin for painting toon-shad
   </a>
   <a class="doc-card" href="{{ '/troubleshooting/' | relative_url }}">
     <strong>Troubleshooting</strong>
-    <span>Fix common install, build, material, and brush behavior issues.</span>
+    <span>Fix common install, build, material, pen, 2D Canvas, and brush behavior issues.</span>
   </a>
   <a class="doc-card" href="{{ '/release-notes/' | relative_url }}">
     <strong>Release Notes</strong>
@@ -43,13 +43,13 @@ QuickSDFTool is an Unreal Engine 5.7.x editor-mode plugin for painting toon-shad
   </a>
   <a class="doc-card" href="{{ '/development/' | relative_url }}">
     <strong>Development Notes</strong>
-    <span>Inspect architecture, verification, and repository maintenance notes.</span>
+    <span>Inspect architecture, verification, generated diagrams, screenshot requirements, and repository maintenance notes.</span>
   </a>
 </div>
 
 ## Workflow Screenshots
 
-The current documentation captures show the main v1.0 workflow from slot selection to SDF output.
+The current documentation captures show the main v1.0 workflow from slot selection to SDF output. Concept diagrams explain the authoring pipeline, pen input, pressure curve, symmetry modes, and Monotonic Guard flow; real UE screenshots are still required for UI states that prove editor behavior.
 
 <div class="screenshot-grid">
   <figure class="screenshot-card">
@@ -93,10 +93,12 @@ The current documentation captures show the main v1.0 workflow from slot selecti
 5. Confirm the active slot in **Material Slots**. The selected row and cyan viewport overlay show the active material slot; row clicks can correct the viewport pick.
 6. Click **Start Paint**. Paint mode isolates the active slot by default; turn off **Isolate Slot** if you need full-mesh visibility.
 7. Paint white with `LMB`; paint black/shadow with `Shift + LMB`.
-8. Use **Live SDF** material preview when you want a fast GPU JFA approximation before generating the final texture.
-9. Use the timeline to seek light angle, add or duplicate keyframes, and choose a paint target mode.
-10. Click **Generate Selected SDF** or **Generate SDF Threshold Map**.
-11. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
+8. Use the **2D Canvas** for texture-space strokes, Texture Set / Angle selection, brush size, Fit / 100% zoom, rotate/flip, checker/grid, UV overlay, onion skin, and tablet-aligned pen input.
+9. Hold a stroke still to enter **Quick Stroke**. Move it to adjust the preview, then release to commit the final position.
+10. Use **Live SDF** material preview when you want a fast GPU JFA approximation before generating the final texture.
+11. Use the timeline to seek light angle, add or duplicate keyframes, and choose a paint target mode.
+12. Click **Generate Selected SDF** or **Generate SDF Threshold Map**.
+13. Use the generated texture from `/Game/QuickSDF_GENERATED/` in your toon material.
 
 ## Compatibility
 

@@ -1,6 +1,6 @@
 ---
 title: Development Notes
-description: QuickSDFTool architecture, development verification, and repository maintenance notes.
+description: QuickSDFTool architecture, development verification, documentation assets, and repository maintenance notes.
 permalink: /development/
 lang: en
 alternate_url: /ja/development/
@@ -40,6 +40,7 @@ QuickSDFTool/
 - `UQuickSDFAsset` uses the active `FQuickSDFTextureSetData` as the primary source for editable masks, resolution, UV channel, and final SDF texture data. Legacy top-level fields are migrated on load on a best-effort basis.
 - `UQuickSDFPaintTool` is the Interactive Tools Framework facade for lifecycle, input routing, and UI commands. Paint state, undo changes, mask utilities, SDF helpers, asset selection, and render target support live in focused private helpers.
 - Windows pen-display/tablet input is handled inside the editor module without engine changes. `QuickSDFEditorMode` captures pen pointer position, contact, and pressure, while `UQuickSDFPaintTool` and `SQuickSDFPaintCanvas` convert the current absolute pointer position into fresh 3D viewport rays or 2D Canvas coordinates.
+- Quick Stroke is a shared paint workflow rather than a canvas-only path. Hold detection uses Move Tolerance and Hold Time; preview updates are kept lightweight during movement, and release commits the final stroke endpoint.
 - Live SDF preview is isolated in `QuickSDFPaintToolLivePreview.cpp` and renders through `QuickSDFFastPreviewRendering`. It owns only transient render targets and never replaces the saved final SDF texture.
 - Timeline keyframe rendering is split from the main timeline widget. Timeline range/key status calculations live in `QuickSDFTimelineStatus` so range highlighting, badges, and tooltips can be tested without Slate.
 - Mask import validation is handled by a Slate-independent import model so the UI and import rules can evolve independently.
@@ -75,16 +76,31 @@ Automation RunTests QuickSDFTool.MonotonicGuard
 
 The v1.0 release candidate should be validated against `sdfbuildEditor Win64 Development`, focused timeline automation coverage, `QuickSDFTool.Core`, and the Monotonic Guard tests.
 
-Manual input verification should include mouse painting plus Windows pen-display/tablet hover, pressure, stroke start/drag/release, 2D Canvas window move/resize behavior, and `Ctrl + F` brush resizing.
+Manual input verification should include mouse painting plus Windows pen-display/tablet hover, pressure, stroke start/drag/release, 2D Canvas window move/resize behavior, Quick Stroke in 2D Canvas and 3D Paint, and `Ctrl + F` brush resizing.
 
-## Documentation Screenshot Backlog
+## Documentation Images
 
-These screenshots should be captured from a real UE editor session rather than generated diagrams:
+Generated concept diagrams live in `docs/images/` and may be updated without a UE editor session:
 
-- `quick-sdf-2d-canvas-pen-paint.png`: 2D Canvas with the brush circle aligned to the painted stroke.
+- `quick-sdf-authoring-pipeline.png`: Select -> Paint -> Timeline -> SDF generation -> Toon material.
+- `quick-sdf-pen-input-flow.png`: Windows pointer -> 3D viewport ray / 2D Canvas coordinate -> pressure/radius -> stroke / Quick Stroke.
+- `quick-sdf-pressure-curve.png`: Pen Pressure Curve response for brush radius.
+- `quick-sdf-symmetry-flow.png`: Off / Texture Flip / UV Island Channel Flip / Auto mode differences.
+- `quick-sdf-guard-flow.png`: Monotonic Guard transition detection and clipping.
+
+Real UI screenshots must come from an actual UE editor session, because generated diagrams cannot prove widget state or pen alignment:
+
+- `quick-sdf-select-active-slot.png`: Select mode active material slot overlay.
+- `quick-sdf-paint-screen-mode.png`: Paint mode Screen Projection with green brush circle, UV preview, and active slot context.
+- `quick-sdf-timeline.png`: Timeline thumbnails / seek lane / keyframe lane / status badges.
+- `quick-sdf-sdf-preview.png`: Generated SDF preview.
+- `quick-sdf-2d-canvas-pen-paint.gif`: Existing 2D Canvas pen-painting animation.
+- `quick-sdf-2d-canvas-pen-paint.png`: Static 2D Canvas pen capture with brush circle aligned to the stroke.
+- `quick-sdf-pen-screen-hover.png`: 3D Screen mode pen hover with the green brush circle.
+- `quick-sdf-quick-stroke-2d.png`: Quick Stroke following after hold in the 2D Canvas.
+- `quick-sdf-quick-stroke-3d.png`: Quick Stroke following lightly in 3D Paint.
 - `quick-sdf-advanced-pen-pressure.png`: Advanced settings showing **Pen Pressure** and **Pen Pressure Curve**.
-- `quick-sdf-pen-screen-hover.png`: Screen mode 3D Paint brush preview while a pen is hovering.
-- `quick-sdf-ctrl-f-pen-resize.png`: Optional capture of `Ctrl + F` brush resizing with pen input.
+- `quick-sdf-ctrl-f-pen-resize.png`: Optional `Ctrl + F` pen brush resize capture.
 
 ## Repository Setup Checklist
 

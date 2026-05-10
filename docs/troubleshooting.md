@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Common QuickSDFTool installation, build, material, and brush behavior issues.
+description: Common QuickSDFTool installation, build, material, pen, 2D Canvas, Quick Stroke, and brush behavior issues.
 permalink: /troubleshooting/
 ---
 
@@ -29,11 +29,35 @@ Brush size can appear inconsistent when UV density varies strongly across the me
 
 ## Pen Display Or Tablet Input Feels Misaligned
 
-On Windows, QuickSDF reads pen pointer coordinates directly for 3D Paint and the 2D Canvas. Hover, stroke start, drag, release, pressure-sensitive radius, and `Ctrl + F` brush resizing should continue to track correctly after moving or resizing the editor window.
+On Windows, QuickSDF reads pen pointer coordinates directly for 3D Paint and the 2D Canvas. Hover, stroke start, drag, release, pressure-sensitive radius, Quick Stroke, and `Ctrl + F` brush resizing should continue to track correctly after moving or resizing the editor or canvas window.
 
 - Confirm **Advanced > Pen Pressure** is enabled if you expect pressure-sensitive radius. Disable it if you need a fixed-radius mouse-like stroke.
 - Adjust **Advanced > Pen Pressure Curve** if the radius response feels too soft or too aggressive. `1.0` is linear, higher values keep light pressure thinner for longer, and lower values reach larger radii sooner.
-- If the brush preview and painted position diverge, move or resize the 2D Canvas once more and check whether both the preview circle and stroke position now follow the pen. Include the tablet model, driver version, monitor DPI scale, and whether the issue happens in Screen, Surface, or 2D Canvas mode when reporting it.
+- In the 2D Canvas, check **Fit** and **100%** views. The visible brush circle should stay aligned with the painted stroke in both.
+- In 3D Paint, check both Screen and Surface projection. Mouse behavior and pen behavior should be compared on the same mesh, material slot, and timeline angle.
+- When reporting a mismatch, include tablet/display model, driver version, Windows version, monitor layout, DPI scale per monitor, UE version, QuickSDFTool commit or release tag, and whether the issue happens in Screen, Surface, 2D Canvas, hover, drag, release, pressure, Quick Stroke, or `Ctrl + F` resize.
+
+## The 3D Brush Preview Circle Disappears After Using The 2D Canvas
+
+The green 3D brush circle is shown only while Paint mode has a valid viewport hit on the active paint target.
+
+- Move the pointer back over the level viewport and confirm **Paint** mode is still active.
+- Confirm the target mesh and active material slot are still selected. Select mode should show the cyan active-slot overlay; Paint mode should show the active slot context.
+- Confirm the pointer is over the active slot surface. Non-target slots are filtered so they do not steal hits from the active slot.
+- Close any open menu or modal window that might still be capturing pointer input from the 2D Canvas.
+- If the issue happens only with a pen, lift the pen out of contact, hover over the 3D viewport again, and compare with mouse hover in the same spot.
+- If the green circle does not return, capture whether `F` focus still works, whether strokes paint despite the missing preview, and whether changing angle or re-entering Paint mode restores it.
+
+## Quick Stroke Feels Heavy Or Does Not Follow The Pen
+
+Quick Stroke starts after a hold and commits on release. While moving the preview, QuickSDF keeps preview updates lightweight so high-frequency tablet input does not do full stroke work every frame.
+
+- Confirm **Quick Stroke** is enabled from the quick toggle menu or **Advanced** settings.
+- Hold still long enough for **Quick Stroke Hold Time** and avoid moving beyond **Quick Stroke Move Tolerance** before activation.
+- After activation, move the pen or mouse and release at the intended final endpoint. The committed stroke should use the release position even if intermediate preview updates were throttled.
+- Compare mouse and pen on the same target. If mouse is light but pen is heavy, include tablet driver details and Windows Ink settings in the report.
+- Temporarily lower **Live SDF Preview Resolution** or switch away from **Live SDF** to separate preview cost from Quick Stroke cost.
+- When reporting, include whether the problem happens in 2D Canvas, 3D Screen mode, 3D Surface mode, or all modes, plus mesh type, texture resolution, paint target mode, Live SDF setting, and whether Monotonic Guard or Symmetry is enabled.
 
 ## GPU JFA Is Only Used For Live SDF Preview
 

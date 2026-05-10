@@ -1,6 +1,6 @@
 ---
 title: Authoring Workflow
-description: Detailed QuickSDFTool artist workflow, controls, material slots, timeline, symmetry, and SDF generation notes.
+description: Detailed QuickSDFTool artist workflow, controls, material slots, timeline, 2D Canvas, Quick Stroke, symmetry, and SDF generation notes.
 permalink: /workflow/
 lang: en
 alternate_url: /ja/workflow/
@@ -27,14 +27,14 @@ QuickSDFTool is designed around one material slot at a time: select the mesh and
     <img src="{{ '/images/quick-sdf-paint-screen-mode.png' | relative_url }}" alt="Paint mode with Screen projection brush preview">
     <figcaption>
       <strong>Paint in Screen mode</strong>
-      Paint mode shows Screen projection, the brush preview, UV texture preview, and active slot context.
+      Paint mode shows Screen projection, the green brush preview, UV texture preview, and active slot context.
     </figcaption>
   </figure>
   <figure class="screenshot-card compact">
     <img src="{{ '/images/quick-sdf-timeline.png' | relative_url }}" alt="Quick SDF timeline controls and keyframes">
     <figcaption>
       <strong>Timeline</strong>
-      Timeline thumbnails, angle labels, and keyframe controls stay visible while seeking or dragging keys.
+      Timeline thumbnails, seek lane, keyframe lane, and status badges stay visible while seeking or dragging keys.
     </figcaption>
   </figure>
   <figure class="screenshot-card compact">
@@ -54,6 +54,7 @@ QuickSDFTool is designed around one material slot at a time: select the mesh and
 | --- | --- |
 | `LMB Drag` | Paint light/white |
 | `Shift + LMB Drag` | Paint shadow/black |
+| Hold a stroke still | Enter Quick Stroke after **Quick Stroke Hold Time** |
 | `Viewport Mesh / Material Click` in Select mode | Select the target mesh component and clicked material slot |
 | `Start Paint` | Enter Paint mode using the selected target mesh and material slot |
 | `F` in Paint mode | Focus the viewport on the current brush position; falls back to UE selection focus when no brush hit is active |
@@ -92,11 +93,33 @@ The `Quick SDF > Material Slots` section is optimized for artists editing one ma
 - Mesh painting supports Static Mesh and Skeletal Mesh components, including Skeletal Mesh assets without a PhysicsAsset.
 - Screen projection is the default paint mode. It is useful for direct face and hair shadow authoring from the current camera.
 - Surface and UV-oriented painting remain available for mesh-space and texture-space workflows.
-- The 2D Canvas supports texture-space control, optional UV guides, onion skinning, tablet painting, and pen-based brush resize.
-- On Windows pen displays and tablets, QuickSDF reads pen pointer coordinates for hover, stroke start, drag, release, and 2D Canvas input. This keeps the brush preview and stroke position aligned after moving or resizing the editor window.
 - Brush input includes lazy-radius stroke stabilization, fine spacing, antialiased brush masks, and pressure-driven brush radius for tablet workflows.
 - Pen pressure is enabled by default and affects brush radius only, not mask opacity. Use **Advanced > Pen Pressure** to disable it and **Advanced > Pen Pressure Curve** to tune the response. `1.0` is linear, higher values keep light pressure thinner for longer, and lower values reach larger radii sooner.
 - `F` focuses the active viewport on the current brush hit. If the brush is not over a valid hit, the key falls back to UE's standard selection focus.
+
+### 2D Canvas
+
+Use the 2D Canvas when the stroke must be placed directly in texture space or when UV guides are more important than the 3D surface view.
+
+- Open the canvas from Paint mode after selecting a valid mesh, material slot, texture set, and timeline angle.
+- The canvas follows the active **Texture Set** and **Angle**. If the active slot or timeline key changes, confirm the selector before painting.
+- Brush size is shared with the paint tool. `Ctrl + F` brush resize works over the 2D Canvas as well as the 3D viewport.
+- **Fit** shows the full texture in the canvas; **100%** shows one texture pixel per screen pixel where possible.
+- Rotate and flip controls change the canvas view orientation only. They do not rotate or flip saved mask data.
+- Checker and grid overlays help judge transparent/background areas and texel spacing.
+- UV overlay shows the active UV channel; onion skin helps compare neighboring masks while editing a single angle.
+- Windows pen input is converted from the current absolute pointer position into canvas coordinates for hover, stroke start, drag, release, pressure, and brush resize. The visible brush circle and painted stroke should remain aligned after moving or resizing the canvas window.
+
+### Quick Stroke
+
+Quick Stroke is a hold-to-place stroke workflow for straight or carefully positioned strokes.
+
+- Keep **Quick Stroke** enabled from the quick toggle menu or **Advanced** settings.
+- Press and hold without moving farther than **Quick Stroke Move Tolerance**.
+- After **Quick Stroke Hold Time**, the current stroke becomes a Quick Stroke preview.
+- Move the mouse or pen to adjust the preview endpoint. The preview update is intentionally lightweight so high-frequency pen movement does not force full stroke work every frame.
+- Release to commit the final stroke at the latest pointer position. The committed stroke uses the final endpoint, not an earlier preview sample.
+- Quick Stroke works in 3D Paint and the 2D Canvas. It also respects `Current / All / Before / After`, active material slot filtering, symmetry, and Monotonic Guard clipping.
 
 <div class="screenshot-grid">
   <figure class="screenshot-card">
@@ -146,6 +169,8 @@ QuickSDFTool supports four SDF generation modes:
 - `Texture Flip`: paint 0-90 degrees and mirror the texture for the 90-180 side.
 - `UV Island Channel Flip`: paint 0-90 degrees and generate the 90-180 side per UV island through island-local mirrored sampling.
 
+![QuickSDF symmetry mode flow]({{ '/images/quick-sdf-symmetry-flow.png' | relative_url }})
+
 `UV Island Channel Flip` is intended for assets where left and right UV islands are separate but still mirror each other. It tolerates position, scale, and light shape differences through normalized island-local mapping, but it does not perform nonlinear per-island warping. Ambiguous, unpaired, overlapping, or out-of-range islands fall back to copying the source-side values and produce warnings.
 
 The generated texture remains shader-compatible with the regular 0-180 layout. Internally, the legacy combined field is processed as `R/G/B/A`, then final export uses the R/A/B/G swizzle (`R <- R`, `G <- A`, `B <- B`, `A <- G`) so existing shader expectations and the historical `B` channel behavior are preserved.
@@ -153,6 +178,8 @@ The generated texture remains shader-compatible with the regular 0-180 layout. I
 ## Monotonic Guard
 
 `Monotonic Guard` is an optional paint-time safety check for SDF threshold masks. It treats `R >= 127` as white and lower values as black, then prevents repeated transitions such as `black -> white -> black` or `white -> black -> white` across the processable angle sequence.
+
+![QuickSDF Monotonic Guard flow]({{ '/images/quick-sdf-guard-flow.png' | relative_url }})
 
 - The quick toggle is labeled `Guard`; the shortcut is `Alt + 8`.
 - `Clip Direction` defaults to `Auto`: `0-90` degrees uses `White Expands`, and `90-180` degrees uses `White Shrinks`.
@@ -170,3 +197,18 @@ The generated texture remains shader-compatible with the regular 0-180 layout. I
 - `Generated SDF` displays the saved final texture. `Live SDF` displays the transient GPU JFA approximation and is not saved as the final output.
 - Generated maps are saved under `/Game/QuickSDF_GENERATED/` by default.
 - Use [Material Setup]({{ '/material-setup/' | relative_url }}) for shader integration details.
+
+## Screenshot Backlog
+
+These images must be captured from a real UE editor session, not generated diagrams:
+
+- Select mode active material slot overlay.
+- Paint mode Screen Projection with the green brush circle, UV preview, and active slot context.
+- Timeline thumbnails / seek lane / keyframe lane / status badges.
+- Generated SDF preview.
+- 2D Canvas while drawing with a pen, with the brush circle aligned to the stroke position. Keep the existing GIF and add a static PNG.
+- 3D Screen mode while a pen is hovering, showing the green brush circle.
+- Quick Stroke following after hold in the 2D Canvas.
+- Quick Stroke following lightly in 3D Paint.
+- Advanced settings showing **Pen Pressure** and **Pen Pressure Curve**.
+- Optional: `Ctrl + F` pen brush resize in progress, useful for explaining the input fix.
