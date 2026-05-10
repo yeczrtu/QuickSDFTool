@@ -241,6 +241,7 @@ public:
 	void FillMaskColor(bool bFillAllAngles, const FLinearColor& FillColor);
 	void MarkMasksChanged();
 	void RequestBrushResizeMode();
+	bool RequestBrushResizeMode(const FVector2D& AbsoluteScreenPosition, bool bFromExternalPen);
 	bool IsBrushResizeModeActive() const { return bAdjustingBrushRadius; }
 	void ConfirmBrushResizeMode();
 	void CancelBrushResizeMode();
@@ -251,6 +252,7 @@ public:
 	void EndTextureCanvasStroke();
 	void UpdateTextureCanvasHover(const FVector2f& UV, const FVector2D& ScreenPosition);
 	void SetTextureCanvasCursorActive(bool bActive);
+	bool IsTextureCanvasQuickStrokeActive() const;
 	double GetTextureCanvasBrushRadiusPixels() const;
 	double GetCurrentTextureCanvasBrushRadiusPixels() const;
 	void SetTextureCanvasBrushRadiusPixels(double NewRadiusPixels);
@@ -380,6 +382,7 @@ protected:
 	bool IsPaintingShadow() const;
 	TArray<int32> GetPaintTargetAngleIndices() const;
 	void BeginBrushResizeMode();
+	bool BeginBrushResizeMode(const FVector2D& AbsoluteScreenPosition, const FVector2D& CanvasPosition, bool bFromExternalPen);
 	void UpdateBrushResizeFromCursor();
 	void EndBrushResizeMode();
 	bool RestoreRenderTargetPixels(class UTextureRenderTarget2D* RenderTarget, const TArray<FColor>& Pixels) const;
@@ -504,6 +507,7 @@ protected:
 	float BrushResizeStartRadius = 0.0f;
 	float BrushResizeSensitivity = 0.025f;
 	bool bBrushResizeHadVisibleStamp = false;
+	bool bBrushResizeUsesExternalPointer = false;
 	bool bStrokeTransactionActive = false;
 	bool bStampingAllPaintTargets = false;
 	bool bUseImportedMasksForQuickCreate = false;

@@ -1337,15 +1337,23 @@ void UQuickSDFPaintTool::BeginBrushResizeMode()
 	FVector2D CurrentAbsolutePosition;
 	FVector2D CurrentCanvasPosition;
 	if (!GetHoveredLevelViewportCursorPosition(CurrentAbsolutePosition, CurrentCanvasPosition)) return;
+	BeginBrushResizeMode(CurrentAbsolutePosition, CurrentCanvasPosition, false);
+}
+
+bool UQuickSDFPaintTool::BeginBrushResizeMode(const FVector2D& AbsoluteScreenPosition, const FVector2D& CanvasPosition, bool bFromExternalPen)
+{
+	if (!BrushProperties) return false;
+	if (bAdjustingBrushRadius) return false;
 	bAdjustingBrushRadius = true;
-	LastInputScreenPosition = CurrentCanvasPosition;
-	BrushResizeStartScreenPosition = CurrentCanvasPosition;
+	LastInputScreenPosition = CanvasPosition;
+	BrushResizeStartScreenPosition = CanvasPosition;
 	BrushResizeStartStamp = LastBrushStamp;
 	const bool bResizeScreenProjectionBrush = Properties && GetMeshPaintMode() == EQuickSDFMeshPaintMode::ScreenProjection;
 	BrushResizeStartRadius = bResizeScreenProjectionBrush
 		? GetScreenProjectionBrushRadiusPixels()
 		: BrushProperties->BrushRadius;
-	BrushResizeStartAbsolutePosition = CurrentAbsolutePosition;
+	BrushResizeStartAbsolutePosition = AbsoluteScreenPosition;
+	bBrushResizeUsesExternalPointer = bFromExternalPen;
 	bBrushResizeHadVisibleStamp = BrushStampIndicator && BrushStampIndicator->bVisible;
 	if (BrushStampIndicator && bBrushResizeHadVisibleStamp)
 	{
@@ -1355,12 +1363,33 @@ void UQuickSDFPaintTool::BeginBrushResizeMode()
 	{
 		GEditor->RedrawAllViewports(false);
 	}
+	return true;
+}
+
+bool UQuickSDFPaintTool::RequestBrushResizeMode(const FVector2D& AbsoluteScreenPosition, bool bFromExternalPen)
+{
+	FVector2D CanvasPosition;
+	if (!GetLevelViewportPointerPosition(AbsoluteScreenPosition, CanvasPosition, nullptr, nullptr))
+	{
+		return false;
+	}
+
+	return BeginBrushResizeMode(AbsoluteScreenPosition, CanvasPosition, bFromExternalPen);
 }
 
 void UQuickSDFPaintTool::UpdateBrushResizeFromCursor()
 {
 	if (!bAdjustingBrushRadius || !BrushProperties) return;
-	const FVector2D CurrentAbsolutePosition = FSlateApplication::Get().GetCursorPos();
+	FVector2D CurrentAbsolutePosition = FSlateApplication::Get().GetCursorPos();
+	if (bBrushResizeUsesExternalPointer)
+	{
+		if (!bHasExternalViewportPointerPosition ||
+			GetToolCurrentTime() - LastExternalViewportPointerTime > QuickSDFExternalPointerFreshSeconds)
+		{
+			return;
+		}
+		CurrentAbsolutePosition = ExternalViewportPointerAbsolutePosition;
+	}
 	const float ResizeDPIScale = FMath::Max(FPlatformApplicationMisc::GetDPIScaleFactorAtPoint(
 		BrushResizeStartAbsolutePosition.X,
 		BrushResizeStartAbsolutePosition.Y), 1.0f);
@@ -1419,10 +1448,14 @@ void UQuickSDFPaintTool::EndBrushResizeMode()
 {
 	if (!bAdjustingBrushRadius) return;
 	UpdateBrushResizeFromCursor();
-	FSlateApplication::Get().SetCursorPos(BrushResizeStartAbsolutePosition);
+	if (!bBrushResizeUsesExternalPointer)
+	{
+		FSlateApplication::Get().SetCursorPos(BrushResizeStartAbsolutePosition);
+	}
 	LastInputScreenPosition = BrushResizeStartScreenPosition;
 	bAdjustingBrushRadius = false;
 	bBrushResizeHadVisibleStamp = false;
+	bBrushResizeUsesExternalPointer = false;
 }
 
 void UQuickSDFPaintTool::ConfirmBrushResizeMode()
@@ -1460,9 +1493,13 @@ void UQuickSDFPaintTool::CancelBrushResizeMode()
 	}
 
 	LastInputScreenPosition = BrushResizeStartScreenPosition;
-	FSlateApplication::Get().SetCursorPos(BrushResizeStartAbsolutePosition);
+	if (!bBrushResizeUsesExternalPointer)
+	{
+		FSlateApplication::Get().SetCursorPos(BrushResizeStartAbsolutePosition);
+	}
 	bAdjustingBrushRadius = false;
 	bBrushResizeHadVisibleStamp = false;
+	bBrushResizeUsesExternalPointer = false;
 	if (GEditor)
 	{
 		GEditor->RedrawAllViewports(false);
@@ -2252,6 +2289,13 @@ void UQuickSDFPaintTool::SetTextureCanvasCursorActive(bool bActive)
 	{
 		BrushStampIndicator->bVisible = false;
 	}
+}
+
+bool UQuickSDFPaintTool::IsTextureCanvasQuickStrokeActive() const
+{
+	return bTextureCanvasStrokeActive &&
+		ActiveStrokeInputMode == EQuickSDFStrokeInputMode::TextureCanvas &&
+		bQuickLineActive;
 }
 
 double UQuickSDFPaintTool::GetTextureCanvasBrushRadiusPixels() const

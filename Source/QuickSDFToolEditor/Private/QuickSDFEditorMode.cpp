@@ -140,8 +140,18 @@ public:
 			return false;
 		}
 
+		FVector2D BrushResizeAbsolutePosition = SlateApp.GetCursorPos();
+		bool bBrushResizeFromExternalPen = false;
+#if PLATFORM_WINDOWS
+		bBrushResizeFromExternalPen = TryGetFreshPenPointerAbsolutePosition(BrushResizeAbsolutePosition);
+#endif
+		if (QuickSDFPaintCanvas::RequestBrushResizeFromHoveredCanvas(BrushResizeAbsolutePosition, bBrushResizeFromExternalPen))
+		{
+			return true;
+		}
+
 		UQuickSDFEditorMode* ModePtr = Mode.Get();
-		return ModePtr ? ModePtr->RequestBrushResizeFromHoveredViewport() : false;
+		return ModePtr ? ModePtr->RequestBrushResizeFromHoveredViewport(BrushResizeAbsolutePosition, bBrushResizeFromExternalPen) : false;
 	}
 
 	virtual bool HandleMouseButtonDownEvent(FSlateApplication& SlateApp, const FPointerEvent& MouseEvent) override
@@ -197,6 +207,17 @@ private:
 	}
 
 #if PLATFORM_WINDOWS
+	bool TryGetFreshPenPointerAbsolutePosition(FVector2D& OutAbsolutePosition) const
+	{
+		if (FPlatformTime::Seconds() - LastPenPointerUpdateTime > QuickSDFPenPointerApplyFreshSeconds)
+		{
+			return false;
+		}
+
+		OutAbsolutePosition = LastPenPointerAbsolutePosition;
+		return true;
+	}
+
 	void RegisterWindowsMessageHandler()
 	{
 		if (bWindowsMessageHandlerRegistered || !FSlateApplication::IsInitialized())
@@ -353,6 +374,11 @@ void UQuickSDFEditorMode::DetachTimelineFromViewport()
 
 bool UQuickSDFEditorMode::RequestBrushResizeFromHoveredViewport()
 {
+	return RequestBrushResizeFromHoveredViewport(FSlateApplication::Get().GetCursorPos(), false);
+}
+
+bool UQuickSDFEditorMode::RequestBrushResizeFromHoveredViewport(const FVector2D& AbsoluteScreenPosition, bool bFromExternalPen)
+{
 	TSharedPtr<SLevelViewport> AttachedViewport = TimelineViewport.Pin();
 	if (!AttachedViewport.IsValid())
 	{
@@ -365,8 +391,7 @@ bool UQuickSDFEditorMode::RequestBrushResizeFromHoveredViewport()
 	{
 		if (TSharedPtr<SViewport> ViewportWidget = AttachedViewport->GetViewportWidget().Pin())
 		{
-			const FVector2D CursorPosition = FSlateApplication::Get().GetCursorPos();
-			bCursorOverViewport = ViewportWidget->GetTickSpaceGeometry().IsUnderLocation(CursorPosition);
+			bCursorOverViewport = ViewportWidget->GetTickSpaceGeometry().IsUnderLocation(AbsoluteScreenPosition);
 		}
 	}
 
@@ -378,8 +403,7 @@ bool UQuickSDFEditorMode::RequestBrushResizeFromHoveredViewport()
 	UInteractiveToolManager* ToolManager = GetToolManager();
 	if (UQuickSDFPaintTool* PaintTool = ToolManager ? Cast<UQuickSDFPaintTool>(ToolManager->GetActiveTool(EToolSide::Left)) : nullptr)
 	{
-		PaintTool->RequestBrushResizeMode();
-		return true;
+		return PaintTool->RequestBrushResizeMode(AbsoluteScreenPosition, bFromExternalPen);
 	}
 
 	return false;

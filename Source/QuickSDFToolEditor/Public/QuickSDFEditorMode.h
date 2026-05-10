@@ -28,6 +28,7 @@ public:
 	void SetTimelineSeekAngle(float AzimuthAngle);
 	class ADirectionalLight* GetPreviewLight() const { return PreviewLight; }
 	bool RequestBrushResizeFromHoveredViewport();
+	bool RequestBrushResizeFromHoveredViewport(const FVector2D& AbsoluteScreenPosition, bool bFromExternalPen);
 	void StartQuickSDFPaintTool();
 	void StartQuickSDFSelectTool();
 	
