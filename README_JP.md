@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/yeczrtu/QuickSDFTool/releases/tag/v1.0.1"><img alt="Release v1.0.1" src="https://img.shields.io/badge/release-v1.0.1-2f80ed"></a>
+  <a href="https://github.com/yeczrtu/QuickSDFTool/releases/tag/v1.1.0"><img alt="Release v1.1.0" src="https://img.shields.io/badge/release-v1.1.0-2f80ed"></a>
   <img alt="Unreal Engine 5.7.4" src="https://img.shields.io/badge/Unreal%20Engine-5.7.4-313f9f">
   <img alt="Platform Win64" src="https://img.shields.io/badge/platform-Win64-4b5563">
   <a href="https://yeczrtu.github.io/QuickSDFTool/"><img alt="Docs GitHub Pages" src="https://img.shields.io/badge/docs-GitHub%20Pages-0f766e"></a>
@@ -15,7 +15,7 @@
 </p>
 
 > [!NOTE]
-> **ステータス: UE 5.7.x 向け安定版 1.0。** QuickSDFTool は Unreal Engine 5.7.x での制作検証に使える正式版です。UE 5.8+ は対応予定ですが、このバージョンではリリース検証対象外です。
+> **ステータス: UE 5.7.x 向け安定版 1.1。** QuickSDFTool は Unreal Engine 5.7.x での制作検証に使える正式版です。UE 5.8+ は対応予定ですが、このバージョンではリリース検証対象外です。
 
 ## デモ
 
@@ -63,7 +63,7 @@ https://github.com/user-attachments/assets/7eec2890-be31-4cbc-9662-756b6e84c620
 
 ## インストール
 
-QuickSDFTool v1.0 には Unreal Engine 5.7.x と C++ Unreal project が必要です。
+QuickSDFTool v1.1 には Unreal Engine 5.7.x と C++ Unreal project が必要です。
 
 ```bash
 git clone https://github.com/yeczrtu/QuickSDFTool.git
@@ -88,11 +88,11 @@ YourProject/
 | Unreal Engine version | ステータス |
 | --- | --- |
 | 5.7.4 | 必須リリース検証ターゲット |
-| 5.7.x | v1.0 のサポート対象 |
-| 5.8+ | 対応予定。ただし v1.0 リリース検証は未実施 |
+| 5.7.x | v1.1 のサポート対象 |
+| 5.8+ | 対応予定。ただし v1.1 リリース検証は未実施 |
 | 5.6 以前 | 非対応 |
 
-v1.0.1 の Win64 binary release は Epic Games Launcher 版 Unreal Engine 5.7.4 (`++UE5+Release-5.7`) でビルドされています。Launcher 版 UE 5.7.x project 向けに利用できます。source-built、licensee、custom、または異なる engine build で使う場合は、source から再ビルドしてください。
+v1.1.0 の source release は Unreal Engine 5.7.4 を必須検証 version としています。source-built、licensee、custom、または異なる engine build で使う場合も含め、使用中の engine build に合わせて source から再ビルドしてください。
 
 ## ドキュメント
 
@@ -100,7 +100,7 @@ v1.0.1 の Win64 binary release は Epic Games Launcher 版 Unreal Engine 5.7.4 
 - [Authoring Workflow](./docs/ja/workflow.md)
 - [Material Setup](./docs/ja/material-setup.md)
 - [Troubleshooting](./docs/ja/troubleshooting.md)
-- [Release Notes](./docs/release-notes/v1.0.1.md)
+- [Release Notes](./docs/release-notes/v1.1.0.md)
 - [Roadmap](./docs/ja/roadmap.md)
 - [Development Notes](./docs/ja/development.md)
 - [English README](./README.md)

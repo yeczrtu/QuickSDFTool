@@ -9,6 +9,10 @@ permalink: /release-notes/
 Use the release notes to confirm tested Unreal Engine versions, upgrade notes, known limitations, and recommended release assets.
 
 <div class="release-grid">
+  <a class="release-card" href="{{ '/release-notes/v1.1.0/' | relative_url }}">
+    <strong>v1.1.0</strong>
+    <span>Feature release with 2D Canvas, Live SDF preview, tablet/pen input, Quick Stroke, timeline, symmetry, and documentation updates.</span>
+  </a>
   <a class="release-card" href="{{ '/release-notes/v1.0.1/' | relative_url }}">
     <strong>v1.0.1</strong>
     <span>Patch release with Screen mode brush alignment/focus fixes and documentation cleanup.</span>

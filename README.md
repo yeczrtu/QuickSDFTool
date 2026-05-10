@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/yeczrtu/QuickSDFTool/releases/tag/v1.0.1"><img alt="Release v1.0.1" src="https://img.shields.io/badge/release-v1.0.1-2f80ed"></a>
+  <a href="https://github.com/yeczrtu/QuickSDFTool/releases/tag/v1.1.0"><img alt="Release v1.1.0" src="https://img.shields.io/badge/release-v1.1.0-2f80ed"></a>
   <img alt="Unreal Engine 5.7.4" src="https://img.shields.io/badge/Unreal%20Engine-5.7.4-313f9f">
   <img alt="Platform Win64" src="https://img.shields.io/badge/platform-Win64-4b5563">
   <a href="https://yeczrtu.github.io/QuickSDFTool/"><img alt="Docs GitHub Pages" src="https://img.shields.io/badge/docs-GitHub%20Pages-0f766e"></a>
@@ -15,7 +15,7 @@
 </p>
 
 > [!NOTE]
-> **Status: Stable 1.0 for UE 5.7.x.** QuickSDFTool is ready for production evaluation on Unreal Engine 5.7.x. UE 5.8+ is intended to be supported, but has not been release-tested for this version.
+> **Status: Stable 1.1 for UE 5.7.x.** QuickSDFTool is ready for production evaluation on Unreal Engine 5.7.x. UE 5.8+ is intended to be supported, but has not been release-tested for this version.
 
 ## Demo
 
@@ -63,7 +63,7 @@ See [Authoring Workflow](./docs/workflow.md), [Material Setup](./docs/material-s
 
 ## Installation
 
-QuickSDFTool v1.0 requires Unreal Engine 5.7.x and a C++ Unreal project.
+QuickSDFTool v1.1 requires Unreal Engine 5.7.x and a C++ Unreal project.
 
 ```bash
 git clone https://github.com/yeczrtu/QuickSDFTool.git
@@ -88,11 +88,11 @@ Then regenerate project files, build the project, enable **QuickSDFTool**, and r
 | Unreal Engine version | Status |
 | --- | --- |
 | 5.7.4 | Required release verification target |
-| 5.7.x | Supported target for v1.0 |
-| 5.8+ | Intended to be supported, but not v1.0 release-tested |
+| 5.7.x | Supported target for v1.1 |
+| 5.8+ | Intended to be supported, but not v1.1 release-tested |
 | 5.6 and earlier | Not supported |
 
-The v1.0.1 Win64 binary release is built with Epic Games Launcher Unreal Engine 5.7.4 (`++UE5+Release-5.7`) and is intended for Launcher UE 5.7.x projects. Rebuild the plugin from source if you use a source-built, licensee, custom, or otherwise different engine build.
+The v1.1.0 source release targets Unreal Engine 5.7.4 as the required verification version. Rebuild the plugin from source for your exact engine build, especially if you use a source-built, licensee, custom, or otherwise different engine build.
 
 ## Documentation
 
@@ -100,7 +100,7 @@ The v1.0.1 Win64 binary release is built with Epic Games Launcher Unreal Engine 
 - [Authoring Workflow](./docs/workflow.md)
 - [Material Setup](./docs/material-setup.md)
 - [Troubleshooting](./docs/troubleshooting.md)
-- [Release Notes](./docs/release-notes/v1.0.1.md)
+- [Release Notes](./docs/release-notes/v1.1.0.md)
 - [Roadmap](./docs/roadmap.md)
 - [Development Notes](./docs/development.md)
 - [日本語 README](./README_JP.md)
