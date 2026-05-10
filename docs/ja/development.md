@@ -47,7 +47,7 @@ QuickSDFTool/
 
 ## 仕組み
 
-1. **Paint:** light angle ごとに、mesh または UV preview へ binary mask を描きます。
+1. **Paint:** light angle ごとに、mesh または 2D Canvas へ binary mask を描きます。
 2. **SDF:** 各 mask を signed distance field へ変換します。
 3. **Interpolate:** 隣接 mask 間の transition を探し、threshold value `T` を求めます。
 4. **Composite:** Monopolar / Bipolar output を自動判定し、値を RGBA channel へ格納します。
@@ -57,6 +57,8 @@ QuickSDFTool/
 5. **Export:** final threshold map を 16-bit half-float texture として保存します。
 
 `Live SDF` は preview-only branch です。paint mask を選択中の transient preview resolution へ downsample し、GPU JFA で近似 threshold map を作り、preview material がその render target を参照します。保存用の final generation は CPU 経路のままです。
+
+![Windows pen input flow into QuickSDF]({{ '/images/quick-sdf-pen-input-flow.png' | relative_url }})
 
 ## 開発時の検証
 
@@ -74,6 +76,15 @@ Automation RunTests QuickSDFTool.MonotonicGuard
 v1.0 release candidate は `sdfbuildEditor Win64 Development`、timeline 周辺の重点 Automation Test、`QuickSDFTool.Core`、Monotonic Guard test で検証します。
 
 手動入力の検証では、通常マウスのペイントに加えて、Windows 液タブ / ペンタブの hover、筆圧、stroke start / drag / release、2D Canvas のウィンドウ移動・リサイズ後の挙動、`Ctrl + F` ブラシリサイズを確認します。
+
+## ドキュメント用スクリーンショット Backlog
+
+以下は生成図ではなく、実際の UE editor session から取得してください。
+
+- `quick-sdf-2d-canvas-pen-paint.png`: 2D Canvas 上でブラシ円とペイント位置が一致している画面。
+- `quick-sdf-advanced-pen-pressure.png`: **Pen Pressure** と **Pen Pressure Curve** が見える Advanced 設定。
+- `quick-sdf-pen-screen-hover.png`: Screen mode の 3D Paint でペン hover 中のブラシプレビュー。
+- `quick-sdf-ctrl-f-pen-resize.png`: 任意。ペン入力で `Ctrl + F` ブラシリサイズ中の画面。
 
 ## GitHub 公開チェックリスト
 

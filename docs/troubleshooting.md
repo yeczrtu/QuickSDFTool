@@ -24,7 +24,7 @@ permalink: /troubleshooting/
 Brush size can appear inconsistent when UV density varies strongly across the mesh. For now:
 
 - Test on clean, evenly distributed UVs first.
-- Use the 2D UV preview for precise edits.
+- Use the 2D Canvas for precise texture-space edits.
 - Avoid judging brush behavior on heavily stretched UV islands until the UV brush-size item is addressed.
 
 ## Pen Display Or Tablet Input Feels Misaligned

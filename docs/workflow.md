@@ -11,6 +11,8 @@ alternate_label: 日本語
 
 QuickSDFTool is designed around one material slot at a time: select the mesh and slot, paint light/shadow masks across angles, then generate a threshold texture for the toon shader.
 
+![QuickSDF authoring pipeline diagram]({{ '/images/quick-sdf-authoring-pipeline.png' | relative_url }})
+
 ## Workflow Screenshots
 
 <div class="screenshot-grid">
@@ -95,6 +97,23 @@ The `Quick SDF > Material Slots` section is optimized for artists editing one ma
 - Brush input includes lazy-radius stroke stabilization, fine spacing, antialiased brush masks, and pressure-driven brush radius for tablet workflows.
 - Pen pressure is enabled by default and affects brush radius only, not mask opacity. Use **Advanced > Pen Pressure** to disable it and **Advanced > Pen Pressure Curve** to tune the response. `1.0` is linear, higher values keep light pressure thinner for longer, and lower values reach larger radii sooner.
 - `F` focuses the active viewport on the current brush hit. If the brush is not over a valid hit, the key falls back to UE's standard selection focus.
+
+<div class="screenshot-grid">
+  <figure class="screenshot-card">
+    <img src="{{ '/images/quick-sdf-pen-input-flow.png' | relative_url }}" alt="Windows pen pointer input flow into QuickSDF 3D Paint and 2D Canvas">
+    <figcaption>
+      <strong>Pen input flow</strong>
+      QuickSDF converts fresh Windows pen coordinates into viewport rays or 2D Canvas positions inside the plugin.
+    </figcaption>
+  </figure>
+  <figure class="screenshot-card">
+    <img src="{{ '/images/quick-sdf-pressure-curve.png' | relative_url }}" alt="Pen Pressure Curve response examples for brush radius">
+    <figcaption>
+      <strong>Pressure curve</strong>
+      Pressure changes radius only. The curve controls how quickly light pressure reaches larger brush sizes.
+    </figcaption>
+  </figure>
+</div>
 
 ## Timeline And Paint Targets
 

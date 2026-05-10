@@ -16,6 +16,7 @@ alternate_label: 日本語
 
 - [x] Document the final SDF output channel layout and island-mirror behavior for the current CPU path.
 - [x] Publish a stable 1.0 release with release notes and install verification steps.
+- [x] Stabilize Windows pen-display/tablet hover, pressure radius, 2D Canvas input, and pen-based `Ctrl + F` brush resizing.
 - [ ] Improve the UV-dependent brush-size mismatch.
 - [ ] Add a short end-to-end video showing mask paint -> SDF texture -> toon shader result.
 

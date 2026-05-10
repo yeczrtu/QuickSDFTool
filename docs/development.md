@@ -47,7 +47,7 @@ QuickSDFTool/
 
 ## How It Works
 
-1. **Paint:** for each light angle, paint a binary mask on the mesh or UV preview.
+1. **Paint:** for each light angle, paint a binary mask on the mesh or 2D Canvas.
 2. **SDF:** convert each mask to a signed distance field.
 3. **Interpolate:** find transitions between neighboring masks and derive threshold value `T`.
 4. **Composite:** automatically choose Monopolar or Bipolar output and pack values into RGBA channels:
@@ -57,6 +57,8 @@ QuickSDFTool/
 5. **Export:** save the final threshold map as a 16-bit half-float texture.
 
 `Live SDF` is a preview-only branch: paint masks are downsampled to the selected transient preview resolution, GPU JFA produces an approximate threshold map, and the preview material consumes that render target. Final generation remains on the CPU path so saved textures keep the high-quality output behavior.
+
+![Windows pen input flow into QuickSDF]({{ '/images/quick-sdf-pen-input-flow.png' | relative_url }})
 
 ## Development Verification
 
@@ -74,6 +76,15 @@ Automation RunTests QuickSDFTool.MonotonicGuard
 The v1.0 release candidate should be validated against `sdfbuildEditor Win64 Development`, focused timeline automation coverage, `QuickSDFTool.Core`, and the Monotonic Guard tests.
 
 Manual input verification should include mouse painting plus Windows pen-display/tablet hover, pressure, stroke start/drag/release, 2D Canvas window move/resize behavior, and `Ctrl + F` brush resizing.
+
+## Documentation Screenshot Backlog
+
+These screenshots should be captured from a real UE editor session rather than generated diagrams:
+
+- `quick-sdf-2d-canvas-pen-paint.png`: 2D Canvas with the brush circle aligned to the painted stroke.
+- `quick-sdf-advanced-pen-pressure.png`: Advanced settings showing **Pen Pressure** and **Pen Pressure Curve**.
+- `quick-sdf-pen-screen-hover.png`: Screen mode 3D Paint brush preview while a pen is hovering.
+- `quick-sdf-ctrl-f-pen-resize.png`: Optional capture of `Ctrl + F` brush resizing with pen input.
 
 ## Repository Setup Checklist
 

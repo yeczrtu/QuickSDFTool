@@ -23,7 +23,7 @@ QuickSDFTool is an Unreal Engine 5.7.x editor-mode plugin for painting toon-shad
 <div class="doc-grid">
   <a class="doc-card" href="{{ '/workflow/' | relative_url }}">
     <strong>Authoring Workflow</strong>
-    <span>Learn Select, Paint, Material Slots, timeline, Live SDF preview, symmetry, Guard, import/export, and SDF generation.</span>
+    <span>Learn Select, Paint, 2D Canvas, pen-display input, Material Slots, timeline, Live SDF preview, symmetry, Guard, import/export, and SDF generation.</span>
   </a>
   <a class="doc-card" href="{{ '/material-setup/' | relative_url }}">
     <strong>Material Setup</strong>
@@ -107,5 +107,7 @@ QuickSDFTool v1.0 targets Unreal Engine 5.7.x, with UE 5.7.4 as the required rel
 ```text
 painted light/shadow masks -> SDF interpolation -> RGBA threshold texture -> controlled toon shadow
 ```
+
+![QuickSDF authoring pipeline diagram]({{ '/images/quick-sdf-authoring-pipeline.png' | relative_url }})
 
 QuickSDFTool is most useful when the right shadow shape is an art-direction decision rather than a physically derived result. Common uses include face shadows, hair bands, clothing folds, and small-team toon pipelines that benefit from in-editor iteration.
