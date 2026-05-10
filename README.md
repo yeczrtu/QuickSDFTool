@@ -6,6 +6,14 @@
   <a href="#demo">Demo</a> | <a href="#quick-start">Quick Start</a> | <a href="#documentation">Documentation</a> | <a href="./README_JP.md">日本語</a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/yeczrtu/QuickSDFTool/releases/tag/v1.0.1"><img alt="Release v1.0.1" src="https://img.shields.io/badge/release-v1.0.1-2f80ed"></a>
+  <img alt="Unreal Engine 5.7.4" src="https://img.shields.io/badge/Unreal%20Engine-5.7.4-313f9f">
+  <img alt="Platform Win64" src="https://img.shields.io/badge/platform-Win64-4b5563">
+  <a href="https://yeczrtu.github.io/QuickSDFTool/"><img alt="Docs GitHub Pages" src="https://img.shields.io/badge/docs-GitHub%20Pages-0f766e"></a>
+  <a href="./LICENSE"><img alt="License MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
+</p>
+
 > [!NOTE]
 > **Status: Stable 1.0 for UE 5.7.x.** QuickSDFTool is ready for production evaluation on Unreal Engine 5.7.x. UE 5.8+ is intended to be supported, but has not been release-tested for this version.
 
