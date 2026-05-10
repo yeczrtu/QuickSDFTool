@@ -249,6 +249,7 @@ public:
 	bool UpdateExternalViewportPointerHover(const FVector2D& AbsoluteScreenPosition);
 	bool BeginTextureCanvasStroke(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers);
 	bool UpdateTextureCanvasStroke(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers);
+	bool TickTextureCanvasQuickStrokePreview(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers);
 	void EndTextureCanvasStroke();
 	void UpdateTextureCanvasHover(const FVector2f& UV, const FVector2D& ScreenPosition);
 	void SetTextureCanvasCursorActive(bool bActive);

@@ -2241,6 +2241,39 @@ bool UQuickSDFPaintTool::UpdateTextureCanvasStroke(const FVector2f& UV, const FV
 	return true;
 }
 
+bool UQuickSDFPaintTool::TickTextureCanvasQuickStrokePreview(const FVector2f& UV, const FVector2D& ScreenPosition, const FQuickSDFTextureCanvasStrokeModifiers& Modifiers)
+{
+	if (!bTextureCanvasStrokeActive || ActiveStrokeInputMode != EQuickSDFStrokeInputMode::TextureCanvas)
+	{
+		return false;
+	}
+
+	if (!bQuickLineActive)
+	{
+		TryActivateQuickLine();
+	}
+
+	if (!bQuickLineActive)
+	{
+		return false;
+	}
+
+	FQuickSDFStrokeSample Sample;
+	if (!TryMakeTextureCanvasStrokeSample(UV, ScreenPosition, Sample))
+	{
+		return false;
+	}
+
+	bTextureCanvasPaintShadow = Modifiers.bPaintShadow;
+	LastInputScreenPosition = ScreenPosition;
+	LastRawStrokeSample = Sample;
+	bHasLastRawStrokeSample = true;
+	QuickLineEndSample = Sample;
+	bHasQuickLineEndSample = true;
+	RedrawQuickLinePreview();
+	return true;
+}
+
 void UQuickSDFPaintTool::EndTextureCanvasStroke()
 {
 	if (!bTextureCanvasStrokeActive || ActiveStrokeInputMode != EQuickSDFStrokeInputMode::TextureCanvas)

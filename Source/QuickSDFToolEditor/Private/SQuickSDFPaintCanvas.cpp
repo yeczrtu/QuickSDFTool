@@ -405,11 +405,16 @@ public:
 			const bool bHadActiveStroke = bPaintingFromExternalPen || bPainting;
 			if (bHadActiveStroke)
 			{
-				if (IsTextureCanvasQuickStrokeActive())
+				const bool bWasQuickStrokeActive = IsTextureCanvasQuickStrokeActive();
+				if (bWasQuickStrokeActive)
 				{
-					HandleMouseMove(Viewport, ViewportPosition);
+					TickTextureCanvasQuickStrokePreview(Viewport, ViewportPosition);
 				}
 				EndPaintStroke();
+				if (bWasQuickStrokeActive)
+				{
+					Owner->ClearHoverUV();
+				}
 			}
 			bPaintingFromExternalPen = false;
 			if (!bHadActiveStroke)
@@ -454,13 +459,15 @@ public:
 			return true;
 		}
 
-		if (bLastExternalPenInContact && IsTextureCanvasQuickStrokeActive())
+		if (bLastExternalPenInContact)
 		{
 			if (bPainting || bPaintingFromExternalPen)
 			{
-				HandleMouseMove(Viewport, ViewportPosition);
-				bPaintingFromExternalPen = bPainting;
-				return true;
+				if (TickTextureCanvasQuickStrokePreview(Viewport, ViewportPosition))
+				{
+					bPaintingFromExternalPen = bPainting;
+					return true;
+				}
 			}
 		}
 
@@ -529,6 +536,35 @@ public:
 	{
 		const UQuickSDFPaintTool* Tool = Owner ? Owner->GetPaintTool() : nullptr;
 		return Tool && Tool->IsTextureCanvasQuickStrokeActive();
+	}
+
+	bool TickTextureCanvasQuickStrokePreview(FViewport* Viewport, const FVector2D& MousePosition)
+	{
+		if (!Owner)
+		{
+			return false;
+		}
+
+		FVector2f UV;
+		if (!Owner->IsViewportPositionInsideTexture(MousePosition, &UV))
+		{
+			return false;
+		}
+
+		UQuickSDFPaintTool* Tool = Owner->GetPaintTool();
+		if (!Tool)
+		{
+			return false;
+		}
+
+		FQuickSDFTextureCanvasStrokeModifiers Modifiers;
+		Modifiers.bPaintShadow = IsShiftDown(Viewport);
+		const bool bUpdated = Tool->TickTextureCanvasQuickStrokePreview(UV, MousePosition, Modifiers);
+		if (bUpdated)
+		{
+			Owner->SetHoverUV(UV);
+		}
+		return bUpdated;
 	}
 
 private:
@@ -1087,7 +1123,7 @@ SQuickSDFPaintCanvas::~SQuickSDFPaintCanvas()
 void SQuickSDFPaintCanvas::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
 {
 	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
-	if (ViewportClient.IsValid() && (ViewportClient->IsTextureCanvasQuickStrokeActive() || ViewportClient->IsExternalPenBrushResizing()))
+	if (ViewportClient.IsValid() && (ViewportClient->IsExternalPenPainting() || ViewportClient->IsExternalPenBrushResizing()))
 	{
 		ViewportClient->TickExternalPenPointer();
 	}
