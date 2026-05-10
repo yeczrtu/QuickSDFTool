@@ -419,6 +419,7 @@ protected:
 	double GetToolCurrentTime() const;
 	void UpdateQuickLineHoldState(const FVector2D& ScreenPosition);
 	void TryActivateQuickLine();
+	bool ShouldRedrawQuickLinePreview(bool bForce);
 	void RedrawQuickLinePreview(bool bForce = false);
 	void StampQuickLineSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample, bool bForce = false);
 	void StampQuickLineSurfaceSegment(const FQuickSDFStrokeSample& StartSample, const FQuickSDFStrokeSample& EndSample, bool bForce = false);
@@ -564,6 +565,10 @@ protected:
 	FQuickSDFStrokeSample LastRawStrokeSample;
 	FVector2D QuickLineHoldScreenPosition = FVector2D::ZeroVector;
 	double QuickLineLastMoveTime = 0.0;
+	FVector2D LastQuickLinePreviewScreenPosition = FVector2D::ZeroVector;
+	double LastQuickLinePreviewTime = -1000.0;
+	bool bHasQuickLinePreviewPosition = false;
+	bool bQuickLinePreviewRedrawPending = false;
 	bool bHasLastRawStrokeSample = false;
 	
 	FVector2D FilteredScreenPosition = FVector2D::ZeroVector;

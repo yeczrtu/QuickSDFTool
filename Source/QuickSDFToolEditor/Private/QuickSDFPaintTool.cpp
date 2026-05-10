@@ -401,6 +401,10 @@ void UQuickSDFPaintTool::OnTick(float DeltaTime)
 
 	UpdateLiveSDFPreview();
 	TryActivateQuickLine();
+	if (bQuickLineActive && bQuickLinePreviewRedrawPending)
+	{
+		RedrawQuickLinePreview();
+	}
 }
 
 void UQuickSDFPaintTool::RestoreOriginalComponentMaterialSlots()

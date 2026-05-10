@@ -463,11 +463,9 @@ public:
 		{
 			if (bPainting || bPaintingFromExternalPen)
 			{
-				if (TickTextureCanvasQuickStrokePreview(Viewport, ViewportPosition))
-				{
-					bPaintingFromExternalPen = bPainting;
-					return true;
-				}
+				HandleMouseMove(Viewport, ViewportPosition);
+				bPaintingFromExternalPen = bPainting;
+				return true;
 			}
 		}
 
@@ -616,6 +614,7 @@ private:
 		if (UQuickSDFPaintTool* Tool = Owner ? Owner->GetPaintTool() : nullptr)
 		{
 			Tool->EndTextureCanvasStroke();
+			Tool->SetTextureCanvasCursorActive(false);
 		}
 		bPainting = false;
 		bPaintingFromExternalPen = false;

@@ -71,6 +71,8 @@ using namespace QuickSDFPaintToolPrivate;
 namespace
 {
 constexpr double QuickSDFExternalPointerFreshSeconds = 0.75;
+constexpr double QuickSDFQuickLinePreviewMinIntervalSeconds = 1.0 / 60.0;
+constexpr double QuickSDFQuickLinePreviewMinMovePixels = 0.75;
 constexpr float QuickSDFMinPressureRadiusScale = 0.05f;
 
 FEditorViewportClient* GetCurrentLevelViewportClient()
@@ -763,9 +765,39 @@ void UQuickSDFPaintTool::TryActivateQuickLine()
 	RedrawQuickLinePreview();
 }
 
+bool UQuickSDFPaintTool::ShouldRedrawQuickLinePreview(bool bForce)
+{
+	if (bForce || !bHasQuickLinePreviewPosition)
+	{
+		bQuickLinePreviewRedrawPending = false;
+		return true;
+	}
+
+	if (FVector2D::DistSquared(LastQuickLinePreviewScreenPosition, QuickLineEndSample.ScreenPosition) <
+		FMath::Square(QuickSDFQuickLinePreviewMinMovePixels))
+	{
+		bQuickLinePreviewRedrawPending = false;
+		return false;
+	}
+
+	if (GetToolCurrentTime() - LastQuickLinePreviewTime < QuickSDFQuickLinePreviewMinIntervalSeconds)
+	{
+		bQuickLinePreviewRedrawPending = true;
+		return false;
+	}
+
+	bQuickLinePreviewRedrawPending = false;
+	return true;
+}
+
 void UQuickSDFPaintTool::RedrawQuickLinePreview(bool bForce)
 {
 	if (!bQuickLineActive || !bHasQuickLineStartSample || !bHasQuickLineEndSample)
+	{
+		return;
+	}
+
+	if (!ShouldRedrawQuickLinePreview(bForce))
 	{
 		return;
 	}
@@ -778,6 +810,9 @@ void UQuickSDFPaintTool::RedrawQuickLinePreview(bool bForce)
 	if (RestoreStrokeStartPixels())
 	{
 		StampQuickLineSegment(QuickLineStartSample, QuickLineEndSample, bForce);
+		LastQuickLinePreviewScreenPosition = QuickLineEndSample.ScreenPosition;
+		LastQuickLinePreviewTime = GetToolCurrentTime();
+		bHasQuickLinePreviewPosition = true;
 	}
 }
 
@@ -2925,6 +2960,10 @@ void UQuickSDFPaintTool::ResetStrokeState()
 	QuickLineSourceSamples.Reset();
 	QuickLineHoldScreenPosition = FVector2D::ZeroVector;
 	QuickLineLastMoveTime = 0.0;
+	LastQuickLinePreviewScreenPosition = FVector2D::ZeroVector;
+	LastQuickLinePreviewTime = -1000.0;
+	bHasQuickLinePreviewPosition = false;
+	bQuickLinePreviewRedrawPending = false;
 	PointBuffer.Reset();
 	AccumulatedDistance = 0.0;
 }
