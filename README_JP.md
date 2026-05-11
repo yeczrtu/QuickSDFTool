@@ -35,6 +35,7 @@ https://github.com/user-attachments/assets/7eec2890-be31-4cbc-9662-756b6e84c620
 | --- | --- | --- |
 | ![Select mode active material slot overlay](docs/images/quick-sdf-select-active-slot.png) | ![Paint mode with Screen projection brush preview](docs/images/quick-sdf-paint-screen-mode.png) | ![Generated SDF threshold texture preview](docs/images/quick-sdf-sdf-preview.png) |
 
+GIF内キャラクターモデル: [にゃも / Nyamo「オリジナル3Dモデル」](https://booth.pm/ja/items/7548933)（あるまろん）。
 スクリーンショット内キャラクターモデル: [真冬 Mafuyu / オリジナル3Dモデル](https://booth.pm/ja/items/5007531)（ぷらすわん）。キャラクターデザイン / 3Dモデリング: 有坂みと。
 
 ## なぜ QuickSDFTool?
