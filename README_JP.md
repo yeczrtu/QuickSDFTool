@@ -1,69 +1,88 @@
 <h1 align="center">QuickSDFTool</h1>
 
 <p align="center">
-  Unreal Engine 5 でトゥーン影マスクをペイントし、SDF スレッショルドマップを生成するエディターモードプラグインです。
+  Unreal Engine 5 内でアニメ / トゥーン顔影マスクをペイントし、
+  SDF しきい値マップまで生成できるエディターモードプラグインです。
   <br>
-  <a href="#デモ">デモ</a> | <a href="#クイックスタート">クイックスタート</a> | <a href="#ドキュメント">ドキュメント</a> | <a href="./README.md">English</a>
+  UE5 で制御しやすいアニメ調の顔影を作りたいアーティスト、テクニカルアーティスト向けです。
+  <br>
+  <a href="#デモ">デモ</a> | <a href="#なぜ-quicksdftool">なぜ QuickSDFTool?</a> | <a href="#クイックスタート">クイックスタート</a> | <a href="#ドキュメント">ドキュメント</a> | <a href="./README.md">English</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/yeczrtu/QuickSDFTool/releases/tag/v1.1.0"><img alt="Release v1.1.0" src="https://img.shields.io/badge/release-v1.1.0-2f80ed"></a>
+  <a href="https://github.com/yeczrtu/QuickSDFTool/releases/latest"><img alt="Release v1.1.0" src="https://img.shields.io/badge/release-v1.1.0-2f80ed"></a>
   <img alt="Unreal Engine 5.7.4" src="https://img.shields.io/badge/Unreal%20Engine-5.7.4-313f9f">
   <img alt="Platform Win64" src="https://img.shields.io/badge/platform-Win64-4b5563">
   <a href="https://yeczrtu.github.io/QuickSDFTool/"><img alt="Docs GitHub Pages" src="https://img.shields.io/badge/docs-GitHub%20Pages-0f766e"></a>
   <a href="./LICENSE"><img alt="License MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
 
-> [!NOTE]
-> **ステータス: UE 5.7.x 向け安定版 1.1。** QuickSDFTool は Unreal Engine 5.7.x での制作検証に使える正式版です。UE 5.8+ は対応予定ですが、このバージョンではリリース検証対象外です。
-
 ## デモ
 
-QuickSDFTool は、複数のライト角度ごとにメッシュ上へ白黒のライト / シャドウマスクをペイントし、それらをトゥーン / セルシェーディング向けの高精度 SDF スレッショルドマップへ合成します。
+QuickSDFTool は、顔影制作のループを UE5 エディター内にまとめます。実際のキャラクターメッシュ上にマスクを塗り、SDF の見え方を確認し、トゥーン / セルシェーディング用のしきい値テクスチャとしてベイクできます。
 
 https://github.com/user-attachments/assets/7eec2890-be31-4cbc-9662-756b6e84c620
 
-| Select active slot | Screen mode での Paint |
-| --- | --- |
-| ![Select mode active material slot overlay](docs/images/quick-sdf-select-active-slot.png) | ![Paint mode with Screen projection brush preview](docs/images/quick-sdf-paint-screen-mode.png) |
+<p align="center">
+  <img src="docs/images/quick-sdf-2d-canvas-pen-paint.gif" alt="2D Canvas でトゥーン影マスクをペイントしている様子" width="800">
+</p>
+
+<p align="center">
+  UE5 内でマスクをペイント → Live SDF でプレビュー → しきい値テクスチャを生成 → toon material に適用。
+</p>
+
+| Active slot 選択 | Screen mode での Paint | 生成された SDF preview |
+| --- | --- | --- |
+| ![Select mode active material slot overlay](docs/images/quick-sdf-select-active-slot.png) | ![Paint mode with Screen projection brush preview](docs/images/quick-sdf-paint-screen-mode.png) | ![Generated SDF threshold texture preview](docs/images/quick-sdf-sdf-preview.png) |
 
 スクリーンショット内キャラクターモデル: [真冬 Mafuyu / オリジナル3Dモデル](https://booth.pm/ja/items/5007531)（ぷらすわん）。キャラクターデザイン / 3Dモデリング: 有坂みと。
 
-## 機能
+## なぜ QuickSDFTool?
+
+| Workflow | QuickSDFTool | 外部ツール中心のワークフロー |
+| --- | --- | --- |
+| UE メッシュ上へ直接ペイント | 可能 | 不可 |
+| 実際のキャラクター上でプレビュー | 可能 | できないことが多い |
+| Material Slot 単位のペイント | 可能 | できないことが多い |
+| 2D Canvas と液タブ向けワークフロー | 可能 | ツール依存 |
+| UE undo/redo support | 可能 | 不可 |
+| SDF しきい値テクスチャ生成 | 可能 | 可能 |
+| DCC / ペイントソフト / script 間の往復 | 不要 | 必要になりがち |
+
+## 誰向け?
+
+QuickSDFTool は、DCC ツール、2D ペイントソフト、外部 script、Unreal Engine を何度も往復せずに、制御しやすいアニメ / トゥーン顔影を作りたい technical artist、character artist、UE5 developer 向けです。
+
+キャラクターメッシュ上に影マスクを直接ペイントし、複数の light angle を Unreal Editor 内で確認しながら調整し、toon / cel shading material 用の SDF しきい値テクスチャとしてベイクできます。
+
+## 機能ハイライト
 
 - `Quick SDF` という専用 UE5 エディターモード。
-- メッシュ全体を表示したまま、ビューポート上で mesh と material slot を選べる Select / 準備ワークフロー。
-- Static Mesh / Skeletal Mesh component への直接ペイント。PhysicsAsset がない Skeletal Mesh も対象にできます。
-- Screen、Surface、2D Canvas のペイントワークフロー。ブラシプレビュー、液タブ hover 追従、筆圧半径、Lazy Radius、ブラシ位置への `F` フォーカスに対応します。
-- 2D Canvas は Texture Set / Angle selector、brush size、Fit / 100% zoom、rotate/flip、checker/grid、UV overlay、onion skin、ペン入力に対応します。
-- Quick Stroke は、ストロークを一定時間 hold すると直線ストロークとして配置できます。Move Tolerance / Hold Time を調整でき、2D Canvas と 3D Paint の両方で軽量プレビュー後に release 位置で確定します。
-- `Material Slots` リストは row selection、Select mode の cyan active-slot overlay、slot 単位 Bake、paint 中の slot isolation に対応します。
-- Angle timeline は seek/keyframe lane、thumbnails、snapping、keyframe drag と seek の同期、paint target range highlight を備えます。
-- `Auto`、`Texture Flip`、`UV Island Channel Flip`、通常の 0-180 painting の symmetry ワークフロー。
-- 安定した threshold-map transition のための Monotonic Guard validation / clipping。
-- 最終 bake 前に形状を確認できる GPU JFA 近似の `Live SDF` material preview。
-- Mask import/export、非破壊の `UQuickSDFAsset` 保存、UE undo/redo、half-float texture 出力の CPU SDF generation。
+- Static Mesh / Skeletal Mesh component への直接ペイント。
+- Material Slot 単位のペイント、slot isolation、Select mode の active-slot overlay。
+- Screen、Surface、2D Canvas のペイントワークフローと液タブ入力サポート。
+- 最終 bake 前に確認できる Live SDF material preview。
+- half-float texture 出力の CPU SDF しきい値テクスチャ生成。
 
 ## クイックスタート
 
-1. このリポジトリを C++ Unreal project の `Plugins/QuickSDFTool/` にコピーします。
-2. Project files を再生成し、ビルド後に **QuickSDFTool** を有効化してエディターを再起動します。
-3. Editor Mode selector から **Quick SDF** を選びます。
-4. Select mode で、編集したい mesh / material surface をビューポート上でクリックします。
-5. **Material Slots** で active slot を確認します。選択行と cyan viewport overlay が現在の material slot を示します。
-6. **Start Paint** を押します。Paint mode は既定で active slot を isolate します。全体表示のまま塗りたい場合は **Isolate Slot** をオフにします。
-7. `LMB` で白 / light、`Shift + LMB` で黒 / shadow をペイントします。
-8. texture-space で正確に塗りたい場合は **2D Canvas** を使います。UV guide、onion skin、checker/grid、zoom、rotate/flip、ペン入力のブラシ円とストローク位置合わせに対応します。
-9. 直線ストロークを配置したい場合は、ストロークを hold して **Quick Stroke** にします。移動中のプレビューは軽量化され、release 位置で最終確定します。
-10. 必要に応じて **Material Preview** を **Live SDF** に切り替え、ペイント中に GPU JFA preview を確認します。解像度は **Advanced** の `Live SDF Preview Resolution` で `128 px`、`256 px`、`512 px`、`1024 px` から選びます。
-11. Timeline で light angle、mask 追加、Paint Target 範囲を調整し、最終 SDF threshold map を生成します。
-12. `/Game/QuickSDF_GENERATED/` に生成された texture を toon material で使います。
+1. [latest release](https://github.com/yeczrtu/QuickSDFTool/releases/latest) をダウンロードします。
+2. `QuickSDFTool` を `YourProject/Plugins/` にコピーします。
+3. Project files を再生成します。
+4. C++ Unreal project をビルドします。
+5. Plugins で **QuickSDFTool** を有効化し、エディターを再起動します。
+6. Editor Mode selector から **Quick SDF** を開きます。
+7. Select mode で編集したい mesh / material surface をクリックし、**Material Slots** で active slot を確認します。
+8. **Start Paint** を押し、`LMB` で白 / light、`Shift + LMB` で黒 / shadow をペイントします。
+9. texture-space で正確に塗りたい場合は **2D Canvas** を使います。UV guide、onion skin、checker/grid、zoom、rotate/flip、ペン入力に対応します。
+10. 必要に応じて **Material Preview** を **Live SDF** に切り替え、Timeline で mask を追加して最終 SDF しきい値マップを生成します。
+11. `/Game/QuickSDF_GENERATED/` に生成された texture を toon material で使います。
 
 詳しい流れは [Authoring Workflow](./docs/ja/workflow.md)、[Material Setup](./docs/ja/material-setup.md)、[Troubleshooting](./docs/ja/troubleshooting.md) を参照してください。
 
 ## インストール
 
-QuickSDFTool v1.1 には Unreal Engine 5.7.x と C++ Unreal project が必要です。
+QuickSDFTool v1.1.0 には Unreal Engine 5.7.x と C++ Unreal project が必要です。
 
 ```bash
 git clone https://github.com/yeczrtu/QuickSDFTool.git
@@ -88,8 +107,8 @@ YourProject/
 | Unreal Engine version | ステータス |
 | --- | --- |
 | 5.7.4 | 必須リリース検証ターゲット |
-| 5.7.x | v1.1 のサポート対象 |
-| 5.8+ | 対応予定。ただし v1.1 リリース検証は未実施 |
+| 5.7.x | v1.1.0 のサポート対象 |
+| 5.8+ | 対応予定。ただし v1.1.0 リリース検証は未実施 |
 | 5.6 以前 | 非対応 |
 
 v1.1.0 の source release は Unreal Engine 5.7.4 を必須検証 version としています。source-built、licensee、custom、または異なる engine build で使う場合も含め、使用中の engine build に合わせて source から再ビルドしてください。
