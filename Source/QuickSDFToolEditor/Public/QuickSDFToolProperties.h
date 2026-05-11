@@ -124,7 +124,7 @@ public:
 	int32 UVChannel = 0;
 
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings")
-	bool bShowPreview = true;
+	bool bShowPreview = false;
 
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Material Preview Mode", HideInDetailPanel))
 	EQuickSDFMaterialPreviewMode MaterialPreviewMode = EQuickSDFMaterialPreviewMode::OriginalMaterial;
