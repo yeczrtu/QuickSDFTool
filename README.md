@@ -1,12 +1,16 @@
 <h1 align="center">QuickSDFTool</h1>
 
 <p align="center">
-  Paint anime/toon face shadow masks directly inside Unreal Engine 5,
-  then generate SDF threshold maps without leaving the editor.
-  <br>
-  For artists and technical artists who want controllable anime-style facial shadows in UE5.
-  <br>
-  <a href="#demo">Demo</a> | <a href="#why-quicksdftool">Why QuickSDFTool?</a> | <a href="#quick-start">Quick Start</a> | <a href="#documentation">Documentation</a> | <a href="./README_JP.md">日本語</a>
+  <strong>Anime/toon face-shadow SDF authoring directly inside UE5.</strong><br/>
+  Paint masks on the character mesh, preview Live SDF, and bake threshold maps in-editor.
+</p>
+
+<p align="center">
+  For artists and technical artists building controllable anime-style facial shadows in UE5.
+</p>
+
+<p align="center">
+  <a href="#demo">Demo</a> · <a href="#why-quicksdftool">Why QuickSDFTool?</a> · <a href="#quick-start">Quick Start</a> · <a href="#documentation">Documentation</a> · <a href="./README_JP.md">日本語</a>
 </p>
 
 <p align="center">
