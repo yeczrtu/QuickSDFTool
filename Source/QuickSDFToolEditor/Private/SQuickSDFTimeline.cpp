@@ -290,8 +290,9 @@ FQuickSDFTimelineRangeStatus BuildTimelineRangeStatus(const UQuickSDFPaintTool* 
 	return QuickSDFTimelineStatus::BuildRangeStatus(
 		Props->TargetAngles,
 		Props->EditAngleIndex,
-		Props->PaintTargetMode,
-		Props->bPaintAllAngles,
+		Props->ApplyMode,
+		Props->ApplyDirection,
+		&Props->GradientCurve,
 		Props->UsesFrontHalfAngles());
 }
 
@@ -322,6 +323,9 @@ FQuickSDFTimelineKeyStatus BuildTimelineKeyStatus(const UQuickSDFPaintTool* Tool
 	Input.bVisible = RangeStatus.FindSegmentByKeyIndex(KeyIndex) != nullptr;
 	Input.bIsActive = Props && Props->EditAngleIndex == KeyIndex;
 	Input.bInPaintTargetRange = RangeStatus.IsKeyInTargetRange(KeyIndex);
+	Input.ApplyMode = RangeStatus.ApplyMode;
+	Input.ApplyDirection = RangeStatus.ApplyDirection;
+	Input.RadiusScale = RangeStatus.GetKeyRadiusScale(KeyIndex);
 	Input.bHasTextureMask = AngleData && AngleData->TextureMask;
 	Input.bHasPaintRenderTarget = AngleData && AngleData->PaintRenderTarget;
 	Input.bAllowSourceTextureOverwrite = AngleData && AngleData->bAllowSourceTextureOverwrite;
@@ -348,19 +352,23 @@ FQuickSDFTimelineKeyStatus BuildTimelineKeyStatus(const UQuickSDFPaintTool* Tool
 FLinearColor GetPaintTargetRangeColor(const UQuickSDFPaintTool* Tool)
 {
 	const UQuickSDFToolProperties* Props = Tool ? Tool->Properties : nullptr;
-	const EQuickSDFPaintTargetMode Mode = Props
-		? QuickSDFTimelineStatus::ResolvePaintTargetMode(Props->PaintTargetMode, Props->bPaintAllAngles)
-		: EQuickSDFPaintTargetMode::CurrentOnly;
+	const EQuickSDFApplyMode Mode = Props ? Props->ApplyMode : EQuickSDFApplyMode::Single;
 
 	switch (Mode)
 	{
-	case EQuickSDFPaintTargetMode::All:
+	case EQuickSDFApplyMode::SolidRange:
+		if (Props && Props->ApplyDirection == EQuickSDFApplyDirection::Before)
+		{
+			return FLinearColor(0.36f, 0.64f, 1.0f, 0.14f);
+		}
+		if (Props && Props->ApplyDirection == EQuickSDFApplyDirection::After)
+		{
+			return FLinearColor(0.28f, 0.86f, 0.64f, 0.14f);
+		}
 		return FLinearColor(0.35f, 0.82f, 1.0f, 0.15f);
-	case EQuickSDFPaintTargetMode::BeforeCurrent:
-		return FLinearColor(0.36f, 0.64f, 1.0f, 0.14f);
-	case EQuickSDFPaintTargetMode::AfterCurrent:
-		return FLinearColor(0.28f, 0.86f, 0.64f, 0.14f);
-	case EQuickSDFPaintTargetMode::CurrentOnly:
+	case EQuickSDFApplyMode::GradientRange:
+		return FLinearColor(0.74f, 0.58f, 1.0f, 0.16f);
+	case EQuickSDFApplyMode::Single:
 	default:
 		return FLinearColor(0.35f, 0.82f, 1.0f, 0.12f);
 	}
@@ -1903,6 +1911,50 @@ void SQuickSDFTimeline::RebuildTimeline()
 			return FSlateColor(Color);
 		}))
 	];
+
+	for (int32 i = 0; i < Props->NumAngles; ++i)
+	{
+		TimelineTrackCanvas->AddSlot()
+		.Position(TAttribute<FVector2D>::CreateLambda([this, i, KeyframeLaneTop]() {
+			const FQuickSDFTimelineRangeStatus RangeStatus = BuildTimelineRangeStatus(GetActivePaintTool());
+			const FQuickSDFTimelineKeySegment* Segment = RangeStatus.FindSegmentByKeyIndex(i);
+			if (!Segment || !Segment->bInPaintTargetRange || RangeStatus.ApplyMode != EQuickSDFApplyMode::GradientRange || RangeStatus.MaxAngle <= 0.0f)
+			{
+				return FVector2D(-1000.0f, -1000.0f);
+			}
+
+			const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+			const float LeftPercent = FMath::Clamp(Segment->LeftAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
+			return FVector2D(FMath::Max(0.0f, TrackWidth) * LeftPercent + QuickSDFTimelineTrackPadding, KeyframeLaneTop + 6.0f);
+		}))
+		.Size(TAttribute<FVector2D>::CreateLambda([this, i, KeyframeLaneHeight]() {
+			const FQuickSDFTimelineRangeStatus RangeStatus = BuildTimelineRangeStatus(GetActivePaintTool());
+			const FQuickSDFTimelineKeySegment* Segment = RangeStatus.FindSegmentByKeyIndex(i);
+			if (!Segment || !Segment->bInPaintTargetRange || RangeStatus.ApplyMode != EQuickSDFApplyMode::GradientRange || RangeStatus.MaxAngle <= 0.0f)
+			{
+				return FVector2D::ZeroVector;
+			}
+
+			const float TrackWidth = TimelineTrackCanvas->GetTickSpaceGeometry().GetLocalSize().X - (QuickSDFTimelineTrackPadding * 2.0f);
+			const float LeftPercent = FMath::Clamp(Segment->LeftAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
+			const float RightPercent = FMath::Clamp(Segment->RightAngle / RangeStatus.MaxAngle, 0.0f, 1.0f);
+			return FVector2D(FMath::Max(0.0f, TrackWidth) * FMath::Max(0.0f, RightPercent - LeftPercent), FMath::Max(0.0f, KeyframeLaneHeight - 12.0f));
+		}))
+		[
+			SNew(SBorder)
+			.Visibility(EVisibility::HitTestInvisible)
+			.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+			.BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([this, i]()
+			{
+				const FQuickSDFTimelineRangeStatus RangeStatus = BuildTimelineRangeStatus(GetActivePaintTool());
+				const FQuickSDFTimelineKeySegment* Segment = RangeStatus.FindSegmentByKeyIndex(i);
+				FLinearColor Color = GetPaintTargetRangeColor(GetActivePaintTool());
+				const float RadiusScale = Segment ? FMath::Clamp(Segment->RadiusScale, 0.0f, 1.0f) : 0.0f;
+				Color.A = RadiusScale <= KINDA_SMALL_NUMBER ? 0.015f : 0.04f + RadiusScale * 0.28f;
+				return FSlateColor(Color);
+			}))
+		];
+	}
 
 	// 2. Add tick marks (Middle layer)
 	bool bSymmetryModeActive = Props->UsesFrontHalfAngles();

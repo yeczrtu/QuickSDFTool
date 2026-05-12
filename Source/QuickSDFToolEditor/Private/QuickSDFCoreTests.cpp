@@ -572,8 +572,9 @@ bool FQuickSDFTimelineRangeStatusTest::RunTest(const FString& Parameters)
 	const FQuickSDFTimelineRangeStatus Current = QuickSDFTimelineStatus::BuildRangeStatus(
 		Angles,
 		2,
-		EQuickSDFPaintTargetMode::CurrentOnly,
-		false,
+		EQuickSDFApplyMode::Single,
+		EQuickSDFApplyDirection::Both,
+		nullptr,
 		false);
 	TestTrue(TEXT("Current target includes only the active key"), Current.IsKeyInTargetRange(2));
 	TestFalse(TEXT("Current target excludes earlier keys"), Current.IsKeyInTargetRange(1));
@@ -584,18 +585,20 @@ bool FQuickSDFTimelineRangeStatusTest::RunTest(const FString& Parameters)
 	const FQuickSDFTimelineRangeStatus All = QuickSDFTimelineStatus::BuildRangeStatus(
 		Angles,
 		2,
-		EQuickSDFPaintTargetMode::CurrentOnly,
-		true,
+		EQuickSDFApplyMode::SolidRange,
+		EQuickSDFApplyDirection::Both,
+		nullptr,
 		false);
-	TestTrue(TEXT("Legacy paint-all flag resolves to All"), All.IsKeyInTargetRange(0) && All.IsKeyInTargetRange(3));
+	TestTrue(TEXT("Solid Range + Both includes all keys"), All.IsKeyInTargetRange(0) && All.IsKeyInTargetRange(3));
 	TestEqual(TEXT("All range starts at timeline start"), All.TargetRangeLeftAngle, 0.0f);
 	TestEqual(TEXT("All range ends at final segment midpoint to max angle"), All.TargetRangeRightAngle, 180.0f);
 
 	const FQuickSDFTimelineRangeStatus Before = QuickSDFTimelineStatus::BuildRangeStatus(
 		Angles,
 		2,
-		EQuickSDFPaintTargetMode::BeforeCurrent,
-		false,
+		EQuickSDFApplyMode::SolidRange,
+		EQuickSDFApplyDirection::Before,
+		nullptr,
 		false);
 	TestTrue(TEXT("Before includes first key"), Before.IsKeyInTargetRange(0));
 	TestTrue(TEXT("Before includes active key"), Before.IsKeyInTargetRange(2));
@@ -604,8 +607,9 @@ bool FQuickSDFTimelineRangeStatusTest::RunTest(const FString& Parameters)
 	const FQuickSDFTimelineRangeStatus After = QuickSDFTimelineStatus::BuildRangeStatus(
 		Angles,
 		2,
-		EQuickSDFPaintTargetMode::AfterCurrent,
-		false,
+		EQuickSDFApplyMode::SolidRange,
+		EQuickSDFApplyDirection::After,
+		nullptr,
 		false);
 	TestFalse(TEXT("After excludes earlier key"), After.IsKeyInTargetRange(1));
 	TestTrue(TEXT("After includes active key"), After.IsKeyInTargetRange(2));
@@ -615,13 +619,29 @@ bool FQuickSDFTimelineRangeStatusTest::RunTest(const FString& Parameters)
 	const FQuickSDFTimelineRangeStatus Symmetry = QuickSDFTimelineStatus::BuildRangeStatus(
 		MirroredAngles,
 		1,
-		EQuickSDFPaintTargetMode::All,
-		false,
+		EQuickSDFApplyMode::SolidRange,
+		EQuickSDFApplyDirection::Both,
+		nullptr,
 		true);
 	TestEqual(TEXT("Symmetry view keeps only 0-90 degree keys"), Symmetry.VisibleKeyIndices.Num(), 3);
 	TestTrue(TEXT("Symmetry range includes visible key"), Symmetry.IsKeyInTargetRange(2));
 	TestFalse(TEXT("Symmetry range excludes hidden mirrored key"), Symmetry.IsKeyInTargetRange(3));
 	TestEqual(TEXT("Symmetry max range ends at 90 degrees"), Symmetry.TargetRangeRightAngle, 90.0f);
+
+	FRuntimeFloatCurve GradientCurve;
+	GradientCurve.GetRichCurve()->AddKey(0.0f, 1.0f);
+	GradientCurve.GetRichCurve()->AddKey(1.0f, 0.0f);
+	const FQuickSDFTimelineRangeStatus Gradient = QuickSDFTimelineStatus::BuildRangeStatus(
+		Angles,
+		2,
+		EQuickSDFApplyMode::GradientRange,
+		EQuickSDFApplyDirection::Both,
+		&GradientCurve,
+		false);
+	TestTrue(TEXT("Gradient Range includes the active key"), Gradient.IsKeyInTargetRange(2));
+	TestTrue(TEXT("Gradient Range includes distant keys even when radius reaches zero"), Gradient.IsKeyInTargetRange(0));
+	TestEqual(TEXT("Gradient active key keeps full radius"), Gradient.GetKeyRadiusScale(2), 1.0f);
+	TestEqual(TEXT("Gradient edge reaches zero radius"), Gradient.GetKeyRadiusScale(0), 0.0f);
 	return true;
 }
 
@@ -642,6 +662,9 @@ bool FQuickSDFTimelineKeyStatusTest::RunTest(const FString& Parameters)
 	Input.MaxPreviewAngle = 60.0f;
 	Input.bIsActive = true;
 	Input.bInPaintTargetRange = true;
+	Input.ApplyMode = EQuickSDFApplyMode::GradientRange;
+	Input.ApplyDirection = EQuickSDFApplyDirection::Before;
+	Input.RadiusScale = 0.5f;
 	Input.bHasPaintRenderTarget = true;
 	Input.bGuardEnabled = true;
 
@@ -654,7 +677,9 @@ bool FQuickSDFTimelineKeyStatusTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Tooltip contains bake shift"), Tooltip.Contains(TEXT("Bake Shift: +2.5 deg")));
 	TestTrue(TEXT("Tooltip contains bake range"), Tooltip.Contains(TEXT("Allowed Bake Range: 20.0..60.0 deg")));
 	TestTrue(TEXT("Tooltip explains authored key stays fixed"), Tooltip.Contains(TEXT("Authored key stays fixed")));
-	TestTrue(TEXT("Tooltip reports included paint target range"), Tooltip.Contains(TEXT("Paint Target: Included")));
+	TestTrue(TEXT("Tooltip reports apply target range"), Tooltip.Contains(TEXT("Apply Target: Included")));
+	TestTrue(TEXT("Tooltip reports apply mode"), Tooltip.Contains(TEXT("Apply Mode: Gradient Range")));
+	TestTrue(TEXT("Tooltip reports radius scale"), Tooltip.Contains(TEXT("Radius Scale: 50%")));
 
 	Input.bHasPaintRenderTarget = false;
 	Input.bHasTextureMask = false;

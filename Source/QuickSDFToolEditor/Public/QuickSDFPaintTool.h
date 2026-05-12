@@ -382,6 +382,7 @@ protected:
 	double GetSamplePixelDistance(const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B, class UTextureRenderTarget2D* RenderTarget) const;
 	FQuickSDFStrokeSample LerpStrokeSample(const FQuickSDFStrokeSample& A, const FQuickSDFStrokeSample& B, double Alpha) const;
 	bool IsPaintingShadow() const;
+	TArray<FQuickSDFPaintTargetPlan> GetPaintTargetPlans() const;
 	TArray<int32> GetPaintTargetAngleIndices() const;
 	void BeginBrushResizeMode();
 	bool BeginBrushResizeMode(const FVector2D& AbsoluteScreenPosition, const FVector2D& CanvasPosition, bool bFromExternalPen);
@@ -515,6 +516,7 @@ protected:
 	bool bBrushResizeUsesExternalPointer = false;
 	bool bStrokeTransactionActive = false;
 	bool bStampingAllPaintTargets = false;
+	float ActivePaintTargetRadiusScale = 1.0f;
 	bool bUseImportedMasksForQuickCreate = false;
 	bool bUVOverlayDirty = true;
 	bool bQuickLineActive = false;

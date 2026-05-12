@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Curves/CurveFloat.h"
 #include "InteractiveTool.h"
 #include "QuickSDFToolTypes.h"
 #include "QuickSDFToolProperties.generated.h"
@@ -24,6 +25,22 @@ enum class EQuickSDFPaintTargetMode : uint8
 	All UMETA(DisplayName = "All Textures"),
 	BeforeCurrent UMETA(DisplayName = "Before Current"),
 	AfterCurrent UMETA(DisplayName = "After Current")
+};
+
+UENUM(BlueprintType)
+enum class EQuickSDFApplyMode : uint8
+{
+	Single UMETA(DisplayName = "Single"),
+	SolidRange UMETA(DisplayName = "Solid Range"),
+	GradientRange UMETA(DisplayName = "Gradient Range")
+};
+
+UENUM(BlueprintType)
+enum class EQuickSDFApplyDirection : uint8
+{
+	Both UMETA(DisplayName = "Both"),
+	Before UMETA(DisplayName = "Before"),
+	After UMETA(DisplayName = "After")
 };
 
 UENUM(BlueprintType)
@@ -96,6 +113,9 @@ class UQuickSDFToolProperties : public UInteractiveToolPropertySet
 	GENERATED_BODY()
 
 public:
+	UQuickSDFToolProperties();
+	virtual void PostLoad() override;
+
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Quick Start", meta = (DisplayName = "Quality"))
 	EQuickSDFQualityPreset QualityPreset = EQuickSDFQualityPreset::Standard1024;
 
@@ -159,7 +179,16 @@ public:
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Target Settings", meta = (DisplayName = "Bake Angle Offset", ClampMin = "0.0", ClampMax = "90.0", UIMin = "0.0", UIMax = "90.0"))
 	float BakeAngleOffsetDegrees = 0.0f;
 
-	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint Target Mode"))
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Apply Mode"))
+	EQuickSDFApplyMode ApplyMode = EQuickSDFApplyMode::Single;
+
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Direction", EditCondition = "ApplyMode != EQuickSDFApplyMode::Single", EditConditionHides))
+	EQuickSDFApplyDirection ApplyDirection = EQuickSDFApplyDirection::Both;
+
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Gradient Curve", EditCondition = "ApplyMode == EQuickSDFApplyMode::GradientRange", EditConditionHides))
+	FRuntimeFloatCurve GradientCurve;
+
+	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint Target Mode", HideInDetailPanel, DeprecatedProperty, DeprecationMessage = "Use Apply Mode and Direction instead."))
 	EQuickSDFPaintTargetMode PaintTargetMode = EQuickSDFPaintTargetMode::CurrentOnly;
 
 	UPROPERTY(NonTransactional, EditAnywhere, Category = "Paint Settings", meta = (DisplayName = "Paint All Textures", HideInDetailPanel))
@@ -353,4 +382,9 @@ public:
 	void SetSymmetryMode(EQuickSDFSymmetryMode NewMode);
 	void SetSymmetryEnabled(bool bEnabled);
 	void SyncLegacySymmetryFlag();
+	void SyncApplyModeFromLegacyPaintTarget();
+	void SyncLegacyPaintTargetFromApplyMode();
+	void EnsureGradientCurveDefaults();
+	float EvaluateGradientRadiusScale(float NormalizedDistance) const;
+	bool UsesRangeApplyMode() const;
 };

@@ -4,6 +4,9 @@
 #include "EditorModeManager.h"
 #include "Framework/Application/SlateApplication.h"
 #include "InteractiveToolManager.h"
+#include "ISinglePropertyView.h"
+#include "Modules/ModuleManager.h"
+#include "PropertyEditorModule.h"
 #include "QuickSDFEditorMode.h"
 #include "QuickSDFPaintTool.h"
 #include "QuickSDFSelectTool.h"
@@ -14,10 +17,12 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Input/SComboButton.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Layout/SUniformGridPanel.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SLeafWidget.h"
 #include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "QuickSDFToolUI"
@@ -67,6 +72,194 @@ FText GetPaintTargetModeToolTip(UQuickSDFToolProperties* Properties, EQuickSDFPa
 		QuickSDFToolUI::GetPaintTargetModeLabel(Mode),
 		bSelected ? LOCTEXT("PaintTargetModeSelected", "Selected") : LOCTEXT("PaintTargetModeClickToUse", "Click to use"),
 		QuickSDFToolUI::GetPaintTargetModeDescription(Mode));
+}
+
+FText GetApplyModeToolTip(UQuickSDFToolProperties* Properties, EQuickSDFApplyMode Mode)
+{
+	const bool bSelected = QuickSDFToolUI::GetApplyMode(Properties) == Mode;
+	return FText::Format(
+		LOCTEXT("ApplyModeTooltipFormat", "Apply Mode: {0}\n{1}\n{2}"),
+		QuickSDFToolUI::GetApplyModeLabel(Mode),
+		bSelected ? LOCTEXT("ApplyModeSelected", "Selected") : LOCTEXT("ApplyModeClickToUse", "Click to use"),
+		QuickSDFToolUI::GetApplyModeDescription(Mode));
+}
+
+FText GetApplyDirectionToolTip(UQuickSDFToolProperties* Properties, EQuickSDFApplyDirection Direction)
+{
+	const bool bSelected = QuickSDFToolUI::GetApplyDirection(Properties) == Direction;
+	return FText::Format(
+		LOCTEXT("ApplyDirectionTooltipFormat", "Direction: {0}\n{1}\n{2}"),
+		QuickSDFToolUI::GetApplyDirectionLabel(Direction),
+		bSelected ? LOCTEXT("ApplyDirectionSelected", "Selected") : LOCTEXT("ApplyDirectionClickToUse", "Click to use"),
+		QuickSDFToolUI::GetApplyDirectionDescription(Direction));
+}
+
+class SQuickSDFGradientCurvePreview final : public SLeafWidget
+{
+public:
+	SLATE_BEGIN_ARGS(SQuickSDFGradientCurvePreview) {}
+		SLATE_ATTRIBUTE(UQuickSDFToolProperties*, Properties)
+	SLATE_END_ARGS()
+
+	void Construct(const FArguments& InArgs)
+	{
+		Properties = InArgs._Properties;
+	}
+
+	virtual FVector2D ComputeDesiredSize(float) const override
+	{
+		return FVector2D(42.0f, 16.0f);
+	}
+
+	virtual int32 OnPaint(
+		const FPaintArgs& Args,
+		const FGeometry& AllottedGeometry,
+		const FSlateRect& MyCullingRect,
+		FSlateWindowElementList& OutDrawElements,
+		int32 LayerId,
+		const FWidgetStyle& InWidgetStyle,
+		bool bParentEnabled) const override
+	{
+		const FVector2D LocalSize = AllottedGeometry.GetLocalSize();
+		FSlateDrawElement::MakeBox(
+			OutDrawElements,
+			LayerId,
+			AllottedGeometry.ToPaintGeometry(),
+			FAppStyle::GetBrush("WhiteBrush"),
+			ESlateDrawEffect::None,
+			FLinearColor(0.02f, 0.02f, 0.02f, 0.70f));
+
+		TArray<FVector2D> Points;
+		constexpr int32 SampleCount = 14;
+		Points.Reserve(SampleCount);
+		const UQuickSDFToolProperties* Props = Properties.Get();
+		for (int32 Index = 0; Index < SampleCount; ++Index)
+		{
+			const float Alpha = static_cast<float>(Index) / static_cast<float>(SampleCount - 1);
+			const float Scale = Props
+				? Props->EvaluateGradientRadiusScale(Alpha)
+				: 1.0f - Alpha;
+			Points.Add(FVector2D(
+				Alpha * LocalSize.X,
+				(1.0f - FMath::Clamp(Scale, 0.0f, 1.0f)) * LocalSize.Y));
+		}
+
+		FSlateDrawElement::MakeLines(
+			OutDrawElements,
+			LayerId + 1,
+			AllottedGeometry.ToPaintGeometry(),
+			Points,
+			ESlateDrawEffect::None,
+			FLinearColor(0.74f, 0.58f, 1.0f, 1.0f),
+			true,
+			1.5f);
+		return LayerId + 1;
+	}
+
+private:
+	TAttribute<UQuickSDFToolProperties*> Properties;
+};
+
+TSharedRef<SWidget> MakeGradientCurveQuickEditor(
+	QuickSDFToolUI::FGetPaintTool GetPaintTool,
+	TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties)
+{
+	return SNew(SBox)
+		.Visibility_Lambda([GetPaintTool, FallbackProperties]()
+		{
+			return QuickSDFToolUI::GetApplyMode(GetProperties(GetPaintTool(), FallbackProperties)) == EQuickSDFApplyMode::GradientRange
+				? EVisibility::Visible
+				: EVisibility::Collapsed;
+		})
+		[
+			SNew(SComboButton)
+			.ButtonStyle(FQuickSDFToolStyle::Get().Get(), "QuickSDF.Timeline.Button")
+			.ContentPadding(FMargin(4.0f, 2.0f))
+			.ToolTipText(LOCTEXT("GradientCurveQuickEditTooltip", "Gradient Curve"))
+			.OnGetMenuContent_Lambda([GetPaintTool, FallbackProperties]()
+			{
+				UQuickSDFPaintTool* Tool = GetPaintTool();
+				UQuickSDFToolProperties* Properties = GetProperties(Tool, FallbackProperties);
+				if (!Properties)
+				{
+					return SNew(SBox)
+						.Padding(8.0f)
+						[
+							SNew(STextBlock)
+							.Text(LOCTEXT("GradientCurveMissingProperties", "No active paint properties."))
+						];
+				}
+
+				FPropertyEditorModule& PropertyEditorModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
+				FSinglePropertyParams Params;
+				Params.NameOverride = LOCTEXT("GradientCurveSinglePropertyName", "Gradient Curve");
+				Params.NamePlacement = EPropertyNamePlacement::Left;
+				Params.Font = FAppStyle::GetFontStyle("PropertyWindow.NormalFont");
+				TSharedPtr<ISinglePropertyView> PropertyView = PropertyEditorModule.CreateSingleProperty(
+					Properties,
+					GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, GradientCurve),
+					Params);
+
+				if (!PropertyView.IsValid() || !PropertyView->HasValidProperty())
+				{
+					return SNew(SBox)
+						.Padding(8.0f)
+						[
+							SNew(STextBlock)
+							.Text(LOCTEXT("GradientCurveInvalidProperty", "Gradient Curve is unavailable."))
+						];
+				}
+
+				TWeakObjectPtr<UQuickSDFToolProperties> WeakProperties(Properties);
+				TWeakObjectPtr<UQuickSDFPaintTool> WeakTool(Tool);
+				PropertyView->SetOnPropertyValueChanged(FSimpleDelegate::CreateLambda([WeakProperties, WeakTool]()
+				{
+					if (UQuickSDFToolProperties* Props = WeakProperties.Get())
+					{
+						Props->EnsureGradientCurveDefaults();
+						if (UQuickSDFPaintTool* PaintTool = WeakTool.Get())
+						{
+							FProperty* Prop = Props->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, GradientCurve));
+							PaintTool->OnPropertyModified(Props, Prop);
+						}
+					}
+					if (GEditor)
+					{
+						GEditor->RedrawAllViewports(false);
+					}
+				}));
+
+				return SNew(SBox)
+					.WidthOverride(380.0f)
+					.Padding(8.0f)
+					[
+						PropertyView.ToSharedRef()
+					];
+			})
+			.ButtonContent()
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				[
+					SNew(SQuickSDFGradientCurvePreview)
+					.Properties_Lambda([GetPaintTool, FallbackProperties]()
+					{
+						return GetProperties(GetPaintTool(), FallbackProperties);
+					})
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(5.0f, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("GradientCurveQuickEditLabel", "Edit..."))
+					.Font(FAppStyle::GetFontStyle("SmallFont"))
+				]
+			]
+		];
 }
 
 FText GetMeshPaintModeToolTip(UQuickSDFToolProperties* Properties, EQuickSDFMeshPaintMode Mode)
@@ -159,6 +352,26 @@ const TArray<EQuickSDFPaintTargetMode>& QuickSDFToolUI::GetPaintTargetModes()
 		EQuickSDFPaintTargetMode::AfterCurrent,
 	};
 	return Modes;
+}
+
+const TArray<EQuickSDFApplyMode>& QuickSDFToolUI::GetApplyModes()
+{
+	static const TArray<EQuickSDFApplyMode> Modes = {
+		EQuickSDFApplyMode::Single,
+		EQuickSDFApplyMode::SolidRange,
+		EQuickSDFApplyMode::GradientRange,
+	};
+	return Modes;
+}
+
+const TArray<EQuickSDFApplyDirection>& QuickSDFToolUI::GetApplyDirections()
+{
+	static const TArray<EQuickSDFApplyDirection> Directions = {
+		EQuickSDFApplyDirection::Both,
+		EQuickSDFApplyDirection::Before,
+		EQuickSDFApplyDirection::After,
+	};
+	return Directions;
 }
 
 const TArray<EQuickSDFSymmetryMode>& QuickSDFToolUI::GetSymmetryModes()
@@ -504,6 +717,7 @@ void QuickSDFToolUI::SetPaintTargetMode(UQuickSDFPaintTool* Tool, UQuickSDFToolP
 
 	Properties->PaintTargetMode = Mode;
 	Properties->bPaintAllAngles = bExpectedPaintAll;
+	Properties->SyncApplyModeFromLegacyPaintTarget();
 
 	if (Tool)
 	{
@@ -528,6 +742,162 @@ void QuickSDFToolUI::CyclePaintTargetMode(UQuickSDFPaintTool* Tool, UQuickSDFToo
 	const int32 CurrentIndex = Modes.IndexOfByKey(GetPaintTargetMode(Properties));
 	const int32 NextIndex = CurrentIndex == INDEX_NONE ? 0 : (CurrentIndex + 1) % Modes.Num();
 	SetPaintTargetMode(Tool, Properties, Modes[NextIndex]);
+}
+
+EQuickSDFApplyMode QuickSDFToolUI::GetApplyMode(const UQuickSDFToolProperties* Properties)
+{
+	return Properties ? Properties->ApplyMode : EQuickSDFApplyMode::Single;
+}
+
+FText QuickSDFToolUI::GetApplyModeLabel(EQuickSDFApplyMode Mode)
+{
+	switch (Mode)
+	{
+	case EQuickSDFApplyMode::Single:
+		return LOCTEXT("ApplyModeSingleLabel", "Single");
+	case EQuickSDFApplyMode::SolidRange:
+		return LOCTEXT("ApplyModeSolidRangeLabel", "Solid Range");
+	case EQuickSDFApplyMode::GradientRange:
+		return LOCTEXT("ApplyModeGradientRangeLabel", "Gradient Range");
+	default:
+		return FText::GetEmpty();
+	}
+}
+
+FText QuickSDFToolUI::GetApplyModeShortLabel(EQuickSDFApplyMode Mode)
+{
+	switch (Mode)
+	{
+	case EQuickSDFApplyMode::Single:
+		return LOCTEXT("ApplyModeSingleShortLabel", "Single");
+	case EQuickSDFApplyMode::SolidRange:
+		return LOCTEXT("ApplyModeSolidRangeShortLabel", "Solid");
+	case EQuickSDFApplyMode::GradientRange:
+		return LOCTEXT("ApplyModeGradientRangeShortLabel", "Gradient");
+	default:
+		return FText::GetEmpty();
+	}
+}
+
+FText QuickSDFToolUI::GetApplyModeDescription(EQuickSDFApplyMode Mode)
+{
+	switch (Mode)
+	{
+	case EQuickSDFApplyMode::Single:
+		return LOCTEXT("ApplyModeSingleDesc", "Paints only the current angle.");
+	case EQuickSDFApplyMode::SolidRange:
+		return LOCTEXT("ApplyModeSolidRangeDesc", "Paints the selected angle range with the same brush radius.");
+	case EQuickSDFApplyMode::GradientRange:
+		return LOCTEXT("ApplyModeGradientRangeDesc", "Paints the selected angle range with radius scaled by distance from the current angle.");
+	default:
+		return FText::GetEmpty();
+	}
+}
+
+void QuickSDFToolUI::SetApplyMode(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties, EQuickSDFApplyMode Mode)
+{
+	if (!Properties || Properties->ApplyMode == Mode)
+	{
+		return;
+	}
+
+	Properties->ApplyMode = Mode;
+	Properties->EnsureGradientCurveDefaults();
+	Properties->SyncLegacyPaintTargetFromApplyMode();
+
+	if (Tool)
+	{
+		FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, ApplyMode));
+		Tool->OnPropertyModified(Properties, Prop);
+	}
+
+	if (GEditor)
+	{
+		GEditor->RedrawAllViewports(false);
+	}
+}
+
+void QuickSDFToolUI::CycleApplyMode(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties)
+{
+	if (!Properties)
+	{
+		return;
+	}
+
+	const TArray<EQuickSDFApplyMode>& Modes = GetApplyModes();
+	const int32 CurrentIndex = Modes.IndexOfByKey(GetApplyMode(Properties));
+	const int32 NextIndex = CurrentIndex == INDEX_NONE ? 0 : (CurrentIndex + 1) % Modes.Num();
+	SetApplyMode(Tool, Properties, Modes[NextIndex]);
+}
+
+EQuickSDFApplyDirection QuickSDFToolUI::GetApplyDirection(const UQuickSDFToolProperties* Properties)
+{
+	return Properties ? Properties->ApplyDirection : EQuickSDFApplyDirection::Both;
+}
+
+FText QuickSDFToolUI::GetApplyDirectionLabel(EQuickSDFApplyDirection Direction)
+{
+	switch (Direction)
+	{
+	case EQuickSDFApplyDirection::Both:
+		return LOCTEXT("ApplyDirectionBothLabel", "Both");
+	case EQuickSDFApplyDirection::Before:
+		return LOCTEXT("ApplyDirectionBeforeLabel", "Before");
+	case EQuickSDFApplyDirection::After:
+		return LOCTEXT("ApplyDirectionAfterLabel", "After");
+	default:
+		return FText::GetEmpty();
+	}
+}
+
+FText QuickSDFToolUI::GetApplyDirectionDescription(EQuickSDFApplyDirection Direction)
+{
+	switch (Direction)
+	{
+	case EQuickSDFApplyDirection::Both:
+		return LOCTEXT("ApplyDirectionBothDesc", "Targets both smaller and larger angles around the current angle.");
+	case EQuickSDFApplyDirection::Before:
+		return LOCTEXT("ApplyDirectionBeforeDesc", "Targets the current angle and smaller angles.");
+	case EQuickSDFApplyDirection::After:
+		return LOCTEXT("ApplyDirectionAfterDesc", "Targets the current angle and larger angles.");
+	default:
+		return FText::GetEmpty();
+	}
+}
+
+void QuickSDFToolUI::SetApplyDirection(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties, EQuickSDFApplyDirection Direction)
+{
+	if (!Properties || Properties->ApplyDirection == Direction)
+	{
+		return;
+	}
+
+	Properties->ApplyDirection = Direction;
+	Properties->SyncLegacyPaintTargetFromApplyMode();
+
+	if (Tool)
+	{
+		FProperty* Prop = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, ApplyDirection));
+		Tool->OnPropertyModified(Properties, Prop);
+	}
+
+	if (GEditor)
+	{
+		GEditor->RedrawAllViewports(false);
+	}
+}
+
+void QuickSDFToolUI::CycleApplyDirection(UQuickSDFPaintTool* Tool, UQuickSDFToolProperties* Properties)
+{
+	if (!Properties)
+	{
+		return;
+	}
+
+	const TArray<EQuickSDFApplyDirection>& Directions = GetApplyDirections();
+	const int32 CurrentIndex = Directions.IndexOfByKey(GetApplyDirection(Properties));
+	const int32 NextIndex = CurrentIndex == INDEX_NONE ? 0 : (CurrentIndex + 1) % Directions.Num();
+	SetApplyDirection(Tool, Properties, Directions[NextIndex]);
 }
 
 FText QuickSDFToolUI::GetSymmetryModeLabel(EQuickSDFSymmetryMode Mode)
@@ -1077,6 +1447,308 @@ TSharedRef<SWidget> QuickSDFToolUI::MakePaintTargetModeSelector(FGetPaintTool Ge
 	return ModeRow;
 }
 
+TSharedRef<SWidget> QuickSDFToolUI::MakeApplyModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties, bool bUseCompactLayout)
+{
+	if (bUseCompactLayout)
+	{
+		TSharedRef<SHorizontalBox> ModeRow = SNew(SHorizontalBox);
+		for (EQuickSDFApplyMode Mode : GetApplyModes())
+		{
+			ModeRow->AddSlot()
+			.AutoWidth()
+			.Padding(0.5f, 0.0f)
+			[
+				SNew(SBox)
+				.WidthOverride(72.0f)
+				.HeightOverride(24.0f)
+				[
+					SNew(SCheckBox)
+					.Style(FQuickSDFToolStyle::Get().Get(), "QuickSDF.Timeline.ToggleButton")
+					.ToolTipText_Lambda([Mode, GetPaintTool, FallbackProperties]()
+					{
+						return GetApplyModeToolTip(GetProperties(GetPaintTool(), FallbackProperties), Mode);
+					})
+					.IsChecked_Lambda([Mode, GetPaintTool, FallbackProperties]()
+					{
+						return GetApplyMode(GetProperties(GetPaintTool(), FallbackProperties)) == Mode
+							? ECheckBoxState::Checked
+							: ECheckBoxState::Unchecked;
+					})
+					.OnCheckStateChanged_Lambda([Mode, GetPaintTool, FallbackProperties](ECheckBoxState NewState)
+					{
+						if (NewState == ECheckBoxState::Checked)
+						{
+							UQuickSDFPaintTool* Tool = GetPaintTool();
+							SetApplyMode(Tool, GetProperties(Tool, FallbackProperties), Mode);
+						}
+					})
+					.Padding(FMargin(5.0f, 2.0f))
+					[
+						SNew(STextBlock)
+						.Text(GetApplyModeShortLabel(Mode))
+						.Justification(ETextJustify::Center)
+						.Font(FAppStyle::GetFontStyle("SmallFont"))
+						.ColorAndOpacity_Lambda([Mode, GetPaintTool, FallbackProperties]()
+						{
+							return GetApplyMode(GetProperties(GetPaintTool(), FallbackProperties)) == Mode
+								? FSlateColor(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
+								: FSlateColor(FLinearColor(0.62f, 0.62f, 0.62f, 1.0f));
+						})
+					]
+				]
+			];
+		}
+		return ModeRow;
+	}
+
+	TSharedRef<SUniformGridPanel> ModeGrid = SNew(SUniformGridPanel)
+		.SlotPadding(FMargin(3.0f));
+
+	const TArray<EQuickSDFApplyMode>& Modes = GetApplyModes();
+	for (int32 Index = 0; Index < Modes.Num(); ++Index)
+	{
+		const EQuickSDFApplyMode Mode = Modes[Index];
+		ModeGrid->AddSlot(Index, 0)
+		[
+			SNew(SBox)
+			.WidthOverride(112.0f)
+			.HeightOverride(42.0f)
+			[
+				SNew(SCheckBox)
+				.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
+				.ToolTipText_Lambda([Mode, GetPaintTool, FallbackProperties]()
+				{
+					return GetApplyModeToolTip(GetProperties(GetPaintTool(), FallbackProperties), Mode);
+				})
+				.IsChecked_Lambda([Mode, GetPaintTool, FallbackProperties]()
+				{
+					return GetApplyMode(GetProperties(GetPaintTool(), FallbackProperties)) == Mode
+						? ECheckBoxState::Checked
+						: ECheckBoxState::Unchecked;
+				})
+				.OnCheckStateChanged_Lambda([Mode, GetPaintTool, FallbackProperties](ECheckBoxState NewState)
+				{
+					if (NewState == ECheckBoxState::Checked)
+					{
+						UQuickSDFPaintTool* Tool = GetPaintTool();
+						SetApplyMode(Tool, GetProperties(Tool, FallbackProperties), Mode);
+					}
+				})
+				.Padding(FMargin(6.0f, 4.0f))
+				[
+					SNew(STextBlock)
+					.Text(GetApplyModeLabel(Mode))
+					.Justification(ETextJustify::Center)
+					.Font(FAppStyle::GetFontStyle("SmallFont"))
+					.ColorAndOpacity_Lambda([Mode, GetPaintTool, FallbackProperties]()
+					{
+						return GetApplyMode(GetProperties(GetPaintTool(), FallbackProperties)) == Mode
+							? FSlateColor(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
+							: FSlateColor(FLinearColor(0.68f, 0.68f, 0.68f, 1.0f));
+					})
+				]
+			]
+		];
+	}
+
+	return ModeGrid;
+}
+
+TSharedRef<SWidget> QuickSDFToolUI::MakeApplyDirectionSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties, bool bUseCompactLayout)
+{
+	if (bUseCompactLayout)
+	{
+		TSharedRef<SHorizontalBox> DirectionRow = SNew(SHorizontalBox);
+		for (EQuickSDFApplyDirection Direction : GetApplyDirections())
+		{
+			DirectionRow->AddSlot()
+			.AutoWidth()
+			.Padding(0.5f, 0.0f)
+			[
+				SNew(SBox)
+				.WidthOverride(54.0f)
+				.HeightOverride(24.0f)
+				[
+					SNew(SCheckBox)
+					.Style(FQuickSDFToolStyle::Get().Get(), "QuickSDF.Timeline.ToggleButton")
+					.ToolTipText_Lambda([Direction, GetPaintTool, FallbackProperties]()
+					{
+						return GetApplyDirectionToolTip(GetProperties(GetPaintTool(), FallbackProperties), Direction);
+					})
+					.IsChecked_Lambda([Direction, GetPaintTool, FallbackProperties]()
+					{
+						return GetApplyDirection(GetProperties(GetPaintTool(), FallbackProperties)) == Direction
+							? ECheckBoxState::Checked
+							: ECheckBoxState::Unchecked;
+					})
+					.OnCheckStateChanged_Lambda([Direction, GetPaintTool, FallbackProperties](ECheckBoxState NewState)
+					{
+						if (NewState == ECheckBoxState::Checked)
+						{
+							UQuickSDFPaintTool* Tool = GetPaintTool();
+							SetApplyDirection(Tool, GetProperties(Tool, FallbackProperties), Direction);
+						}
+					})
+					.Padding(FMargin(5.0f, 2.0f))
+					[
+						SNew(STextBlock)
+						.Text(GetApplyDirectionLabel(Direction))
+						.Justification(ETextJustify::Center)
+						.Font(FAppStyle::GetFontStyle("SmallFont"))
+						.ColorAndOpacity_Lambda([Direction, GetPaintTool, FallbackProperties]()
+						{
+							return GetApplyDirection(GetProperties(GetPaintTool(), FallbackProperties)) == Direction
+								? FSlateColor(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
+								: FSlateColor(FLinearColor(0.62f, 0.62f, 0.62f, 1.0f));
+						})
+					]
+				]
+			];
+		}
+		return DirectionRow;
+	}
+
+	TSharedRef<SUniformGridPanel> DirectionGrid = SNew(SUniformGridPanel)
+		.SlotPadding(FMargin(3.0f));
+
+	const TArray<EQuickSDFApplyDirection>& Directions = GetApplyDirections();
+	for (int32 Index = 0; Index < Directions.Num(); ++Index)
+	{
+		const EQuickSDFApplyDirection Direction = Directions[Index];
+		DirectionGrid->AddSlot(Index, 0)
+		[
+			SNew(SBox)
+			.WidthOverride(92.0f)
+			.HeightOverride(38.0f)
+			[
+				SNew(SCheckBox)
+				.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
+				.ToolTipText_Lambda([Direction, GetPaintTool, FallbackProperties]()
+				{
+					return GetApplyDirectionToolTip(GetProperties(GetPaintTool(), FallbackProperties), Direction);
+				})
+				.IsChecked_Lambda([Direction, GetPaintTool, FallbackProperties]()
+				{
+					return GetApplyDirection(GetProperties(GetPaintTool(), FallbackProperties)) == Direction
+						? ECheckBoxState::Checked
+						: ECheckBoxState::Unchecked;
+				})
+				.OnCheckStateChanged_Lambda([Direction, GetPaintTool, FallbackProperties](ECheckBoxState NewState)
+				{
+					if (NewState == ECheckBoxState::Checked)
+					{
+						UQuickSDFPaintTool* Tool = GetPaintTool();
+						SetApplyDirection(Tool, GetProperties(Tool, FallbackProperties), Direction);
+					}
+				})
+				.Padding(FMargin(6.0f, 4.0f))
+				[
+					SNew(STextBlock)
+					.Text(GetApplyDirectionLabel(Direction))
+					.Justification(ETextJustify::Center)
+					.Font(FAppStyle::GetFontStyle("SmallFont"))
+					.ColorAndOpacity_Lambda([Direction, GetPaintTool, FallbackProperties]()
+					{
+						return GetApplyDirection(GetProperties(GetPaintTool(), FallbackProperties)) == Direction
+							? FSlateColor(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
+							: FSlateColor(FLinearColor(0.68f, 0.68f, 0.68f, 1.0f));
+					})
+				]
+			]
+		];
+	}
+
+	return DirectionGrid;
+}
+
+TSharedRef<SWidget> QuickSDFToolUI::MakeApplyControls(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties, bool bUseCompactLayout)
+{
+	if (bUseCompactLayout)
+	{
+		return SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+			[
+				SNew(STextBlock)
+				.Text(LOCTEXT("ApplyCompactLabel", "Apply"))
+				.Font(FAppStyle::GetFontStyle("SmallFont"))
+				.ColorAndOpacity(FLinearColor(0.62f, 0.62f, 0.62f, 1.0f))
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			[
+				MakeApplyModeSelector(GetPaintTool, FallbackProperties, true)
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(6.0f, 0.0f, 4.0f, 0.0f)
+			[
+				SNew(STextBlock)
+				.Text(LOCTEXT("ApplyDirectionCompactLabel", "Dir"))
+				.Font(FAppStyle::GetFontStyle("SmallFont"))
+				.ColorAndOpacity(FLinearColor(0.62f, 0.62f, 0.62f, 1.0f))
+				.Visibility_Lambda([GetPaintTool, FallbackProperties]()
+				{
+					return GetApplyMode(GetProperties(GetPaintTool(), FallbackProperties)) == EQuickSDFApplyMode::Single
+						? EVisibility::Collapsed
+						: EVisibility::Visible;
+				})
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			[
+				SNew(SBox)
+				.Visibility_Lambda([GetPaintTool, FallbackProperties]()
+				{
+					return GetApplyMode(GetProperties(GetPaintTool(), FallbackProperties)) == EQuickSDFApplyMode::Single
+						? EVisibility::Collapsed
+						: EVisibility::Visible;
+				})
+				[
+					MakeApplyDirectionSelector(GetPaintTool, FallbackProperties, true)
+				]
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(6.0f, 0.0f, 0.0f, 0.0f)
+			[
+				MakeGradientCurveQuickEditor(GetPaintTool, FallbackProperties)
+			];
+	}
+
+	return SNew(SVerticalBox)
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			MakeApplyModeSelector(GetPaintTool, FallbackProperties, false)
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, 5.0f, 0.0f, 0.0f)
+		[
+			SNew(SBox)
+			.Visibility_Lambda([GetPaintTool, FallbackProperties]()
+			{
+				return GetApplyMode(GetProperties(GetPaintTool(), FallbackProperties)) == EQuickSDFApplyMode::Single
+					? EVisibility::Collapsed
+					: EVisibility::Visible;
+			})
+			[
+				MakeApplyDirectionSelector(GetPaintTool, FallbackProperties, false)
+			]
+		]
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, 5.0f, 0.0f, 0.0f)
+		[
+			MakeGradientCurveQuickEditor(GetPaintTool, FallbackProperties)
+		];
+}
+
 TSharedRef<SWidget> QuickSDFToolUI::MakeSymmetryModeSelector(FGetPaintTool GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties> FallbackProperties)
 {
 	TSharedRef<SUniformGridPanel> SymmetryGrid = SNew(SUniformGridPanel)
@@ -1202,7 +1874,7 @@ TSharedRef<SWidget> QuickSDFToolUI::MakePaintToggleBar(FGetPaintTool GetPaintToo
 	.AutoWidth()
 	.Padding(0.0f)
 	[
-		MakePaintTargetModeSelector(GetPaintTool, FallbackProperties)
+		MakeApplyControls(GetPaintTool, FallbackProperties, true)
 	];
 
 	ToggleRow->AddSlot()
@@ -1294,71 +1966,6 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeQuickToggleMenu(FGetPaintTool GetPaintTo
 					[
 						SNew(STextBlock)
 						.Text(GetMaterialPreviewModeLabel(Mode))
-						.Justification(ETextJustify::Center)
-						.Font(FAppStyle::GetFontStyle("SmallFont"))
-					]
-				]
-			]
-		];
-	}
-
-	TSharedRef<SUniformGridPanel> PaintModeGrid = SNew(SUniformGridPanel)
-		.SlotPadding(FMargin(3.0f));
-
-	const TArray<EQuickSDFPaintTargetMode>& Modes = GetPaintTargetModes();
-	for (int32 Index = 0; Index < Modes.Num(); ++Index)
-	{
-		const EQuickSDFPaintTargetMode Mode = Modes[Index];
-		PaintModeGrid->AddSlot(Index, 0)
-		[
-			SNew(SBox)
-			.WidthOverride(78.0f)
-			.HeightOverride(58.0f)
-			[
-				SNew(SCheckBox)
-				.Style(FAppStyle::Get(), "ToggleButtonCheckbox")
-				.ToolTipText_Lambda([Mode, GetPaintTool]()
-				{
-					UQuickSDFPaintTool* Tool = GetPaintTool();
-					return GetPaintTargetModeToolTip(Tool ? Tool->Properties : nullptr, Mode);
-				})
-				.IsChecked_Lambda([Mode, GetPaintTool]()
-				{
-					UQuickSDFPaintTool* Tool = GetPaintTool();
-					return GetPaintTargetMode(Tool ? Tool->Properties : nullptr) == Mode ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-				})
-				.OnCheckStateChanged_Lambda([Mode, GetPaintTool](ECheckBoxState NewState)
-				{
-					if (NewState == ECheckBoxState::Checked)
-					{
-						UQuickSDFPaintTool* Tool = GetPaintTool();
-						SetPaintTargetMode(Tool, Tool ? Tool->Properties : nullptr, Mode);
-					}
-				})
-				.Padding(FMargin(6.0f, 4.0f))
-				[
-					SNew(SVerticalBox)
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.HAlign(HAlign_Center)
-					[
-						SNew(SImage)
-						.Image(FQuickSDFToolStyle::GetBrush(GetPaintTargetModeIconName(Mode)))
-						.ColorAndOpacity_Lambda([Mode, GetPaintTool]()
-						{
-							UQuickSDFPaintTool* Tool = GetPaintTool();
-							return GetPaintTargetMode(Tool ? Tool->Properties : nullptr) == Mode
-								? FSlateColor(FLinearColor(0.35f, 0.82f, 1.0f, 1.0f))
-								: FSlateColor(FLinearColor(0.68f, 0.68f, 0.68f, 1.0f));
-						})
-					]
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.HAlign(HAlign_Center)
-					.Padding(0.0f, 4.0f, 0.0f, 0.0f)
-					[
-						SNew(STextBlock)
-						.Text(GetPaintTargetModeLabel(Mode))
 						.Justification(ETextJustify::Center)
 						.Font(FAppStyle::GetFontStyle("SmallFont"))
 					]
@@ -1462,7 +2069,7 @@ TSharedRef<SWidget> QuickSDFToolUI::MakeQuickToggleMenu(FGetPaintTool GetPaintTo
 			.AutoHeight()
 			.Padding(0.0f, 6.0f, 0.0f, 0.0f)
 			[
-				PaintModeGrid
+				MakeApplyControls(GetPaintTool, TWeakObjectPtr<UQuickSDFToolProperties>(), false)
 			]
 			+ SVerticalBox::Slot()
 			.AutoHeight()

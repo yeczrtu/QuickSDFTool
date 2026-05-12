@@ -232,14 +232,27 @@ void UQuickSDFPaintTool::RegisterActions(FInteractiveToolActionSet& ActionSet)
 	ActionSet.RegisterAction(
 		this,
 		QuickSDFActionToggleBase,
-		TEXT("QuickSDFCyclePaintTargetMode"),
-		NSLOCTEXT("QuickSDFPaintTool", "CyclePaintTargetModeShortcut", "Paint Target Mode"),
-		NSLOCTEXT("QuickSDFPaintTool", "CyclePaintTargetModeShortcutDesc", "Cycle the Quick SDF paint target mode."),
+		TEXT("QuickSDFCycleApplyMode"),
+		NSLOCTEXT("QuickSDFPaintTool", "CycleApplyModeShortcut", "Apply Mode"),
+		NSLOCTEXT("QuickSDFPaintTool", "CycleApplyModeShortcutDesc", "Cycle the Quick SDF apply mode."),
 		EModifierKey::Alt,
 		EKeys::One,
 		[this]()
 		{
-			QuickSDFToolUI::CyclePaintTargetMode(this, Properties);
+			QuickSDFToolUI::CycleApplyMode(this, Properties);
+		});
+
+	ActionSet.RegisterAction(
+		this,
+		QuickSDFActionToggleBase + 20,
+		TEXT("QuickSDFCycleApplyDirection"),
+		NSLOCTEXT("QuickSDFPaintTool", "CycleApplyDirectionShortcut", "Apply Direction"),
+		NSLOCTEXT("QuickSDFPaintTool", "CycleApplyDirectionShortcutDesc", "Cycle the Quick SDF apply direction."),
+		EModifierKey::Alt | EModifierKey::Shift,
+		EKeys::One,
+		[this]()
+		{
+			QuickSDFToolUI::CycleApplyDirection(this, Properties);
 		});
 
 	const TArray<EQuickSDFPaintToggle>& Toggles = QuickSDFToolUI::GetPaintToggles();

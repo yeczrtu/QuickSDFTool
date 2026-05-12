@@ -127,6 +127,26 @@ void OpenContentBrowserToExportFolder(const FString& FolderPath, const TArray<UO
 }
 }
 
+UQuickSDFToolProperties::UQuickSDFToolProperties()
+{
+	EnsureGradientCurveDefaults();
+	SyncLegacyPaintTargetFromApplyMode();
+}
+
+void UQuickSDFToolProperties::PostLoad()
+{
+	Super::PostLoad();
+	EnsureGradientCurveDefaults();
+	if (ApplyMode == EQuickSDFApplyMode::Single &&
+		(bPaintAllAngles || PaintTargetMode != EQuickSDFPaintTargetMode::CurrentOnly))
+	{
+		SyncApplyModeFromLegacyPaintTarget();
+		return;
+	}
+
+	SyncLegacyPaintTargetFromApplyMode();
+}
+
 bool UQuickSDFToolProperties::UsesFrontHalfAngles() const
 {
 	return SymmetryMode != EQuickSDFSymmetryMode::None180;
@@ -288,6 +308,90 @@ void UQuickSDFToolProperties::SetSymmetryEnabled(bool bEnabled)
 void UQuickSDFToolProperties::SyncLegacySymmetryFlag()
 {
 	bSymmetryMode = UsesFrontHalfAngles();
+}
+
+void UQuickSDFToolProperties::SyncApplyModeFromLegacyPaintTarget()
+{
+	const EQuickSDFPaintTargetMode ResolvedMode =
+		(bPaintAllAngles && PaintTargetMode == EQuickSDFPaintTargetMode::CurrentOnly)
+			? EQuickSDFPaintTargetMode::All
+			: PaintTargetMode;
+
+	switch (ResolvedMode)
+	{
+	case EQuickSDFPaintTargetMode::All:
+		ApplyMode = EQuickSDFApplyMode::SolidRange;
+		ApplyDirection = EQuickSDFApplyDirection::Both;
+		break;
+	case EQuickSDFPaintTargetMode::BeforeCurrent:
+		ApplyMode = EQuickSDFApplyMode::SolidRange;
+		ApplyDirection = EQuickSDFApplyDirection::Before;
+		break;
+	case EQuickSDFPaintTargetMode::AfterCurrent:
+		ApplyMode = EQuickSDFApplyMode::SolidRange;
+		ApplyDirection = EQuickSDFApplyDirection::After;
+		break;
+	case EQuickSDFPaintTargetMode::CurrentOnly:
+	default:
+		ApplyMode = EQuickSDFApplyMode::Single;
+		ApplyDirection = EQuickSDFApplyDirection::Both;
+		break;
+	}
+}
+
+void UQuickSDFToolProperties::SyncLegacyPaintTargetFromApplyMode()
+{
+	if (ApplyMode == EQuickSDFApplyMode::Single)
+	{
+		PaintTargetMode = EQuickSDFPaintTargetMode::CurrentOnly;
+		bPaintAllAngles = false;
+		return;
+	}
+
+	switch (ApplyDirection)
+	{
+	case EQuickSDFApplyDirection::Before:
+		PaintTargetMode = EQuickSDFPaintTargetMode::BeforeCurrent;
+		bPaintAllAngles = false;
+		break;
+	case EQuickSDFApplyDirection::After:
+		PaintTargetMode = EQuickSDFPaintTargetMode::AfterCurrent;
+		bPaintAllAngles = false;
+		break;
+	case EQuickSDFApplyDirection::Both:
+	default:
+		PaintTargetMode = EQuickSDFPaintTargetMode::All;
+		bPaintAllAngles = true;
+		break;
+	}
+}
+
+void UQuickSDFToolProperties::EnsureGradientCurveDefaults()
+{
+	FRichCurve* Curve = GradientCurve.GetRichCurve();
+	if (!Curve || Curve->GetNumKeys() > 0)
+	{
+		return;
+	}
+
+	Curve->AddKey(0.0f, 1.0f);
+	Curve->AddKey(1.0f, 0.0f);
+}
+
+float UQuickSDFToolProperties::EvaluateGradientRadiusScale(float NormalizedDistance) const
+{
+	const float ClampedDistance = FMath::Clamp(NormalizedDistance, 0.0f, 1.0f);
+	const float DefaultScale = 1.0f - ClampedDistance;
+	const FRichCurve* Curve = GradientCurve.GetRichCurveConst();
+	const float Scale = Curve && Curve->GetNumKeys() > 0
+		? Curve->Eval(ClampedDistance, DefaultScale)
+		: DefaultScale;
+	return FMath::Clamp(Scale, 0.0f, 1.0f);
+}
+
+bool UQuickSDFToolProperties::UsesRangeApplyMode() const
+{
+	return ApplyMode != EQuickSDFApplyMode::Single;
 }
 
 void UQuickSDFToolProperties::ExportToTexture()

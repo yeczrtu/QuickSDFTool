@@ -1727,9 +1727,17 @@ FText SQuickSDFPaintCanvas::GetStatusText() const
 		AngleText = FString::Printf(TEXT("Angle %.0f deg"), Properties->TargetAngles[Properties->EditAngleIndex]);
 	}
 
-	const FString TargetModeText = Properties
-		? QuickSDFToolUI::GetPaintTargetModeLabel(QuickSDFToolUI::GetPaintTargetMode(Properties)).ToString()
-		: FString(TEXT("--"));
+	FString TargetModeText(TEXT("--"));
+	if (Properties)
+	{
+		const EQuickSDFApplyMode ApplyMode = QuickSDFToolUI::GetApplyMode(Properties);
+		TargetModeText = ApplyMode == EQuickSDFApplyMode::Single
+			? QuickSDFToolUI::GetApplyModeLabel(ApplyMode).ToString()
+			: FString::Printf(
+				TEXT("%s %s"),
+				*QuickSDFToolUI::GetApplyModeShortLabel(ApplyMode).ToString(),
+				*QuickSDFToolUI::GetApplyDirectionLabel(QuickSDFToolUI::GetApplyDirection(Properties)).ToString());
+	}
 
 	const UQuickSDFAsset* Asset = GetActiveQuickSDFAsset();
 	const FQuickSDFTextureSetData* ActiveSet = Asset ? Asset->GetActiveTextureSet() : nullptr;
@@ -1738,7 +1746,7 @@ FText SQuickSDFPaintCanvas::GetStatusText() const
 	const FString BrushText = FString::Printf(TEXT("Brush %.0f px"), GetBrushRadiusPixels());
 
 	return FText::FromString(FString::Printf(
-		TEXT("Resolution %s   Zoom %s   %s   %s   %s   Target %s   %s   Preview %s"),
+		TEXT("Resolution %s   Zoom %s   %s   %s   %s   Apply %s   %s   Preview %s"),
 		*ResolutionText,
 		*ZoomText,
 		*CursorText,

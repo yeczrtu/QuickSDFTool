@@ -609,7 +609,13 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
 		? FString::Printf(TEXT("%.0f deg"), Properties->TargetAngles[ActiveAngleIndex])
 		: FString(TEXT("--"));
 	const FString MeshPaintModeLabel = QuickSDFToolUI::GetMeshPaintModeShortLabel(QuickSDFToolUI::GetMeshPaintMode(Properties)).ToString();
-	const FString TargetModeLabel = QuickSDFToolUI::GetPaintTargetModeLabel(QuickSDFToolUI::GetPaintTargetMode(Properties)).ToString();
+	const EQuickSDFApplyMode ApplyMode = QuickSDFToolUI::GetApplyMode(Properties);
+	const FString TargetModeLabel = ApplyMode == EQuickSDFApplyMode::Single
+		? QuickSDFToolUI::GetApplyModeLabel(ApplyMode).ToString()
+		: FString::Printf(
+			TEXT("%s %s"),
+			*QuickSDFToolUI::GetApplyModeShortLabel(ApplyMode).ToString(),
+			*QuickSDFToolUI::GetApplyDirectionLabel(QuickSDFToolUI::GetApplyDirection(Properties)).ToString());
 	const FString TextureSetStatus = Properties ? GetTextureSetStatusText(Properties->ActiveTextureSetIndex).ToString() : FString(TEXT("Idle"));
 	const FString PreviewStatus = GetMaterialPreviewStatusText().ToString();
 
@@ -623,7 +629,7 @@ void UQuickSDFPaintTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* Render
 
 	FCanvasTextItem ModeText(
 		FVector2D(10.0f, 292.0f),
-		FText::FromString(FString::Printf(TEXT("Paint: %s  Mesh: %s  Target: %s  Set: %s  Preview: %s"), *PaintModeLabel, *MeshPaintModeLabel, *TargetModeLabel, *TextureSetStatus, *PreviewStatus)),
+		FText::FromString(FString::Printf(TEXT("Paint: %s  Mesh: %s  Apply: %s  Set: %s  Preview: %s"), *PaintModeLabel, *MeshPaintModeLabel, *TargetModeLabel, *TextureSetStatus, *PreviewStatus)),
 		GEngine->GetSmallFont(),
 		FLinearColor::White);
 	ModeText.EnableShadow(FLinearColor::Black);

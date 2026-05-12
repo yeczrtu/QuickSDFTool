@@ -396,7 +396,8 @@ bool UQuickSDFPaintTool::ShouldUseAnySurfaceProjectionPaint() const
 
 float UQuickSDFPaintTool::GetScreenProjectionBrushRadiusPixels() const
 {
-	return Properties ? FMath::Max(Properties->ScreenProjectionBrushRadiusPixels, 1.0f) : 32.0f;
+	const float BaseRadius = Properties ? FMath::Max(Properties->ScreenProjectionBrushRadiusPixels, 1.0f) : 32.0f;
+	return FMath::Max(BaseRadius * FMath::Max(ActivePaintTargetRadiusScale, 0.0f), 0.001f);
 }
 
 float UQuickSDFPaintTool::GetCurrentStrokePressure() const
@@ -603,9 +604,9 @@ double UQuickSDFPaintTool::GetEffectiveBrushRadius() const
 {
 	if (!BrushProperties)
 	{
-		return 10.0;
+		return FMath::Max(10.0 * static_cast<double>(FMath::Max(ActivePaintTargetRadiusScale, 0.0f)), 0.001);
 	}
-	return FMath::Max(GetCurrentBrushRadius(), 0.1);
+	return FMath::Max(GetCurrentBrushRadius() * static_cast<double>(FMath::Max(ActivePaintTargetRadiusScale, 0.0f)), 0.001);
 }
 
 FVector2D UQuickSDFPaintTool::GetSamplePixelPosition(const FQuickSDFStrokeSample& Sample, UTextureRenderTarget2D* RenderTarget) const
@@ -862,17 +863,47 @@ void UQuickSDFPaintTool::StampQuickLineSurfaceSegment(const FQuickSDFStrokeSampl
 {
 	if (ShouldUseSurfaceSpacePaint())
 	{
-		const TArray<int32> PaintTargetAngleIndices = GetPaintTargetAngleIndices();
-		if (Properties && PaintTargetAngleIndices.Num() > 1 && !bStampingAllPaintTargets)
+		const TArray<FQuickSDFPaintTargetPlan> PaintTargetPlans = GetPaintTargetPlans();
+		if (Properties && PaintTargetPlans.Num() == 1 && !bStampingAllPaintTargets)
+		{
+			const FQuickSDFPaintTargetPlan& Plan = PaintTargetPlans[0];
+			if (Plan.RadiusScale <= KINDA_SMALL_NUMBER)
+			{
+				return;
+			}
+			if (Plan.AngleIndex != Properties->EditAngleIndex || !FMath::IsNearlyEqual(Plan.RadiusScale, 1.0f))
+			{
+				const int32 PreviousEditAngleIndex = Properties->EditAngleIndex;
+				const float PreviousPaintTargetRadiusScale = ActivePaintTargetRadiusScale;
+				bStampingAllPaintTargets = true;
+				Properties->EditAngleIndex = Plan.AngleIndex;
+				ActivePaintTargetRadiusScale = Plan.RadiusScale;
+				StampQuickLineSurfaceSegment(StartSample, EndSample, bForce);
+				Properties->EditAngleIndex = PreviousEditAngleIndex;
+				ActivePaintTargetRadiusScale = PreviousPaintTargetRadiusScale;
+				bStampingAllPaintTargets = false;
+				RefreshPreviewMaterial();
+				return;
+			}
+		}
+		if (Properties && PaintTargetPlans.Num() > 1 && !bStampingAllPaintTargets)
 		{
 			const int32 PreviousEditAngleIndex = Properties->EditAngleIndex;
+			const float PreviousPaintTargetRadiusScale = ActivePaintTargetRadiusScale;
 			bStampingAllPaintTargets = true;
-			for (int32 AngleIndex : PaintTargetAngleIndices)
+			for (const FQuickSDFPaintTargetPlan& Plan : PaintTargetPlans)
 			{
-				Properties->EditAngleIndex = AngleIndex;
+				if (Plan.RadiusScale <= KINDA_SMALL_NUMBER)
+				{
+					continue;
+				}
+
+				Properties->EditAngleIndex = Plan.AngleIndex;
+				ActivePaintTargetRadiusScale = Plan.RadiusScale;
 				StampQuickLineSurfaceSegment(StartSample, EndSample, bForce);
 			}
 			Properties->EditAngleIndex = PreviousEditAngleIndex;
+			ActivePaintTargetRadiusScale = PreviousPaintTargetRadiusScale;
 			bStampingAllPaintTargets = false;
 			RefreshPreviewMaterial();
 			return;
@@ -2508,17 +2539,47 @@ void UQuickSDFPaintTool::StampSamples(const TArray<FQuickSDFStrokeSample>& Sampl
 {
 	if (Samples.Num() == 0) return;
 
-	const TArray<int32> PaintTargetAngleIndices = GetPaintTargetAngleIndices();
-	if (Properties && PaintTargetAngleIndices.Num() > 1 && !bStampingAllPaintTargets)
+	const TArray<FQuickSDFPaintTargetPlan> PaintTargetPlans = GetPaintTargetPlans();
+	if (Properties && PaintTargetPlans.Num() == 1 && !bStampingAllPaintTargets)
+	{
+		const FQuickSDFPaintTargetPlan& Plan = PaintTargetPlans[0];
+		if (Plan.RadiusScale <= KINDA_SMALL_NUMBER)
+		{
+			return;
+		}
+		if (Plan.AngleIndex != Properties->EditAngleIndex || !FMath::IsNearlyEqual(Plan.RadiusScale, 1.0f))
+		{
+			const int32 PreviousEditAngleIndex = Properties->EditAngleIndex;
+			const float PreviousPaintTargetRadiusScale = ActivePaintTargetRadiusScale;
+			bStampingAllPaintTargets = true;
+			Properties->EditAngleIndex = Plan.AngleIndex;
+			ActivePaintTargetRadiusScale = Plan.RadiusScale;
+			StampSamples(Samples);
+			Properties->EditAngleIndex = PreviousEditAngleIndex;
+			ActivePaintTargetRadiusScale = PreviousPaintTargetRadiusScale;
+			bStampingAllPaintTargets = false;
+			RefreshPreviewMaterial();
+			return;
+		}
+	}
+	if (Properties && PaintTargetPlans.Num() > 1 && !bStampingAllPaintTargets)
 	{
 		const int32 PreviousEditAngleIndex = Properties->EditAngleIndex;
+		const float PreviousPaintTargetRadiusScale = ActivePaintTargetRadiusScale;
 		bStampingAllPaintTargets = true;
-		for (int32 AngleIndex : PaintTargetAngleIndices)
+		for (const FQuickSDFPaintTargetPlan& Plan : PaintTargetPlans)
 		{
-			Properties->EditAngleIndex = AngleIndex;
+			if (Plan.RadiusScale <= KINDA_SMALL_NUMBER)
+			{
+				continue;
+			}
+
+			Properties->EditAngleIndex = Plan.AngleIndex;
+			ActivePaintTargetRadiusScale = Plan.RadiusScale;
 			StampSamples(Samples);
 		}
 		Properties->EditAngleIndex = PreviousEditAngleIndex;
+		ActivePaintTargetRadiusScale = PreviousPaintTargetRadiusScale;
 		bStampingAllPaintTargets = false;
 		RefreshPreviewMaterial();
 		return;

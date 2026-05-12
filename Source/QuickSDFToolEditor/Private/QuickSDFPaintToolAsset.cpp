@@ -3026,6 +3026,8 @@ void UQuickSDFPaintTool::SyncPropertiesFromActiveAsset()
 
 	QuickSDFTextureSetSync::SyncPropertiesFromActiveAsset(Properties, Asset);
 	Properties->EditAngleIndex = FMath::Clamp(Properties->EditAngleIndex, 0, FMath::Max(Properties->NumAngles - 1, 0));
+	Properties->EnsureGradientCurveDefaults();
+	Properties->SyncLegacyPaintTargetFromApplyMode();
 }
 
 void UQuickSDFPaintTool::MarkMasksChanged()
@@ -3048,15 +3050,27 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 	{
 		if (Property)
 		{
-			if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, PaintTargetMode))
+			if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, ApplyMode) ||
+				Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, ApplyDirection))
+			{
+				Properties->EnsureGradientCurveDefaults();
+				Properties->SyncLegacyPaintTargetFromApplyMode();
+			}
+			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, GradientCurve))
+			{
+				Properties->EnsureGradientCurveDefaults();
+			}
+			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, PaintTargetMode))
 			{
 				Properties->bPaintAllAngles = Properties->PaintTargetMode == EQuickSDFPaintTargetMode::All;
+				Properties->SyncApplyModeFromLegacyPaintTarget();
 			}
 			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bPaintAllAngles))
 			{
 				Properties->PaintTargetMode = Properties->bPaintAllAngles
 					? EQuickSDFPaintTargetMode::All
 					: EQuickSDFPaintTargetMode::CurrentOnly;
+				Properties->SyncApplyModeFromLegacyPaintTarget();
 			}
 			else if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, MeshPaintMode))
 			{

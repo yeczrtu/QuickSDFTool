@@ -11,6 +11,8 @@ struct FQuickSDFTimelineKeySegment
 	float LeftAngle = 0.0f;
 	float RightAngle = 0.0f;
 	bool bInPaintTargetRange = false;
+	float RadiusScale = 0.0f;
+	float NormalizedDistance = 0.0f;
 };
 
 struct FQuickSDFTimelineRangeStatus
@@ -19,6 +21,8 @@ struct FQuickSDFTimelineRangeStatus
 	int32 ActiveKeyIndex = INDEX_NONE;
 	int32 ActiveVisualIndex = INDEX_NONE;
 	EQuickSDFPaintTargetMode PaintTargetMode = EQuickSDFPaintTargetMode::CurrentOnly;
+	EQuickSDFApplyMode ApplyMode = EQuickSDFApplyMode::Single;
+	EQuickSDFApplyDirection ApplyDirection = EQuickSDFApplyDirection::Both;
 	TArray<int32> VisibleKeyIndices;
 	TArray<FQuickSDFTimelineKeySegment> Segments;
 	bool bHasTargetRange = false;
@@ -26,6 +30,7 @@ struct FQuickSDFTimelineRangeStatus
 	float TargetRangeRightAngle = 0.0f;
 
 	bool IsKeyInTargetRange(int32 KeyIndex) const;
+	float GetKeyRadiusScale(int32 KeyIndex) const;
 	const FQuickSDFTimelineKeySegment* FindSegmentByKeyIndex(int32 KeyIndex) const;
 };
 
@@ -41,6 +46,9 @@ struct FQuickSDFTimelineKeyStatusInput
 	bool bVisible = true;
 	bool bIsActive = false;
 	bool bInPaintTargetRange = false;
+	EQuickSDFApplyMode ApplyMode = EQuickSDFApplyMode::Single;
+	EQuickSDFApplyDirection ApplyDirection = EQuickSDFApplyDirection::Both;
+	float RadiusScale = 0.0f;
 	bool bHasTextureMask = false;
 	bool bHasPaintRenderTarget = false;
 	bool bAllowSourceTextureOverwrite = false;
@@ -61,6 +69,9 @@ struct FQuickSDFTimelineKeyStatus
 	bool bVisible = true;
 	bool bIsActive = false;
 	bool bInPaintTargetRange = false;
+	EQuickSDFApplyMode ApplyMode = EQuickSDFApplyMode::Single;
+	EQuickSDFApplyDirection ApplyDirection = EQuickSDFApplyDirection::Both;
+	float RadiusScale = 0.0f;
 	bool bHasMask = false;
 	bool bAllowSourceTextureOverwrite = false;
 	bool bGuardEnabled = false;
@@ -85,6 +96,13 @@ TArray<int32> MakeVisibleSortedKeyIndices(const TArray<float>& Angles, bool bSym
 float NormalizeAngleToTimelinePercent(float Angle, float MaxAngle);
 bool ShouldShowOffsetVisual(float AngleOffsetDelta);
 FQuickSDFTimelineOffsetVisual BuildOffsetVisual(float AuthoredAngle, float EffectivePreviewAngle, float AngleOffsetDelta, float MaxAngle);
+FQuickSDFTimelineRangeStatus BuildRangeStatus(
+	const TArray<float>& Angles,
+	int32 ActiveKeyIndex,
+	EQuickSDFApplyMode ApplyMode,
+	EQuickSDFApplyDirection ApplyDirection,
+	const FRuntimeFloatCurve* GradientCurve,
+	bool bSymmetryMode);
 FQuickSDFTimelineRangeStatus BuildRangeStatus(
 	const TArray<float>& Angles,
 	int32 ActiveKeyIndex,

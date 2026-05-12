@@ -1532,34 +1532,32 @@ UTextureRenderTarget2D* UQuickSDFPaintTool::GetActiveRenderTarget() const
 	return Asset->GetActiveAngleDataList()[AngleIdx].PaintRenderTarget;
 }
 
-TArray<int32> UQuickSDFPaintTool::GetPaintTargetAngleIndices() const
+TArray<FQuickSDFPaintTargetPlan> UQuickSDFPaintTool::GetPaintTargetPlans() const
 {
-	TArray<int32> TargetIndices;
+	TArray<FQuickSDFPaintTargetPlan> TargetPlans;
 	if (!Properties)
 	{
-		return TargetIndices;
+		return TargetPlans;
 	}
 
 	UQuickSDFToolSubsystem* Subsystem = GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>();
 	UQuickSDFAsset* Asset = Subsystem ? Subsystem->GetActiveSDFAsset() : nullptr;
 	if (!Asset || Asset->GetActiveAngleDataList().Num() == 0)
 	{
-		return TargetIndices;
+		return TargetPlans;
 	}
 
 	const int32 CurrentAngleIndex = FMath::Clamp(Properties->EditAngleIndex, 0, Asset->GetActiveAngleDataList().Num() - 1);
-	const EQuickSDFPaintTargetMode TargetMode =
-		(Properties->bPaintAllAngles && Properties->PaintTargetMode == EQuickSDFPaintTargetMode::CurrentOnly)
-			? EQuickSDFPaintTargetMode::All
-			: Properties->PaintTargetMode;
 
-	if (TargetMode == EQuickSDFPaintTargetMode::CurrentOnly)
+	if (Properties->ApplyMode == EQuickSDFApplyMode::Single)
 	{
 		if (Asset->GetActiveAngleDataList()[CurrentAngleIndex].PaintRenderTarget)
 		{
-			TargetIndices.Add(CurrentAngleIndex);
+			FQuickSDFPaintTargetPlan Plan;
+			Plan.AngleIndex = CurrentAngleIndex;
+			TargetPlans.Add(Plan);
 		}
-		return TargetIndices;
+		return TargetPlans;
 	}
 
 	TArray<int32> SortedIndices;
@@ -1575,24 +1573,60 @@ TArray<int32> UQuickSDFPaintTool::GetPaintTargetAngleIndices() const
 		return Asset->GetActiveAngleDataList()[A].Angle < Asset->GetActiveAngleDataList()[B].Angle;
 	});
 
-	if (TargetMode == EQuickSDFPaintTargetMode::All)
-	{
-		return SortedIndices;
-	}
-
 	const int32 CurrentSortedIndex = SortedIndices.IndexOfByKey(CurrentAngleIndex);
 	if (CurrentSortedIndex == INDEX_NONE)
 	{
-		return TargetIndices;
+		return TargetPlans;
 	}
 
-	const int32 StartIndex = TargetMode == EQuickSDFPaintTargetMode::BeforeCurrent ? 0 : CurrentSortedIndex;
-	const int32 EndIndex = TargetMode == EQuickSDFPaintTargetMode::BeforeCurrent ? CurrentSortedIndex : SortedIndices.Num() - 1;
+	const int32 StartIndex = Properties->ApplyDirection == EQuickSDFApplyDirection::After ? CurrentSortedIndex : 0;
+	const int32 EndIndex = Properties->ApplyDirection == EQuickSDFApplyDirection::Before ? CurrentSortedIndex : SortedIndices.Num() - 1;
+	const bool bUseGradient = Properties->ApplyMode == EQuickSDFApplyMode::GradientRange;
+	const float CurrentAngle = Asset->GetActiveAngleDataList()[CurrentAngleIndex].Angle;
+	const float BeforeMaxDistance = StartIndex < CurrentSortedIndex
+		? FMath::Abs(CurrentAngle - Asset->GetActiveAngleDataList()[SortedIndices[StartIndex]].Angle)
+		: 0.0f;
+	const float AfterMaxDistance = EndIndex > CurrentSortedIndex
+		? FMath::Abs(Asset->GetActiveAngleDataList()[SortedIndices[EndIndex]].Angle - CurrentAngle)
+		: 0.0f;
+
 	for (int32 Index = StartIndex; Index <= EndIndex; ++Index)
 	{
-		TargetIndices.Add(SortedIndices[Index]);
+		const int32 AngleIndex = SortedIndices[Index];
+		FQuickSDFPaintTargetPlan Plan;
+		Plan.AngleIndex = AngleIndex;
+		if (bUseGradient)
+		{
+			const float Angle = Asset->GetActiveAngleDataList()[AngleIndex].Angle;
+			const float Distance = FMath::Abs(Angle - CurrentAngle);
+			const float MaxDistance = Angle <= CurrentAngle ? BeforeMaxDistance : AfterMaxDistance;
+			Plan.NormalizedDistance = MaxDistance > KINDA_SMALL_NUMBER
+				? FMath::Clamp(Distance / MaxDistance, 0.0f, 1.0f)
+				: 0.0f;
+			Plan.RadiusScale = Properties->EvaluateGradientRadiusScale(Plan.NormalizedDistance);
+		}
+
+		if (Plan.RadiusScale > KINDA_SMALL_NUMBER)
+		{
+			TargetPlans.Add(Plan);
+		}
 	}
 
+	return TargetPlans;
+}
+
+TArray<int32> UQuickSDFPaintTool::GetPaintTargetAngleIndices() const
+{
+	TArray<int32> TargetIndices;
+	const TArray<FQuickSDFPaintTargetPlan> TargetPlans = GetPaintTargetPlans();
+	TargetIndices.Reserve(TargetPlans.Num());
+	for (const FQuickSDFPaintTargetPlan& Plan : TargetPlans)
+	{
+		if (Plan.AngleIndex != INDEX_NONE)
+		{
+			TargetIndices.Add(Plan.AngleIndex);
+		}
+	}
 	return TargetIndices;
 }
 

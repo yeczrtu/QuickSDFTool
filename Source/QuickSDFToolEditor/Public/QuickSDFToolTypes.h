@@ -39,6 +39,13 @@ struct FQuickSDFStrokeSample
 	float Pressure = 1.0f;
 };
 
+struct FQuickSDFPaintTargetPlan
+{
+	int32 AngleIndex = INDEX_NONE;
+	float RadiusScale = 1.0f;
+	float NormalizedDistance = 0.0f;
+};
+
 UENUM(BlueprintType)
 enum class ESDFOutputFormat : uint8
 {
