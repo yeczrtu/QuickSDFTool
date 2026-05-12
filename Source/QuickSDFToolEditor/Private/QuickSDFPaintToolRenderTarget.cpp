@@ -132,7 +132,7 @@ void SyncQuickSDFPreviewLightToAngle(const UQuickSDFToolProperties* Properties, 
 		return;
 	}
 
-	Mode->SetPreviewLightAngle(Angle);
+	Mode->SetPreviewLightAngle(Angle, false);
 }
 
 bool CaptureRenderTargetPixelsInRect(UTextureRenderTarget2D* RenderTarget, const FIntRect& Rect, TArray<FColor>& OutPixels)

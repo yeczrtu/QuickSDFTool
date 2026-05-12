@@ -172,15 +172,7 @@ float UQuickSDFToolProperties::GetMaterialAngleForKey(int32 AngleIndex) const
 	}
 
 	const float Delta = GetQuickSDFAngleDeltaAtIndex(TargetAngleOffsetDeltas, AngleIndex);
-	if (FMath::IsNearlyZero(Delta))
-	{
-		return GetMaterialAngle(TargetAngles[AngleIndex]);
-	}
-
-	float MinPreviewAngle = 0.0f;
-	float MaxPreviewAngle = GetPaintMaxAngle();
-	GetAngleOffsetPreviewRange(AngleIndex, MinPreviewAngle, MaxPreviewAngle);
-	return FMath::Clamp(GetMaterialAngle(TargetAngles[AngleIndex], Delta), MinPreviewAngle, MaxPreviewAngle);
+	return GetMaterialAngle(TargetAngles[AngleIndex], Delta);
 }
 
 float UQuickSDFToolProperties::GetClampedAngleOffsetDelta(int32 AngleIndex, float RequestedDeltaDegrees) const
@@ -201,15 +193,14 @@ float UQuickSDFToolProperties::GetClampedAngleOffsetDelta(int32 AngleIndex, floa
 	GetAngleOffsetPreviewRange(AngleIndex, MinPreviewAngle, MaxPreviewAngle);
 
 	const float AuthoredAngle = TargetAngles[AngleIndex];
-	const float RequestedPreviewAngle = GetMaterialAngle(AuthoredAngle, RequestedDelta);
+	const float RequestedPreviewAngle = AuthoredAngle + RequestedDelta;
 	const float ClampedPreviewAngle = FMath::Clamp(RequestedPreviewAngle, MinPreviewAngle, MaxPreviewAngle);
 	if (FMath::IsNearlyEqual(RequestedPreviewAngle, ClampedPreviewAngle, KINDA_SMALL_NUMBER))
 	{
 		return RequestedDelta;
 	}
 
-	const float BaseBakeAngle = GetMaterialAngle(AuthoredAngle);
-	return FMath::Clamp(ClampedPreviewAngle - BaseBakeAngle, QuickSDFAngleOffsetMinDegrees, QuickSDFAngleOffsetMaxDegrees);
+	return FMath::Clamp(ClampedPreviewAngle - AuthoredAngle, QuickSDFAngleOffsetMinDegrees, QuickSDFAngleOffsetMaxDegrees);
 }
 
 void UQuickSDFToolProperties::GetAngleOffsetPreviewRange(int32 AngleIndex, float& OutMinPreviewAngle, float& OutMaxPreviewAngle) const
@@ -248,7 +239,7 @@ void UQuickSDFToolProperties::GetAngleOffsetPreviewRange(int32 AngleIndex, float
 	{
 		const int32 PreviousIndex = VisibleIndices[VisualIndex - 1];
 		const float PreviousEffectiveAngle = FMath::Clamp(
-			GetMaterialAngle(TargetAngles[PreviousIndex], GetQuickSDFAngleDeltaAtIndex(TargetAngleOffsetDeltas, PreviousIndex)),
+			TargetAngles[PreviousIndex] + GetQuickSDFAngleDeltaAtIndex(TargetAngleOffsetDeltas, PreviousIndex),
 			0.0f,
 			MaxAngle);
 		OutMinPreviewAngle = PreviousEffectiveAngle + QuickSDFAngleOffsetClampMarginDegrees;
@@ -258,7 +249,7 @@ void UQuickSDFToolProperties::GetAngleOffsetPreviewRange(int32 AngleIndex, float
 	{
 		const int32 NextIndex = VisibleIndices[VisualIndex + 1];
 		const float NextEffectiveAngle = FMath::Clamp(
-			GetMaterialAngle(TargetAngles[NextIndex], GetQuickSDFAngleDeltaAtIndex(TargetAngleOffsetDeltas, NextIndex)),
+			TargetAngles[NextIndex] + GetQuickSDFAngleDeltaAtIndex(TargetAngleOffsetDeltas, NextIndex),
 			0.0f,
 			MaxAngle);
 		OutMaxPreviewAngle = NextEffectiveAngle - QuickSDFAngleOffsetClampMarginDegrees;

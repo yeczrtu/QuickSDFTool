@@ -837,7 +837,8 @@ void UQuickSDFEditorMode::SelectRelativeFrame(int32 Direction)
 
 	if (Properties->bAutoSyncLight && Properties->TargetAngles.IsValidIndex(NextIndex))
 	{
-		SetPreviewLightAngle(Properties->GetMaterialAngleForKey(NextIndex));
+		SetTimelineSeekAngle(Properties->TargetAngles[NextIndex]);
+		SetPreviewLightAngle(Properties->GetMaterialAngleForKey(NextIndex), false);
 	}
 
 	if (GEditor)
@@ -904,9 +905,12 @@ void UQuickSDFEditorMode::SetTimelineSeekAngle(float AzimuthAngle)
 	}
 }
 
-void UQuickSDFEditorMode::SetPreviewLightAngle(float AzimuthAngle)
+void UQuickSDFEditorMode::SetPreviewLightAngle(float AzimuthAngle, bool bUpdateTimelineSeek)
 {
-	SetTimelineSeekAngle(AzimuthAngle);
+	if (bUpdateTimelineSeek)
+	{
+		SetTimelineSeekAngle(AzimuthAngle);
+	}
 
 	if (!PreviewLight) return;
 

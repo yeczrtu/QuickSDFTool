@@ -1,13 +1,16 @@
 #include "QuickSDFAsset.h"
 #include "QuickSDFMaskImportModel.h"
+#include "QuickSDFPaintTool.h"
 #include "QuickSDFPaintToolPrivate.h"
 #include "QuickSDFTextureSetSync.h"
+#include "QuickSDFToolSubsystem.h"
 #include "QuickSDFToolProperties.h"
 #include "QuickSDFTimelineStatus.h"
 #include "SDFProcessor.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Editor.h"
 #include "Misc/AutomationTest.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -81,6 +84,63 @@ bool FQuickSDFDefaultAngleCountTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("0-180 timeline percent normalizes midpoint"), FMath::IsNearlyEqual(QuickSDFTimelineStatus::NormalizeAngleToTimelinePercent(90.0f, 180.0f), 0.5f));
 	TestEqual(TEXT("Timeline percent clamps below zero"), QuickSDFTimelineStatus::NormalizeAngleToTimelinePercent(-5.0f, 90.0f), 0.0f);
 	TestEqual(TEXT("Timeline percent clamps above max"), QuickSDFTimelineStatus::NormalizeAngleToTimelinePercent(270.0f, 180.0f), 1.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FQuickSDFBakeAngleOffsetIsolationTest,
+	"QuickSDFTool.Core.BakeAngleOffsetIsolation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FQuickSDFBakeAngleOffsetIsolationTest::RunTest(const FString& Parameters)
+{
+	UQuickSDFToolSubsystem* Subsystem = GEditor ? GEditor->GetEditorSubsystem<UQuickSDFToolSubsystem>() : nullptr;
+	if (!TestNotNull(TEXT("QuickSDF subsystem is available"), Subsystem))
+	{
+		return false;
+	}
+
+	UQuickSDFAsset* PreviousAsset = Subsystem->GetActiveSDFAsset();
+	UQuickSDFAsset* Asset = NewObject<UQuickSDFAsset>();
+	Asset->TextureSets.SetNum(1);
+	Asset->ActiveTextureSetIndex = 0;
+
+	FQuickSDFTextureSetData& TextureSet = Asset->TextureSets[0];
+	TextureSet.AngleDataList.SetNum(3);
+	TextureSet.AngleDataList[0].Angle = 0.0f;
+	TextureSet.AngleDataList[0].AngleOffsetDeltaDegrees = 0.0f;
+	TextureSet.AngleDataList[1].Angle = 30.0f;
+	TextureSet.AngleDataList[1].AngleOffsetDeltaDegrees = -5.0f;
+	TextureSet.AngleDataList[2].Angle = 60.0f;
+	TextureSet.AngleDataList[2].AngleOffsetDeltaDegrees = 7.0f;
+
+	UQuickSDFPaintTool* Tool = NewObject<UQuickSDFPaintTool>();
+	UQuickSDFToolProperties* Properties = NewObject<UQuickSDFToolProperties>(Tool);
+	Tool->Properties = Properties;
+	Properties->NumAngles = 3;
+	Properties->TargetAngles = { 0.0f, 30.0f, 60.0f };
+	Properties->TargetAngleOffsetDeltas = { 0.0f, -5.0f, 7.0f };
+	Properties->BakeAngleOffsetDegrees = 20.0f;
+
+	Subsystem->SetActiveSDFAsset(Asset);
+	FProperty* BakeOffsetProperty = Properties->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, BakeAngleOffsetDegrees));
+	Tool->OnPropertyModified(Properties, BakeOffsetProperty);
+
+	TestEqual(TEXT("Global bake offset is saved to the active texture set"), TextureSet.BakeAngleOffsetDegrees, 20.0f);
+	TestEqual(TEXT("Zero-angle individual offset stays zero when global offset changes"), Properties->TargetAngleOffsetDeltas[0], 0.0f);
+	TestEqual(TEXT("Negative individual offset is not rewritten by global offset changes"), Properties->TargetAngleOffsetDeltas[1], -5.0f);
+	TestEqual(TEXT("Positive individual offset is not rewritten by global offset changes"), Properties->TargetAngleOffsetDeltas[2], 7.0f);
+	TestEqual(TEXT("Asset zero-angle individual offset stays zero"), TextureSet.AngleDataList[0].AngleOffsetDeltaDegrees, 0.0f);
+	TestEqual(TEXT("Asset negative individual offset is preserved"), TextureSet.AngleDataList[1].AngleOffsetDeltaDegrees, -5.0f);
+	TestEqual(TEXT("Asset positive individual offset is preserved"), TextureSet.AngleDataList[2].AngleOffsetDeltaDegrees, 7.0f);
+	TestTrue(TEXT("Global offset still moves the zero-degree bake angle negative without adding an individual offset"),
+		FMath::IsNearlyEqual(Properties->GetMaterialAngleForKey(0), -20.0f));
+	TestEqual(TEXT("Individual offset clamp is independent from global offset at zero delta"), Properties->GetClampedAngleOffsetDelta(0, 0.0f), 0.0f);
+	TestEqual(TEXT("Positive individual offset remains relative to the authored zero-degree key"), Properties->GetClampedAngleOffsetDelta(0, 5.0f), 5.0f);
+	TestEqual(TEXT("Zero-degree individual offset still clamps negative movement at the timeline edge"), Properties->GetClampedAngleOffsetDelta(0, -5.0f), 0.0f);
+	TestEqual(TEXT("Middle-key individual offset clamp preserves existing value despite global offset"), Properties->GetClampedAngleOffsetDelta(1, -5.0f), -5.0f);
+
+	Subsystem->SetActiveSDFAsset(PreviousAsset);
 	return true;
 }
 
@@ -648,11 +708,13 @@ bool FQuickSDFTimelineKeyStatusTest::RunTest(const FString& Parameters)
 	const FQuickSDFTimelineKeyStatus Status = QuickSDFTimelineStatus::BuildKeyStatus(Input);
 	TestTrue(TEXT("Paint render target counts as mask presence"), Status.bHasMask);
 	TestTrue(TEXT("Guard state is preserved"), Status.bGuardEnabled);
+	TestTrue(TEXT("Individual offset visual angle excludes global offset"), FMath::IsNearlyEqual(Status.OffsetPreviewAngle, 47.5f));
 
 	const FString Tooltip = QuickSDFTimelineStatus::BuildKeyTooltip(Status).ToString();
 	TestTrue(TEXT("Tooltip contains authored angle"), Tooltip.Contains(TEXT("Authored Angle: 45 deg")));
 	TestTrue(TEXT("Tooltip contains bake shift"), Tooltip.Contains(TEXT("Bake Shift: +2.5 deg")));
-	TestTrue(TEXT("Tooltip contains bake range"), Tooltip.Contains(TEXT("Allowed Bake Range: 20.0..60.0 deg")));
+	TestTrue(TEXT("Tooltip contains individual offset angle"), Tooltip.Contains(TEXT("Individual Offset Angle: 47.5 deg")));
+	TestTrue(TEXT("Tooltip contains offset range"), Tooltip.Contains(TEXT("Allowed Offset Range: 20.0..60.0 deg")));
 	TestTrue(TEXT("Tooltip explains authored key stays fixed"), Tooltip.Contains(TEXT("Authored key stays fixed")));
 	TestTrue(TEXT("Tooltip reports included paint target range"), Tooltip.Contains(TEXT("Paint Target: Included")));
 

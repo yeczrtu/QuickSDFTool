@@ -3254,13 +3254,6 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 				{
 					ActiveAsset->Modify();
 					ActiveSet->BakeAngleOffsetDegrees = Properties->BakeAngleOffsetDegrees;
-					Properties->TargetAngleOffsetDeltas.SetNum(ActiveAsset->GetActiveAngleDataList().Num());
-					for (int32 i = 0; i < ActiveAsset->GetActiveAngleDataList().Num(); ++i)
-					{
-						const float ClampedDelta = Properties->GetClampedAngleOffsetDelta(i, Properties->TargetAngleOffsetDeltas[i]);
-						Properties->TargetAngleOffsetDeltas[i] = ClampedDelta;
-						ActiveAsset->GetActiveAngleDataList()[i].AngleOffsetDeltaDegrees = ClampedDelta;
-					}
 					ActiveSet->bDirty = true;
 					ActiveAsset->SyncLegacyFromActiveTextureSet();
 					ActiveAsset->MarkPackageDirty();
@@ -3330,10 +3323,12 @@ void UQuickSDFPaintTool::OnPropertyModified(UObject* PropertySet, FProperty* Pro
 				 Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, bSymmetryMode)))
 		{
 			if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex) ||
-				Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngles) ||
-				Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngleOffsetDeltas))
+				Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngles))
 			{
-				SetTimelinePreviewSeekAngleToActiveKey();
+				if (Properties->TargetAngles.IsValidIndex(Properties->EditAngleIndex))
+				{
+					SetTimelinePreviewSeekAngle(Properties->TargetAngles[Properties->EditAngleIndex]);
+				}
 			}
 
 			if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, EditAngleIndex) ||

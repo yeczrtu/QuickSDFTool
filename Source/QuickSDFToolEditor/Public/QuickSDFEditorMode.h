@@ -24,7 +24,7 @@ public:
 	virtual bool IsSelectionAllowed(AActor* InActor, bool bInSelection) const override;
 	virtual bool InputKey(FEditorViewportClient* ViewportClient, FViewport* Viewport, FKey Key, EInputEvent Event) override;
 	// Set the main directional light rotation for previewing
-	void SetPreviewLightAngle(float AzimuthAngle);
+	void SetPreviewLightAngle(float AzimuthAngle, bool bUpdateTimelineSeek = true);
 	void SetTimelineSeekAngle(float AzimuthAngle);
 	class ADirectionalLight* GetPreviewLight() const { return PreviewLight; }
 	bool RequestBrushResizeFromHoveredViewport();

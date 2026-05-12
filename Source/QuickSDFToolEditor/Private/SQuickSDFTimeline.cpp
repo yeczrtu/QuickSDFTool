@@ -890,8 +890,11 @@ FText SQuickSDFTimeline::GetActiveAngleOffsetPreviewText() const
 		return FText::GetEmpty();
 	}
 
+	const TOptional<float> CurrentDelta = GetActiveAngleOffsetDelta();
+	const float Delta = CurrentDelta.IsSet() ? CurrentDelta.GetValue() : 0.0f;
 	return FText::Format(
-		LOCTEXT("ActiveAngleOffsetPreview", "Bake: {0} deg"),
+		LOCTEXT("ActiveAngleOffsetPreview", "Offset: {0} deg / Bake: {1} deg"),
+		FText::AsNumber(FMath::RoundToFloat((Props->TargetAngles[Props->EditAngleIndex] + Delta) * 10.0f) / 10.0f),
 		FText::AsNumber(FMath::RoundToFloat(Props->GetMaterialAngleForKey(Props->EditAngleIndex) * 10.0f) / 10.0f));
 }
 
@@ -940,7 +943,10 @@ TOptional<FVector2D> SQuickSDFTimeline::GetActiveBakeShiftHandleCenter() const
 		return TOptional<FVector2D>();
 	}
 
-	const float EffectiveBakeAngle = Props->GetMaterialAngleForKey(Props->EditAngleIndex);
+	const float ActiveDelta = Props->TargetAngleOffsetDeltas.IsValidIndex(Props->EditAngleIndex)
+		? Props->TargetAngleOffsetDeltas[Props->EditAngleIndex]
+		: 0.0f;
+	const float EffectiveBakeAngle = AuthoredAngle + ActiveDelta;
 	return FVector2D(
 		GetQuickSDFTimelineAngleX(TimelineTrackCanvas, EffectiveBakeAngle, MaxAngle),
 		QuickSDFTimelineSeekLaneHeight + 9.0f);
@@ -1039,8 +1045,7 @@ void SQuickSDFTimeline::UpdateBakeShiftDrag(const FVector2D& ScreenPosition)
 	const float CursorBakeAngle = ((LocalPosition.X - QuickSDFTimelineTrackPadding) / TrackWidth) * MaxAngle;
 	const float RequestedBakeAngle = FMath::Clamp(CursorBakeAngle - BakeShiftDragGrabOffsetDegrees, 0.0f, MaxAngle);
 	const float AuthoredAngle = Props->TargetAngles[Props->EditAngleIndex];
-	const float BaseBakeAngle = Props->GetMaterialAngle(AuthoredAngle);
-	ApplyActiveAngleOffsetDelta(RequestedBakeAngle - BaseBakeAngle, false);
+	ApplyActiveAngleOffsetDelta(RequestedBakeAngle - AuthoredAngle, false);
 }
 
 void SQuickSDFTimeline::EndBakeShiftDrag()
@@ -1072,7 +1077,11 @@ FText SQuickSDFTimeline::GetActiveBakeShiftDragReadoutText() const
 	const float Delta = Props->TargetAngleOffsetDeltas.IsValidIndex(Props->EditAngleIndex)
 		? Props->TargetAngleOffsetDeltas[Props->EditAngleIndex]
 		: 0.0f;
-	return FText::FromString(FString::Printf(TEXT("%.1f\u00B0  \u0394%+.1f\u00B0"), Props->GetMaterialAngleForKey(Props->EditAngleIndex), Delta));
+	return FText::FromString(FString::Printf(
+		TEXT("Offset %.1f\u00B0  \u0394%+.1f\u00B0  Bake %.1f\u00B0"),
+		Props->TargetAngles[Props->EditAngleIndex] + Delta,
+		Delta,
+		Props->GetMaterialAngleForKey(Props->EditAngleIndex)));
 }
 
 void SQuickSDFTimeline::BeginAngleOffsetTransaction()
@@ -1126,7 +1135,7 @@ void SQuickSDFTimeline::SyncPreviewLightToActiveKey() const
 
 	if (UQuickSDFEditorMode* Mode = Cast<UQuickSDFEditorMode>(GLevelEditorModeTools().GetActiveScriptableMode("EM_QuickSDFEditorMode")))
 	{
-		Mode->SetPreviewLightAngle(Props->GetMaterialAngleForKey(Props->EditAngleIndex));
+		Mode->SetPreviewLightAngle(Props->GetMaterialAngleForKey(Props->EditAngleIndex), false);
 	}
 }
 
@@ -1154,9 +1163,6 @@ void SQuickSDFTimeline::ApplyActiveAngleOffsetDelta(float RequestedDelta, bool b
 	{
 		Props->TargetAngleOffsetDeltas[Props->EditAngleIndex] = ClampedDelta;
 	}
-	LastSeekAngle = Props->GetMaterialAngleForKey(Props->EditAngleIndex);
-	bHasSeekAngle = true;
-	Tool->SetTimelinePreviewSeekAngle(LastSeekAngle);
 	if (bNotifyPropertyModified)
 	{
 		FProperty* Prop = Props->GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UQuickSDFToolProperties, TargetAngleOffsetDeltas));
@@ -1451,7 +1457,7 @@ void SQuickSDFTimeline::SeekTimelineAtScreenPosition(const FVector2D& ScreenPosi
 	{
 		if (UQuickSDFEditorMode* Mode = Cast<UQuickSDFEditorMode>(GLevelEditorModeTools().GetActiveScriptableMode("EM_QuickSDFEditorMode")))
 		{
-			Mode->SetPreviewLightAngle(SeekAngle);
+			Mode->SetPreviewLightAngle(SeekAngle, false);
 		}
 	}
 
@@ -1949,7 +1955,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 			}
 
 			const FQuickSDFTimelineKeyStatus Status = BuildTimelineKeyStatus(Tool, OffsetKeyIndex);
-			const FQuickSDFTimelineOffsetVisual Visual = QuickSDFTimelineStatus::BuildOffsetVisual(Status.Angle, Status.EffectivePreviewAngle, Status.AngleOffsetDelta, MaxAngle);
+			const FQuickSDFTimelineOffsetVisual Visual = QuickSDFTimelineStatus::BuildOffsetVisual(Status.Angle, Status.OffsetPreviewAngle, Status.AngleOffsetDelta, MaxAngle);
 			if (!Visual.bVisible)
 			{
 				return FVector2D(-1000.0f, -1000.0f);
@@ -1968,7 +1974,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 			}
 
 			const FQuickSDFTimelineKeyStatus Status = BuildTimelineKeyStatus(Tool, OffsetKeyIndex);
-			const FQuickSDFTimelineOffsetVisual Visual = QuickSDFTimelineStatus::BuildOffsetVisual(Status.Angle, Status.EffectivePreviewAngle, Status.AngleOffsetDelta, GetQuickSDFTimelineMaxAngle(P));
+			const FQuickSDFTimelineOffsetVisual Visual = QuickSDFTimelineStatus::BuildOffsetVisual(Status.Angle, Status.OffsetPreviewAngle, Status.AngleOffsetDelta, GetQuickSDFTimelineMaxAngle(P));
 			const bool bStrong = P->EditAngleIndex == OffsetKeyIndex || HoveredOffsetKeyIndex == OffsetKeyIndex;
 			return FVector2D(Visual.bVisible ? FMath::Max(1.0f, GetQuickSDFTimelineTrackWidth(TimelineTrackCanvas) * Visual.WidthPercent) : 0.0f, bStrong ? 3.0f : 2.0f);
 		}))
@@ -2014,7 +2020,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 			}
 
 			const FQuickSDFTimelineKeyStatus Status = BuildTimelineKeyStatus(Tool, OffsetKeyIndex);
-			const FQuickSDFTimelineOffsetVisual Visual = QuickSDFTimelineStatus::BuildOffsetVisual(Status.Angle, Status.EffectivePreviewAngle, Status.AngleOffsetDelta, MaxAngle);
+			const FQuickSDFTimelineOffsetVisual Visual = QuickSDFTimelineStatus::BuildOffsetVisual(Status.Angle, Status.OffsetPreviewAngle, Status.AngleOffsetDelta, MaxAngle);
 			if (!Visual.bVisible)
 			{
 				return FVector2D(-1000.0f, -1000.0f);
@@ -2023,7 +2029,7 @@ void SQuickSDFTimeline::RebuildTimeline()
 			const bool bStrong = P->EditAngleIndex == OffsetKeyIndex || HoveredOffsetKeyIndex == OffsetKeyIndex;
 			const float TickWidth = bStrong ? 4.0f : 3.0f;
 			const float TickHeight = QuickSDFTimelineBakeTickHeight + (bStrong ? 2.0f : 0.0f);
-			return FVector2D(GetQuickSDFTimelineAngleX(TimelineTrackCanvas, Status.EffectivePreviewAngle, MaxAngle) - (TickWidth * 0.5f), QuickSDFTimelineBakeLaneY - (TickHeight * 0.5f));
+			return FVector2D(GetQuickSDFTimelineAngleX(TimelineTrackCanvas, Status.OffsetPreviewAngle, MaxAngle) - (TickWidth * 0.5f), QuickSDFTimelineBakeLaneY - (TickHeight * 0.5f));
 		}))
 		.Size(TAttribute<FVector2D>::CreateLambda([this, OffsetKeyIndex]()
 		{
@@ -2363,7 +2369,7 @@ void SQuickSDFTimeline::OnKeyframeClicked(int32 Index)
 		{
 			if (Props->TargetAngles.IsValidIndex(Index))
 			{
-				LastSeekAngle = Props->GetMaterialAngleForKey(Index);
+				LastSeekAngle = Props->TargetAngles[Index];
 				bHasSeekAngle = true;
 				Tool->SetTimelinePreviewSeekAngle(LastSeekAngle);
 			}
@@ -2420,10 +2426,10 @@ FReply SQuickSDFTimeline::OnSyncLightClicked()
 	if (Tool->Properties->TargetAngles.IsValidIndex(Index))
 	{
 		const float TargetAngle = Tool->Properties->GetMaterialAngleForKey(Index);
-		LastSeekAngle = TargetAngle;
+		LastSeekAngle = Tool->Properties->TargetAngles[Index];
 		bHasSeekAngle = true;
-		Tool->SetTimelinePreviewSeekAngle(TargetAngle);
-		Mode->SetPreviewLightAngle(TargetAngle);
+		Tool->SetTimelinePreviewSeekAngle(LastSeekAngle);
+		Mode->SetPreviewLightAngle(TargetAngle, false);
 	}
 
 	return FReply::Handled();
@@ -2451,7 +2457,7 @@ void SQuickSDFTimeline::OnKeyframeAngleChanged(float NewAngle, int32 Index)
 					}
 				}
 
-				LastSeekAngle = Props->GetMaterialAngleForKey(Index);
+				LastSeekAngle = ClampedAngle;
 				bHasSeekAngle = true;
 				Tool->SetTimelinePreviewSeekAngle(LastSeekAngle);
 
